@@ -1,0 +1,12 @@
+# Supabase project configuration.
+#
+# This monorepo uses HOSTED Supabase (per /DECISIONS.md 2026-04-25, which
+# supersedes PROJECT_SPEC.md §3.4 "Supabase local via Docker"). Run
+# `supabase link --project-ref <your-project-ref>` from the repo root to
+# connect this directory to the hosted project. After linking, the CLI
+# will rewrite this file with the linked project metadata.
+#
+# `project_id` is the human-readable slug; the linked `project_ref` is what
+# `supabase link` records separately and is what `supabase gen types` uses.
+
+project_id = "orions-belt"

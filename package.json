@@ -1,0 +1,36 @@
+{
+  "name": "orions-belt",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Orion's Belt -- generative AI website builder for Rent Manager. Monorepo root.",
+  "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm --filter web build",
+    "test": "pnpm --filter web test",
+    "test:e2e": "pnpm --filter web test:e2e",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "typecheck": "pnpm --filter web typecheck",
+    "db:push": "echo 'Sprint 1 will implement (supabase db push against linked hosted project)' && exit 0",
+    "db:types": "echo 'Sprint 1 will implement (supabase gen types typescript --project-id $SUPABASE_PROJECT_REF > apps/web/types/database.ts)' && exit 0",
+    "seed": "echo 'Sprint 1 will implement (run scripts/seed.ts against linked hosted project)' && exit 0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@biomejs/biome",
+      "@tailwindcss/oxide",
+      "esbuild",
+      "rolldown",
+      "sharp",
+      "unrs-resolver"
+    ]
+  }
+}

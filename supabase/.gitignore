@@ -1,0 +1,8 @@
+# Local-stack artifacts the Supabase CLI may create even when we are using
+# the hosted project (e.g. `supabase db diff` or `supabase gen` work without
+# the local stack but still write scratch state).
+.branches
+.temp
+.env
+.env.local
+*.log

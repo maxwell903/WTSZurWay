@@ -1,0 +1,12 @@
+/*
+ * Tailwind v4 (CSS-first config). Chosen over v3 because v4 is the current
+ * stable release and its config lives entirely in this file via `@theme`.
+ * The `tailwindcss-animate` plugin is loaded via `@plugin` for shadcn/ui
+ * compatibility -- in v4 there is no JS `tailwind.config.ts`.
+ */
+@import "tailwindcss";
+@plugin "tailwindcss-animate";
+
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
