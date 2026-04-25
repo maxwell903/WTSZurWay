@@ -54,9 +54,7 @@ export async function getCompany(): Promise<Company> {
 
   if (error) throw error;
   if (!data) {
-    throw new Error(
-      "rm_company is empty -- run `pnpm seed` against the linked Supabase project.",
-    );
+    throw new Error("rm_company is empty -- run `pnpm seed` against the linked Supabase project.");
   }
   return toCompany(data as unknown as CompanyRow);
 }

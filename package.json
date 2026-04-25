@@ -16,9 +16,9 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "typecheck": "pnpm --filter web typecheck",
-    "db:push": "echo 'Sprint 1 will implement (supabase db push against linked hosted project)' && exit 0",
-    "db:types": "echo 'Sprint 1 will implement (supabase gen types typescript --project-id $SUPABASE_PROJECT_REF > apps/web/types/database.ts)' && exit 0",
-    "seed": "echo 'Sprint 1 will implement (run scripts/seed.ts against linked hosted project)' && exit 0"
+    "db:push": "supabase db push",
+    "db:types": "supabase gen types typescript --linked > apps/web/types/database.ts",
+    "seed": "supabase db reset --linked"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4"
