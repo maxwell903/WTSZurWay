@@ -10,6 +10,7 @@ import {
   applyReorderChildren,
   applyReorderPages,
   applySetComponentAnimation,
+  applySetComponentDataBinding,
   applySetComponentDimension,
   applySetComponentProps,
   applySetComponentSpan,
@@ -187,6 +188,13 @@ const creator: StateCreator<EditorStore> = (set) => ({
   setComponentVisibility: (id, visibility) =>
     set((state) => ({
       draftConfig: applySetComponentVisibility(state.draftConfig, id, visibility),
+      saveState: "dirty",
+    })),
+
+  // Sprint 9 — see DECISIONS.md "2026-04-26 — Sprint 9 — `setComponentDataBinding` wire-up touches store.ts".
+  setComponentDataBinding: (id, dataBinding) =>
+    set((state) => ({
+      draftConfig: applySetComponentDataBinding(state.draftConfig, id, dataBinding),
       saveState: "dirty",
     })),
 

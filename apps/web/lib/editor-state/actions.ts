@@ -3,6 +3,7 @@ import { newComponentId } from "@/lib/site-config";
 import type {
   AnimationConfig,
   ComponentNode,
+  DataBinding,
   Page,
   PageKind,
   SiteConfig,
@@ -277,6 +278,24 @@ export function applySetComponentVisibility(
       return rest;
     }
     return { ...node, visibility };
+  });
+}
+
+// Sprint 9 — Repeater data binding mutator. Same depth-first walk +
+// structural-sharing pattern as the other Sprint 8 component-level mutators
+// (PROJECT_SPEC.md §11). Passing `undefined` removes the field entirely so
+// configs round-trip cleanly through the schema.
+export function applySetComponentDataBinding(
+  config: SiteConfig,
+  id: ComponentId,
+  dataBinding: DataBinding | undefined,
+): SiteConfig {
+  return applyMapToConfig(config, id, (node) => {
+    if (dataBinding === undefined) {
+      const { dataBinding: _omit, ...rest } = node;
+      return rest;
+    }
+    return { ...node, dataBinding };
   });
 }
 

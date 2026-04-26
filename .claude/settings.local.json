@@ -20,7 +20,15 @@
       "PowerShell($cutoff = \\(Get-Date\\).AddMinutes\\(-15\\); Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.StartTime -gt $cutoff } | ForEach-Object { Write-Host \"Stopping node PID $\\($_.Id\\) started $\\($_.StartTime\\)\"; Stop-Process -Id $_.Id -Force -ErrorAction Continue }; Start-Sleep -Seconds 2; Get-Process -Name node -ErrorAction SilentlyContinue | Select-Object Id, StartTime | Format-Table -AutoSize)",
       "PowerShell(try { Rename-Item \"C:\\\\Users\\\\maxwa\\\\WTSZurWay\\\\apps\\\\web\\\\.next\\\\trace\" \"trace.locked.$\\(Get-Random\\)\" -Force -ErrorAction Stop; \"rename-ok\" } catch { \"rename-failed: $_\" })",
       "PowerShell(openfiles /query /fo csv 2>&1)",
-      "Bash(pnpm format *)"
+      "Bash(pnpm format *)",
+      "Bash(git -C \"c:/Users/maxwa/WTSZurWay\" branch --show-current)",
+      "Bash(pnpm --filter web test lib/rm-api)",
+      "Bash(pnpm --filter web add @tanstack/react-query react-querybuilder)",
+      "Bash(pnpm --filter web test lib/row-context)",
+      "Bash(pnpm --filter web test lib/token-resolver)",
+      "Bash(pnpm --filter web test lib/site-config/data-binding)",
+      "Bash(pnpm --filter web test components/site-components/Repeater)",
+      "Bash(pnpm --filter web test components/renderer components/site-components/Repeater lib/token-resolver lib/row-context lib/site-config/data-binding)"
     ]
   }
 }

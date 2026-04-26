@@ -1,6 +1,7 @@
 import type {
   AnimationConfig,
   ComponentNode,
+  DataBinding,
   DetailDataSource,
   Page,
   PageKind,
@@ -86,6 +87,8 @@ export type EditorActions = {
   setComponentStyle: (id: ComponentId, style: StyleConfig) => void;
   setComponentAnimation: (id: ComponentId, animation: AnimationConfig | undefined) => void;
   setComponentVisibility: (id: ComponentId, visibility: ComponentVisibility | undefined) => void;
+  // Sprint 9 — Repeater data binding mutator.
+  setComponentDataBinding: (id: ComponentId, dataBinding: DataBinding | undefined) => void;
   removeComponent: (id: ComponentId) => void;
   // Sprint 7 — drag-and-drop and resize mutators.
   addComponentChild: (parentId: ComponentId, index: number, node: ComponentNode) => void;

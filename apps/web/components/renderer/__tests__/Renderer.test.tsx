@@ -73,6 +73,15 @@ describe("<Renderer>", () => {
     expect(getByText("Page not found: missing")).toBeInTheDocument();
   });
 
+  it("leaves `{{ row.* }}` tokens verbatim on static pages outside any Repeater (token-leak guard)", () => {
+    // Sprint 9 §8.12: tokens not resolved against any in-scope row pass
+    // through verbatim, matching the Sprint 5 shell behavior.
+    const { getByText } = render(
+      <Renderer config={makeConfig("{{ row.unitName }}", "Plain")} page="home" mode="preview" />,
+    );
+    expect(getByText("{{ row.unitName }}")).toBeInTheDocument();
+  });
+
   it("propagates 'selected' state through to EditModeWrapper", () => {
     const { container } = render(
       <Renderer config={makeConfig("A", "B")} page="home" mode="edit" selection={["cmp_a"]} />,

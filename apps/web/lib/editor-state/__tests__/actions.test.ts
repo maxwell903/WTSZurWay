@@ -10,6 +10,7 @@ import {
   applyReorderChildren,
   applyReorderPages,
   applySetComponentAnimation,
+  applySetComponentDataBinding,
   applySetComponentDimension,
   applySetComponentProps,
   applySetComponentSpan,
@@ -397,6 +398,35 @@ describe("applySetComponentVisibility", () => {
     const updated = findById(next.pages[0]?.rootComponent, "cmp_h1");
     expect(updated).toBeDefined();
     expect("visibility" in (updated as object)).toBe(false);
+  });
+});
+
+describe("applySetComponentDataBinding", () => {
+  it("writes a dataBinding value", () => {
+    const cfg = makeNestedFixtureConfig();
+    const next = applySetComponentDataBinding(cfg, "cmp_h1", {
+      source: "units",
+      sort: { field: "currentMarketRent", direction: "desc" },
+      limit: 10,
+    });
+    const updated = findById(next.pages[0]?.rootComponent, "cmp_h1");
+    expect(updated?.dataBinding?.source).toBe("units");
+    expect(updated?.dataBinding?.limit).toBe(10);
+  });
+
+  it("clears the field entirely when passed undefined", () => {
+    const cfg = makeNestedFixtureConfig();
+    const seeded = applySetComponentDataBinding(cfg, "cmp_h1", { source: "company" });
+    const cleared = applySetComponentDataBinding(seeded, "cmp_h1", undefined);
+    const updated = findById(cleared.pages[0]?.rootComponent, "cmp_h1");
+    expect(updated).toBeDefined();
+    expect("dataBinding" in (updated as object)).toBe(false);
+  });
+
+  it("throws when the target id does not exist", () => {
+    expect(() =>
+      applySetComponentDataBinding(makeNestedFixtureConfig(), "missing-id", { source: "units" }),
+    ).toThrow();
   });
 });
 

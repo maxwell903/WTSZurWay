@@ -36,9 +36,18 @@ Invalid props fall back silently to the defaults.
 
 ## Data binding
 
-Sprint 9 will allow the parent `Repeater` to inject `{{ row.* }}` tokens
-into `heading`, `imageSrc`, `ctaHref`, and to bind `unitId` / `beds` /
-`baths` / `sqft` / `rent` to the row's fields.
+When placed inside a Repeater, every string-valued prop on this card
+is resolved through the shared token resolver
+(`lib/token-resolver`) before reaching the component. Author
+templates with `{{ row.unitName }}`, `{{ row.primaryImageUrl }}`,
+`{{ row.bedrooms }}`, `{{ row.bathrooms }}`, `{{ row.squareFootage }}`,
+`{{ row.currentMarketRent }}`, and `/units/{{ row.id }}`. No code
+change in `index.tsx` is required: when the prop is exactly one
+token, ComponentRenderer's resolver hook short-circuits to the
+underlying row value (number, boolean, etc.), so this card's
+`z.number()`-typed props receive numbers as expected
+(see `DECISIONS.md` 2026-04-26 entry). Sprint 5's default-fallback
+tests still pass unchanged.
 
 ## Children policy
 

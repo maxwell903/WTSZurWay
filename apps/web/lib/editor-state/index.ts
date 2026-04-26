@@ -9,6 +9,7 @@ export {
   applyReorderChildren,
   applyReorderPages,
   applySetComponentAnimation,
+  applySetComponentDataBinding,
   applySetComponentDimension,
   applySetComponentProps,
   applySetComponentSpan,

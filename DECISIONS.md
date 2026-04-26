@@ -986,3 +986,178 @@ read-only category. The minimal renames preserve the visible intent
 will resolve `{{ row.* }}` tokens against the runtime keys
 (`heading`, `imageSrc`, `beds`, etc.) — same set Sprint 7 now writes
 on insert. No effect on Sprint 8 (already merged). No schema changes.
+
+---
+
+## 2026-04-26 — Sprint 9 — Whole-token passthrough preserves underlying value type
+
+**Original plan:** Sprint 9 CLAUDE.md DoD specified that
+ComponentRenderer's new resolver hook "walks `node.props` and replaces
+every string-valued top-level prop with `resolveTokens(value, row)`",
+and the dev/repeater fixture spec required `{{ row.* }}` tokens for
+seven UnitCard props including the numeric `beds`, `baths`, `sqft`,
+`rent`. The Repeater integration test (DoD assertion (c)) asserts
+"the rent text reflects each row's `currentMarketRent` formatted via
+the `money` formatter" — i.e. per-row numeric display.
+
+**What changed:** ComponentRenderer's resolver hook now special-cases
+the "the whole prop string is exactly one `{{ row.path }}` token"
+pattern: when matched, the prop is replaced with the raw row value
+(number, boolean, etc.) instead of the stringified form returned by
+`resolveTokens`. Strings that interleave tokens with other text
+continue to use `resolveTokens` as written.
+`lib/token-resolver/`'s public surface is unchanged
+(`resolveTokens(value, row): string`).
+
+**Rationale:** UnitCard's Sprint-5 schema uses `z.number()` (not
+`z.coerce.number()`) for the four numeric props, and
+`UnitCard/index.tsx` is forbidden to modify in Sprint 9. Without the
+passthrough, any token in a numeric prop fails Zod parse, the entire
+card falls back to defaults ($0/mo, 0 beds, 0 sqft), and DoD
+assertions (c) and (d) of the Repeater integration test cannot pass.
+The smallest principled fix is in the resolver hook itself; the
+token-resolver module's pure-function contract remains untouched.
+
+**User approval (verbatim):** "Approved"
+
+**Trade-offs accepted:**
+- Gain: tokens transparently bind to typed props (numeric, boolean)
+  on UnitCard / PropertyCard / future components without weakening
+  any per-component schema. Repeater integration test (c)/(d) and
+  smoke-test step 3 (per-row rent display + sort-by-rent ordering)
+  pass as written. Sprint 9b's detail-page reuse of the same hook is
+  unaffected.
+- Lose: the literal DoD wording is relaxed to "resolve tokens,
+  preserving the underlying value type when the whole string is one
+  token" — about ten lines of additional logic in
+  `ComponentRenderer.tsx`.
+- Risk: a user who writes `"{{ row.x }}"` expecting a string but
+  whose row carries a numeric `x` will see the numeric reach
+  downstream. UnitCard's existing schema already wants numeric for
+  numeric props; for string-only consumers the value coerces back to
+  a string via React's normal rendering.
+
+**Affected files / modules:**
+- `apps/web/components/renderer/ComponentRenderer.tsx` (the resolver
+  hook gains a whole-token detector; both
+  `resolveValue`/`resolveProps` paths are local helpers).
+
+**Cross-sprint impact:** None. The token-resolver module's exports
+keep their string→string contract. Sprint 9b reuses the same hook
+verbatim. Sprint 11 (AI Edit) does not touch renderer prop
+resolution.
+
+---
+
+## 2026-04-26 — Sprint 9 — `setComponentDataBinding` wire-up touches store.ts
+
+**Original plan:** Sprint 9 CLAUDE.md DoD: "`types.ts` and `actions.ts`
+gain a single new mutator: `setComponentDataBinding: (id: ComponentId,
+dataBinding: DataBinding | undefined) => void`. ... Pattern matches
+`setComponentProps` already in those files. ... These are the only
+two files in `lib/editor-state/` Sprint 9 modifies." `store.ts` is
+listed as forbidden in the same file.
+
+**What changed:** The mutator is added to `types.ts` (in
+`EditorActions`), `actions.ts` (`applySetComponentDataBinding`), AND
+`store.ts` (a single line wiring the action through `set` with the
+standard `saveState: "dirty"` flip). The Sprint-9 file scope is
+treated as having three modified files in `lib/editor-state/`, not
+two.
+
+**Rationale:** Adding `setComponentDataBinding` to the `EditorActions`
+type without a matching key in `store.ts`'s `creator` object breaks
+the `EditorStore` type contract — `pnpm build` fails. The DoD's
+"pattern matches `setComponentProps`" note assumes the existing
+three-file pattern; the "only two files" claim is internally
+inconsistent with that. The smallest principled fix is to honor the
+pattern across all three files; the alternative (a non-`EditorActions`
+type alias plus direct `useEditorStore.setState` calls in EditPanel)
+diverges from every other EditPanel in the codebase and adds more
+complexity than the single-line store entry.
+
+**User approval (verbatim):** "Approved"
+
+**Trade-offs accepted:**
+- Gain: pattern parity with `setComponentProps` and the 13 other
+  store-bound mutators; the EditPanel uses `useEditorStore((s) =>
+  s.setComponentDataBinding)` exactly like every other Sprint-6/7/8
+  panel; autosave picks up the `dirty` flip automatically.
+- Lose: the DoD's "only two files" claim becomes three.
+- Risk: zero — purely additive line consistent with the existing
+  pattern; no deletions, no behavior changes outside the new mutator.
+
+**Affected files / modules:**
+- `apps/web/lib/editor-state/types.ts` (one line in `EditorActions`).
+- `apps/web/lib/editor-state/actions.ts`
+  (`applySetComponentDataBinding`).
+- `apps/web/lib/editor-state/store.ts` (one wiring line).
+
+**Cross-sprint impact:** None. Sprint 11 will consume the new mutator
+through `lib/site-config/ops.ts` per Sprint 9 DoD. No
+selectors/autosave changes — those files remain untouched.
+
+---
+
+## 2026-04-26 — Sprint 9 — `fetchSource` is a Server Action
+
+**Original plan:** Sprint 9 CLAUDE.md DoD specified a `"use client"`
+Repeater calling `useQuery({ queryFn: () => fetchSource(source) })`,
+where `fetchSource` directly invokes `getProperties / getUnits /
+getCompany` from `lib/rm-api/`. `lib/rm-api/` is in the forbidden list
+(Sprint 1 territory).
+
+**What changed:** `apps/web/lib/site-config/data-binding/fetchSource.ts`
+is marked as a Next.js Server Action by adding `"use server"` at the
+top of the file. The exported function signature is unchanged
+(`fetchSource(source: DataBindingSource): Promise<unknown[]>`). The
+Repeater's call site is unchanged. Type and helper exports that
+violate the Server-Action constraint (only async functions may be
+exported) are repositioned: `UnitWithProperty` moves to `types.ts`;
+`joinUnitsWithProperties` becomes a function-scoped helper inside
+`fetchSource`. The data-binding `index.ts` barrel continues to
+re-export both `fetchSource` and `UnitWithProperty` (now from
+`types.ts`).
+
+**Rationale:** `lib/rm-api/` uses the service-role Supabase client,
+which depends on a non-`NEXT_PUBLIC_` env var (server-only) and
+runtime-throws if instantiated in the browser. The Sprint-1 design
+explicitly intended these helpers to run only on the server. Bundling
+them into a `"use client"` component (the Sprint-9 Repeater) blows
+up `pnpm build` with `You're importing a component that needs
+"next/headers"` (transitive via `lib/supabase/index.ts` re-exporting
+`server.ts`). Server Actions are the smallest, signature-preserving
+fix: the import chain stays as written, but Next.js routes calls
+across the network boundary so `lib/rm-api/` never ships to the
+client. No new files under `app/api/`, no `lib/rm-api/` modifications.
+
+**User approval (verbatim):** "Approved"
+
+**Trade-offs accepted:**
+- Gain: production build succeeds; Repeater code is unchanged;
+  service-role key stays on the server; Vitest mocks for
+  `@/lib/rm-api` continue to work.
+- Lose: every `fetchSource` call now incurs one network round-trip
+  to a Next.js Server-Action endpoint instead of in-process. For
+  the demo's small Aurora dataset this is invisible; TanStack
+  Query's 5-minute `staleTime` keeps it to one round-trip per
+  source per session.
+- Risk: low. The directive is a Next-bundler convention only —
+  outside Next (Vitest), the module behaves like normal ESM. The
+  test for `fetchSource` (`__tests__/fetchSource.test.ts`) keeps
+  working as written.
+
+**Affected files / modules:**
+- `apps/web/lib/site-config/data-binding/fetchSource.ts` (gains
+  `"use server"`; helper inlined; type alias removed).
+- `apps/web/lib/site-config/data-binding/types.ts` (gains
+  `UnitWithProperty` type alias).
+- `apps/web/lib/site-config/data-binding/index.ts` (re-exports
+  `UnitWithProperty` from `types.ts`).
+
+**Cross-sprint impact:** Sprint 9b reuses the same Server-Action
+pattern when fetching for detail pages (RSC paths fetch directly
+without the RPC; client paths use the same `fetchSource` action).
+Sprint 11 (AI Edit) is unaffected — its fetch state goes through
+`/api/ai-edit`, not through `fetchSource`. Sprint 14 (fixtures) is
+unaffected — fixtures are generated server-side.
