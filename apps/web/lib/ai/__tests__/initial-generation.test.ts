@@ -1,11 +1,7 @@
 // @vitest-environment node
 
 import type { SetupFormValues } from "@/lib/setup-form/types";
-import {
-  APIConnectionError,
-  AuthenticationError,
-  RateLimitError,
-} from "@anthropic-ai/sdk";
+import { APIConnectionError, AuthenticationError, RateLimitError } from "@anthropic-ai/sdk";
 import type { Message } from "@anthropic-ai/sdk/resources/messages";
 import { describe, expect, it, vi } from "vitest";
 import { generateInitialSite } from "../generate-initial-site";
@@ -70,8 +66,12 @@ function makeMessageResponse(text: string): Message {
 function makeMockClient(responses: Array<Message | Error>) {
   // Each call to messages.create dequeues one entry. Errors throw; messages
   // resolve. If the queue runs dry the test has misaligned its expectations.
+  // The fn parameter is typed as `unknown` so vi.fn's mock.calls carries a
+  // [unknown] tuple (not the default []), which lets noUncheckedIndexedAccess
+  // index into mock.calls[N][0] without "Tuple type '[]' has no element"
+  // errors when tests inspect call arguments.
   let i = 0;
-  const create = vi.fn(async () => {
+  const create = vi.fn(async (_args: unknown) => {
     const next = responses[i++];
     if (next === undefined) {
       throw new Error(`Mock messages.create called more times than expected (call ${i})`);
@@ -111,7 +111,9 @@ describe("generateInitialSite", () => {
     expect(result.kind).toBe("ok");
     expect(create).toHaveBeenCalledTimes(2);
     // Second call should include the retry user-message.
-    const secondCallArgs = create.mock.calls[1]?.[0] as { messages: { content: unknown }[] } | undefined;
+    const secondCallArgs = create.mock.calls[1]?.[0] as unknown as
+      | { messages: { content: unknown }[] }
+      | undefined;
     expect(secondCallArgs).toBeDefined();
     const secondCallText = JSON.stringify(secondCallArgs?.messages);
     expect(secondCallText).toContain("Your previous output failed validation");
@@ -134,7 +136,7 @@ describe("generateInitialSite", () => {
   });
 
   it("strips a leading ```json fence and trailing ``` before parsing", async () => {
-    const fenced = "```json\n" + makeValidConfigJson() + "\n```";
+    const fenced = `\`\`\`json\n${makeValidConfigJson()}\n\`\`\``;
     const { client } = makeMockClient([makeMessageResponse(fenced)]);
     const result = await generateInitialSite(
       { form: MIN_FORM },
@@ -192,7 +194,7 @@ describe("generateInitialSite", () => {
       { form: MIN_FORM, inspirationImages: sixImages },
       client as unknown as Parameters<typeof generateInitialSite>[1],
     );
-    const firstCall = create.mock.calls[0]?.[0] as
+    const firstCall = create.mock.calls[0]?.[0] as unknown as
       | { messages: { content: { type: string }[] }[] }
       | undefined;
     expect(firstCall).toBeDefined();
@@ -214,7 +216,7 @@ describe("buildInitialGenerationSystemPrompt", () => {
   });
 
   it("(b) embeds the schema prose including Page.kind and Page.detailDataSource", () => {
-    expect(prompt).toContain("kind: \"static\" | \"detail\"");
+    expect(prompt).toContain('kind: "static" | "detail"');
     expect(prompt).toContain("detailDataSource");
   });
 

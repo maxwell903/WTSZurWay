@@ -1,9 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  INITIAL_GENERATION_NARRATION,
-  LoadingNarration,
-} from "../LoadingNarration";
+import { INITIAL_GENERATION_NARRATION, LoadingNarration } from "../LoadingNarration";
 
 beforeEach(() => {
   // Default reduced-motion to false so the fade timers fire predictably.

@@ -73,12 +73,8 @@ export function PreviewPanel({ state, onRetry }: PreviewPanelProps) {
       <div className="relative aspect-video w-full">
         {state.kind === "empty" && <EmptyState />}
         {state.kind === "generating" && <GeneratingState />}
-        {state.kind === "generated" && (
-          <GeneratedState previewUrl={state.previewUrl} />
-        )}
-        {state.kind === "error" && (
-          <ErrorState error={state.error} onRetry={onRetry} />
-        )}
+        {state.kind === "generated" && <GeneratedState previewUrl={state.previewUrl} />}
+        {state.kind === "error" && <ErrorState error={state.error} onRetry={onRetry} />}
       </div>
     </section>
   );
@@ -91,9 +87,7 @@ function EmptyState() {
       className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-zinc-500"
     >
       <FileIcon className="h-10 w-10" aria-hidden />
-      <p className="text-sm">
-        Fill in your details above to see a live preview of your site.
-      </p>
+      <p className="text-sm">Fill in your details above to see a live preview of your site.</p>
     </div>
   );
 }

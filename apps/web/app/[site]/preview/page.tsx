@@ -40,10 +40,7 @@ function singular(value: string | string[] | undefined): string | undefined {
   return value;
 }
 
-async function loadSiteAndVersion(
-  siteSlug: string,
-  versionId: string | undefined,
-) {
+async function loadSiteAndVersion(siteSlug: string, versionId: string | undefined) {
   const supabase = createServiceSupabaseClient();
 
   const { data: site, error: siteError } = await supabase

@@ -53,7 +53,7 @@ const CATALOG: Record<ComponentType, ComponentDoc> = {
     category: "Content",
     childrenPolicy: "none",
     description:
-      "Primary or secondary action. linkMode=\"detail\" pairs with detailPageSlug to link into a detail page (Sprint 9b resolves the {row.id} segment at render time).",
+      'Primary or secondary action. linkMode="detail" pairs with detailPageSlug to link into a detail page (Sprint 9b resolves the {row.id} segment at render time).',
     props:
       '{ label: string; href?: string; variant?: "primary" | "secondary" | "outline"; linkMode?: "static" | "detail"; detailPageSlug?: string }',
   },
@@ -123,7 +123,7 @@ const CATALOG: Record<ComponentType, ComponentDoc> = {
     category: "Data",
     childrenPolicy: "one",
     description:
-      "Iterates over a data source and renders its single child once per row. Pair with detail pages: a Repeater of units MUST be paired with a kind=\"detail\" page with detailDataSource=\"units\". Same for properties.",
+      'Iterates over a data source and renders its single child once per row. Pair with detail pages: a Repeater of units MUST be paired with a kind="detail" page with detailDataSource="units". Same for properties.',
     props: "{} -- configuration lives in dataBinding (source/filters/sort/limit)",
   },
   InputField: {

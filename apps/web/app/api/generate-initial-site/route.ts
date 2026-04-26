@@ -18,11 +18,12 @@
  * build time.
  */
 
+import type { AiError } from "@/lib/ai/errors";
 import { generateInitialSite } from "@/lib/ai/generate-initial-site";
 import { deriveSiteSlug, ensureUniqueSlug } from "@/lib/ai/slug";
 import { setupFormSchema } from "@/lib/setup-form/schema";
 import { createServiceSupabaseClient } from "@/lib/supabase";
-import type { AiError } from "@/lib/ai/errors";
+import type { Json } from "@/types/database";
 
 export const runtime = "nodejs";
 
@@ -39,10 +40,7 @@ export async function POST(request: Request): Promise<Response> {
   try {
     rawBody = await request.json();
   } catch {
-    return jsonError(
-      400,
-      { kind: "invalid_output", message: "Request body is not valid JSON" },
-    );
+    return jsonError(400, { kind: "invalid_output", message: "Request body is not valid JSON" });
   }
 
   const parsed = setupFormSchema.safeParse(rawBody);
@@ -98,7 +96,7 @@ export async function POST(request: Request): Promise<Response> {
     .from("site_versions")
     .insert({
       site_id: siteRow.id,
-      config: generation.config as unknown as Record<string, unknown>,
+      config: generation.config as unknown as Json,
       created_by: "ai",
       source: "initial_generation",
       is_working: true,

@@ -26,12 +26,7 @@ describe("categorizeAiError", () => {
   });
 
   it("maps AuthenticationError (401) to auth_error", () => {
-    const err = new AuthenticationError(
-      401,
-      undefined,
-      "Invalid API key",
-      new Headers(),
-    );
+    const err = new AuthenticationError(401, undefined, "Invalid API key", new Headers());
     const result = categorizeAiError(err);
     expect(result.kind).toBe("auth_error");
     expect(result.message).toContain("Invalid API key");

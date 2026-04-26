@@ -104,7 +104,10 @@ describe("/[site]/preview page", () => {
   it("calls notFound() when the requested ?v= version does not exist", async () => {
     fromMock.mockImplementation((table: string) => {
       if (table === "sites") {
-        return chainSiteLookup({ data: { id: "site-uuid-1", slug: "aurora", name: "A" }, error: null });
+        return chainSiteLookup({
+          data: { id: "site-uuid-1", slug: "aurora", name: "A" },
+          error: null,
+        });
       }
       if (table === "site_versions") {
         return chainVersionByIdLookup({ data: null, error: null });
@@ -123,7 +126,10 @@ describe("/[site]/preview page", () => {
   it("renders the Renderer with the parsed config and the requested page slug", async () => {
     fromMock.mockImplementation((table: string) => {
       if (table === "sites") {
-        return chainSiteLookup({ data: { id: "site-uuid-1", slug: "aurora", name: "A" }, error: null });
+        return chainSiteLookup({
+          data: { id: "site-uuid-1", slug: "aurora", name: "A" },
+          error: null,
+        });
       }
       if (table === "site_versions") {
         // No v= -> working-version path.
@@ -141,15 +147,16 @@ describe("/[site]/preview page", () => {
     });
     const { getByTestId } = render(element);
     expect(getByTestId("renderer")).toBeInTheDocument();
-    expect(RendererMock).toHaveBeenCalledWith(
-      expect.objectContaining({ page: "home" }),
-    );
+    expect(RendererMock).toHaveBeenCalledWith(expect.objectContaining({ page: "home" }));
   });
 
   it("defaults to page=home when no ?page= is provided", async () => {
     fromMock.mockImplementation((table: string) => {
       if (table === "sites") {
-        return chainSiteLookup({ data: { id: "site-uuid-1", slug: "aurora", name: "A" }, error: null });
+        return chainSiteLookup({
+          data: { id: "site-uuid-1", slug: "aurora", name: "A" },
+          error: null,
+        });
       }
       if (table === "site_versions") {
         return chainWorkingVersionLookup({
@@ -165,8 +172,6 @@ describe("/[site]/preview page", () => {
       searchParams: Promise.resolve({}),
     });
     render(element);
-    expect(RendererMock).toHaveBeenCalledWith(
-      expect.objectContaining({ page: "home" }),
-    );
+    expect(RendererMock).toHaveBeenCalledWith(expect.objectContaining({ page: "home" }));
   });
 });

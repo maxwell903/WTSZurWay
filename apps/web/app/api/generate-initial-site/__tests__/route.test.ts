@@ -13,8 +13,7 @@ vi.mock("@/lib/ai/generate-initial-site", () => ({
 
 const ensureUniqueSlugMock = vi.fn();
 vi.mock("@/lib/ai/slug", async () => {
-  const actual =
-    await vi.importActual<typeof import("@/lib/ai/slug")>("@/lib/ai/slug");
+  const actual = await vi.importActual<typeof import("@/lib/ai/slug")>("@/lib/ai/slug");
   return {
     ...actual,
     ensureUniqueSlug: (...args: unknown[]) => ensureUniqueSlugMock(...args),
@@ -43,9 +42,13 @@ const VALID_FORM: SetupFormValues = {
 
 function chainableInsert(returns: MaybeSingleResult) {
   // .from(table).insert(values).select(cols).single() -- four-link chain.
+  // The insert mock is parameterized over `unknown` so vi.fn's mock.calls
+  // typing carries a [unknown] tuple instead of [] -- otherwise
+  // noUncheckedIndexedAccess + an empty-tuple Parameters<T> blows up with
+  // "Tuple type '[]' has no element at index '0'" when tests inspect call args.
   const single = vi.fn(async () => returns);
   const select = vi.fn(() => ({ single }));
-  const insert = vi.fn(() => ({ select }));
+  const insert = vi.fn((_values: unknown) => ({ select }));
   return { insert, select, single };
 }
 
@@ -134,7 +137,9 @@ describe("POST /api/generate-initial-site", () => {
     // Slug uniqueness was consulted with the derived base slug.
     expect(ensureUniqueSlugMock).toHaveBeenCalledWith("aurora-property-group");
     // The version row was inserted with the Sprint 4 contract values.
-    const versionInsertCall = versionsInsert.insert.mock.calls[0]?.[0] as {
+    // noUncheckedIndexedAccess narrows mock.calls[0] to T | undefined; cast
+    // through unknown so the strict cast check accepts the narrowing.
+    const versionInsertCall = versionsInsert.insert.mock.calls[0]?.[0] as unknown as {
       site_id: string;
       created_by: string;
       source: string;

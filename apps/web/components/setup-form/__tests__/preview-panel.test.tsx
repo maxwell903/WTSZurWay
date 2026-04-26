@@ -80,9 +80,7 @@ describe("<PreviewPanel>", () => {
         }}
       />,
     );
-    expect(screen.getByTestId("preview-panel-error-copy")).toHaveTextContent(
-      /Service unavailable/,
-    );
+    expect(screen.getByTestId("preview-panel-error-copy")).toHaveTextContent(/Service unavailable/);
     expect(screen.queryByTestId("preview-panel-retry")).not.toBeInTheDocument();
     expect(screen.getByTestId("preview-panel-copy-details")).toBeInTheDocument();
   });
@@ -145,8 +143,6 @@ describe("<PreviewPanel>", () => {
       />,
     );
     expect(screen.queryByTestId("preview-panel-retry")).not.toBeInTheDocument();
-    expect(screen.getByTestId("preview-panel-error-copy")).toHaveTextContent(
-      /couldn't parse/,
-    );
+    expect(screen.getByTestId("preview-panel-error-copy")).toHaveTextContent(/couldn't parse/);
   });
 });

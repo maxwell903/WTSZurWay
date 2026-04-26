@@ -13,11 +13,10 @@
  * marks the integration point.
  */
 
-import type { SiteConfig } from "@/lib/site-config";
-import { safeParseSiteConfig } from "@/lib/site-config";
 import type { SetupFormValues } from "@/lib/setup-form/types";
+import { type SiteConfig, safeParseSiteConfig } from "@/lib/site-config";
 import type Anthropic from "@anthropic-ai/sdk";
-import type { ImageBlockParam, MessageParam, TextBlockParam } from "@anthropic-ai/sdk/resources/messages";
+import type { ImageBlockParam, MessageParam } from "@anthropic-ai/sdk/resources/messages";
 import type { ZodIssue } from "zod";
 import { createAnthropicClient } from "./client";
 import { type AiError, categorizeAiError } from "./errors";
@@ -134,7 +133,7 @@ function buildUserInstruction(form: SetupFormValues): string {
   // per generation. The system prompt stays identical across requests so
   // future prompt caching (Sprint 14) can hit consistently.
   const lines: string[] = [
-    `Generate a SiteConfig for the following property management business.`,
+    "Generate a SiteConfig for the following property management business.",
     "",
     `Company name: ${form.companyName}`,
     form.tagline ? `Tagline: ${form.tagline}` : "",
@@ -163,8 +162,8 @@ function buildUserInstruction(form: SetupFormValues): string {
     form.serviceArea ? `Service area: ${form.serviceArea}` : "",
     form.hoursOfOperation ? `Hours: ${form.hoursOfOperation}` : "",
     "",
-    `Set meta.siteName to the company name and meta.siteSlug to a slugified form.`,
-    `Apply the chosen palette consistently across all components.`,
+    "Set meta.siteName to the company name and meta.siteSlug to a slugified form.",
+    "Apply the chosen palette consistently across all components.",
   ];
   return lines.filter((l) => l !== "").join("\n");
 }

@@ -5,9 +5,7 @@ import { deriveSiteSlug } from "../slug";
 
 describe("deriveSiteSlug", () => {
   it("slugifies a plain company name", () => {
-    expect(deriveSiteSlug({ companyName: "Aurora Property Group" })).toBe(
-      "aurora-property-group",
-    );
+    expect(deriveSiteSlug({ companyName: "Aurora Property Group" })).toBe("aurora-property-group");
   });
 
   it("strips diacritics", () => {
@@ -39,7 +37,7 @@ describe("deriveSiteSlug", () => {
   it("never ends with a dash after capping", () => {
     // 30-char prefix, dash, 35-char suffix = 66 chars; the cap at 60 lands
     // mid-suffix. Pad chars chosen so the cap doesn't fall on a dash.
-    const tricky = "thirty-character-prefix-padxxx" + "-" + "y".repeat(35);
+    const tricky = `thirty-character-prefix-padxxx-${"y".repeat(35)}`;
     const result = deriveSiteSlug({ companyName: tricky });
     expect(result.endsWith("-")).toBe(false);
     expect(result.length).toBeLessThanOrEqual(60);

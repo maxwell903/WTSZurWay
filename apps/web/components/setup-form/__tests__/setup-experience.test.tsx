@@ -78,10 +78,9 @@ afterEach(() => {
 async function fillRequiredFields() {
   // Type the required Company Name. The Color Scheme palette radio is the
   // other required field; click the "Ocean" card.
-  fireEvent.input(
-    screen.getByLabelText(/Company Name/i, { selector: "input" }),
-    { target: { value: "Aurora Property Group" } },
-  );
+  fireEvent.input(screen.getByLabelText(/Company Name/i, { selector: "input" }), {
+    target: { value: "Aurora Property Group" },
+  });
   // The palette radio group renders palette cards as buttons / inputs with
   // the visible label "Ocean".
   const oceanCard = await screen.findByText(/Ocean/i);
@@ -92,10 +91,7 @@ describe("<SetupExperience>", () => {
   it("mounts the SetupForm and the PreviewPanel in the empty state", async () => {
     render(<SetupExperience />);
     expect(screen.getByTestId("setup-form")).toBeInTheDocument();
-    expect(screen.getByTestId("preview-panel")).toHaveAttribute(
-      "data-panel-state",
-      "empty",
-    );
+    expect(screen.getByTestId("preview-panel")).toHaveAttribute("data-panel-state", "empty");
   });
 
   it("on submit success: transitions empty -> generating -> generated", async () => {
@@ -121,10 +117,7 @@ describe("<SetupExperience>", () => {
     fireEvent.click(screen.getByTestId("setup-form-save"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("preview-panel")).toHaveAttribute(
-        "data-panel-state",
-        "generated",
-      );
+      expect(screen.getByTestId("preview-panel")).toHaveAttribute("data-panel-state", "generated");
     });
     const iframe = screen.getByTestId("preview-panel-iframe") as HTMLIFrameElement;
     expect(iframe.getAttribute("src")).toBe("/aurora-property-group/preview?v=v1");
@@ -149,14 +142,9 @@ describe("<SetupExperience>", () => {
     fireEvent.click(screen.getByTestId("setup-form-save"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("preview-panel")).toHaveAttribute(
-        "data-panel-state",
-        "error",
-      );
+      expect(screen.getByTestId("preview-panel")).toHaveAttribute("data-panel-state", "error");
     });
-    expect(screen.getByTestId("preview-panel-error-copy")).toHaveTextContent(
-      /Service unavailable/,
-    );
+    expect(screen.getByTestId("preview-panel-error-copy")).toHaveTextContent(/Service unavailable/);
   });
 
   it("on a thrown fetch (network outage): transitions to network_error", async () => {
@@ -168,10 +156,7 @@ describe("<SetupExperience>", () => {
     fireEvent.click(screen.getByTestId("setup-form-save"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("preview-panel")).toHaveAttribute(
-        "data-panel-state",
-        "error",
-      );
+      expect(screen.getByTestId("preview-panel")).toHaveAttribute("data-panel-state", "error");
     });
     expect(screen.getByTestId("preview-panel-retry")).toBeInTheDocument();
   });

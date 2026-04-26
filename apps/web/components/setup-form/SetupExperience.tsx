@@ -16,7 +16,7 @@
 import type { AiError } from "@/lib/ai/errors";
 import type { SetupFormValues } from "@/lib/setup-form/types";
 import { useRef, useState } from "react";
-import { PreviewPanel, type PanelState } from "./PreviewPanel";
+import { type PanelState, PreviewPanel } from "./PreviewPanel";
 import { SetupForm } from "./setup-form";
 
 export function SetupExperience() {
