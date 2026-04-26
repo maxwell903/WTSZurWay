@@ -1,13 +1,18 @@
 import type { ComponentNode, SiteConfig } from "@/lib/site-config";
 import { describe, expect, it } from "vitest";
 import {
+  applyAddComponentChild,
   applyAddPage,
   applyDeletePage,
+  applyMoveComponent,
   applyRemoveComponent,
   applyRenamePage,
+  applyReorderChildren,
   applyReorderPages,
   applySetComponentAnimation,
+  applySetComponentDimension,
   applySetComponentProps,
+  applySetComponentSpan,
   applySetComponentStyle,
   applySetComponentVisibility,
   applySetFontFamily,
@@ -425,5 +430,304 @@ describe("applyRemoveComponent", () => {
       EditorActionError,
     );
     expect(() => applyRemoveComponent(makeNestedFixtureConfig(), "missing")).toThrow(/not found/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 7 -- drag-and-drop and resize tree mutators
+// ---------------------------------------------------------------------------
+
+function makeNode(
+  id: string,
+  type: ComponentNode["type"],
+  children?: ComponentNode[],
+): ComponentNode {
+  const n: ComponentNode = { id, type, props: {}, style: {} };
+  if (children !== undefined) n.children = children;
+  return n;
+}
+
+function makeMultiSectionFixture(): SiteConfig {
+  return {
+    meta: { siteName: "Test Site", siteSlug: "test-site" },
+    brand: { palette: "ocean", fontFamily: "Inter" },
+    global: {
+      navBar: { links: [], logoPlacement: "left", sticky: false },
+      footer: { columns: [], copyright: "" },
+    },
+    pages: [
+      {
+        id: "p_home",
+        slug: "home",
+        name: "Home",
+        kind: "static",
+        rootComponent: makeNode("cmp_root", "Section", [
+          makeNode("cmp_secA", "Section", [
+            makeNode("cmp_h1", "Heading"),
+            makeNode("cmp_h2", "Heading"),
+          ]),
+          makeNode("cmp_secB", "Section", []),
+          makeNode("cmp_repA", "Repeater", []),
+          makeNode("cmp_repB", "Repeater", [makeNode("cmp_unit", "UnitCard")]),
+          makeNode("cmp_img", "Image"),
+        ]),
+      },
+    ],
+    forms: [],
+  };
+}
+
+describe("applyAddComponentChild", () => {
+  it("inserts at index 0 of an empty Section", () => {
+    const cfg = makeMultiSectionFixture();
+    const newNode = makeNode("cmp_new", "Heading");
+    const next = applyAddComponentChild(cfg, "cmp_secB", 0, newNode);
+    const sec = findById(next.pages[0]?.rootComponent, "cmp_secB");
+    expect(sec?.children).toEqual([newNode]);
+  });
+
+  it("appends at the end of a non-empty Section when index >= length", () => {
+    const cfg = makeMultiSectionFixture();
+    const newNode = makeNode("cmp_new", "Paragraph");
+    const next = applyAddComponentChild(cfg, "cmp_secA", 99, newNode);
+    const sec = findById(next.pages[0]?.rootComponent, "cmp_secA");
+    expect(sec?.children?.[sec.children.length - 1]?.id).toBe("cmp_new");
+  });
+
+  it("inserts in the middle, between existing siblings", () => {
+    const cfg = makeMultiSectionFixture();
+    const newNode = makeNode("cmp_new", "Paragraph");
+    const next = applyAddComponentChild(cfg, "cmp_secA", 1, newNode);
+    const sec = findById(next.pages[0]?.rootComponent, "cmp_secA");
+    expect(sec?.children?.map((c) => c.id)).toEqual(["cmp_h1", "cmp_new", "cmp_h2"]);
+  });
+
+  it("rejects a drop onto a none-policy parent (Image)", () => {
+    const cfg = makeMultiSectionFixture();
+    const newNode = makeNode("cmp_new", "Heading");
+    expect(() => applyAddComponentChild(cfg, "cmp_img", 0, newNode)).toThrow(/cannot accept/);
+  });
+
+  it("accepts a drop onto a one-policy Repeater that is empty", () => {
+    const cfg = makeMultiSectionFixture();
+    const newNode = makeNode("cmp_new", "PropertyCard");
+    const next = applyAddComponentChild(cfg, "cmp_repA", 0, newNode);
+    const rep = findById(next.pages[0]?.rootComponent, "cmp_repA");
+    expect(rep?.children).toEqual([newNode]);
+  });
+
+  it("rejects a drop onto a one-policy Repeater that already has a child", () => {
+    const cfg = makeMultiSectionFixture();
+    const newNode = makeNode("cmp_new", "PropertyCard");
+    expect(() => applyAddComponentChild(cfg, "cmp_repB", 0, newNode)).toThrow(/cannot accept/);
+  });
+
+  it("throws component_not_found for an unknown parentId", () => {
+    const cfg = makeMultiSectionFixture();
+    const newNode = makeNode("cmp_new", "Heading");
+    expect(() => applyAddComponentChild(cfg, "cmp_missing", 0, newNode)).toThrow(EditorActionError);
+  });
+
+  it("inserts at a deep-nested location (3 levels deep)", () => {
+    const cfg = makeNestedFixtureConfig();
+    const newNode = makeNode("cmp_new", "Paragraph");
+    const next = applyAddComponentChild(cfg, "cmp_col", 0, newNode);
+    const col = findById(next.pages[0]?.rootComponent, "cmp_col");
+    expect(col?.children?.[0]?.id).toBe("cmp_new");
+  });
+
+  it("throws invalid_drop_target with code 'invalid_drop_target'", () => {
+    const cfg = makeMultiSectionFixture();
+    const newNode = makeNode("cmp_new", "Heading");
+    try {
+      applyAddComponentChild(cfg, "cmp_img", 0, newNode);
+      throw new Error("expected throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(EditorActionError);
+      expect((err as EditorActionError).code).toBe("invalid_drop_target");
+    }
+  });
+});
+
+describe("applyMoveComponent", () => {
+  it("moves a node from one Section to another (cross-parent)", () => {
+    const cfg = makeMultiSectionFixture();
+    const next = applyMoveComponent(cfg, "cmp_h1", "cmp_secB", 0);
+    const secA = findById(next.pages[0]?.rootComponent, "cmp_secA");
+    const secB = findById(next.pages[0]?.rootComponent, "cmp_secB");
+    expect(secA?.children?.map((c) => c.id)).toEqual(["cmp_h2"]);
+    expect(secB?.children?.map((c) => c.id)).toEqual(["cmp_h1"]);
+  });
+
+  it("moves a node within the same parent (reorder via remove+insert)", () => {
+    const cfg = makeMultiSectionFixture();
+    const next = applyMoveComponent(cfg, "cmp_h1", "cmp_secA", 1);
+    const secA = findById(next.pages[0]?.rootComponent, "cmp_secA");
+    expect(secA?.children?.map((c) => c.id)).toEqual(["cmp_h2", "cmp_h1"]);
+  });
+
+  it("throws page_root_locked when targetId is a page root", () => {
+    const cfg = makeMultiSectionFixture();
+    expect(() => applyMoveComponent(cfg, "cmp_root", "cmp_secA", 0)).toThrow(
+      /page root cannot be moved/,
+    );
+  });
+
+  it("throws invalid_drop_target when moving a node into itself", () => {
+    const cfg = makeMultiSectionFixture();
+    expect(() => applyMoveComponent(cfg, "cmp_secA", "cmp_secA", 0)).toThrow(/own descendants/);
+  });
+
+  it("throws invalid_drop_target when moving a node into one of its descendants", () => {
+    const cfg = makeNestedFixtureConfig();
+    expect(() => applyMoveComponent(cfg, "cmp_row", "cmp_col", 0)).toThrow(/own descendants/);
+  });
+
+  it("throws component_not_found for an unknown targetId", () => {
+    const cfg = makeMultiSectionFixture();
+    expect(() => applyMoveComponent(cfg, "cmp_missing", "cmp_secA", 0)).toThrow(EditorActionError);
+  });
+
+  it("throws component_not_found for an unknown new parentId", () => {
+    const cfg = makeMultiSectionFixture();
+    expect(() => applyMoveComponent(cfg, "cmp_h1", "cmp_missing", 0)).toThrow(EditorActionError);
+  });
+
+  it("rejects moving a node into a none-policy parent (Image)", () => {
+    const cfg = makeMultiSectionFixture();
+    expect(() => applyMoveComponent(cfg, "cmp_h1", "cmp_img", 0)).toThrow(/cannot accept/);
+  });
+
+  it("preserves the moved node's identity (object ref) and any descendant subtree", () => {
+    const cfg = makeMultiSectionFixture();
+    const next = applyMoveComponent(cfg, "cmp_secA", "cmp_secB", 0);
+    const movedSec = findById(next.pages[0]?.rootComponent, "cmp_secA");
+    expect(movedSec?.children?.map((c) => c.id)).toEqual(["cmp_h1", "cmp_h2"]);
+  });
+});
+
+describe("applyReorderChildren", () => {
+  it("reorders children to a valid permutation", () => {
+    const cfg = makeMultiSectionFixture();
+    const next = applyReorderChildren(cfg, "cmp_secA", ["cmp_h2", "cmp_h1"]);
+    const sec = findById(next.pages[0]?.rootComponent, "cmp_secA");
+    expect(sec?.children?.map((c) => c.id)).toEqual(["cmp_h2", "cmp_h1"]);
+  });
+
+  it("throws reorder_mismatch when newOrder length differs from current children", () => {
+    const cfg = makeMultiSectionFixture();
+    expect(() => applyReorderChildren(cfg, "cmp_secA", ["cmp_h1"])).toThrow(/Reorder list length/);
+  });
+
+  it("throws reorder_mismatch when newOrder contains an unknown id", () => {
+    const cfg = makeMultiSectionFixture();
+    expect(() => applyReorderChildren(cfg, "cmp_secA", ["cmp_h1", "cmp_foreign"])).toThrow(
+      /unknown id/,
+    );
+  });
+
+  it("throws reorder_mismatch when newOrder contains duplicate ids", () => {
+    const cfg = makeMultiSectionFixture();
+    expect(() => applyReorderChildren(cfg, "cmp_secA", ["cmp_h1", "cmp_h1"])).toThrow(
+      /duplicate id/,
+    );
+  });
+
+  it("throws component_not_found for an unknown parentId", () => {
+    const cfg = makeMultiSectionFixture();
+    expect(() => applyReorderChildren(cfg, "cmp_missing", [])).toThrow(EditorActionError);
+  });
+});
+
+describe("applySetComponentSpan", () => {
+  it("writes the span into a Column's props.span", () => {
+    const cfg = makeNestedFixtureConfig();
+    const next = applySetComponentSpan(cfg, "cmp_col", 6);
+    const col = findById(next.pages[0]?.rootComponent, "cmp_col");
+    expect(col?.props.span).toBe(6);
+  });
+
+  it("preserves other Column props alongside the new span", () => {
+    const cfg = makeNestedFixtureConfig();
+    const cfg2 = applySetComponentProps(cfg, "cmp_col", { gap: 8, alignItems: "stretch" });
+    const next = applySetComponentSpan(cfg2, "cmp_col", 4);
+    const col = findById(next.pages[0]?.rootComponent, "cmp_col");
+    expect(col?.props).toEqual({ gap: 8, alignItems: "stretch", span: 4 });
+  });
+
+  it("throws invalid_resize_target when target is not a Column", () => {
+    const cfg = makeNestedFixtureConfig();
+    try {
+      applySetComponentSpan(cfg, "cmp_h1", 6);
+      throw new Error("expected throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(EditorActionError);
+      expect((err as EditorActionError).code).toBe("invalid_resize_target");
+    }
+  });
+
+  it("throws component_not_found for an unknown id", () => {
+    expect(() => applySetComponentSpan(makeNestedFixtureConfig(), "missing", 4)).toThrow(
+      EditorActionError,
+    );
+  });
+});
+
+describe("applySetComponentDimension", () => {
+  it("writes style.height for a Section", () => {
+    const cfg = makeMultiSectionFixture();
+    const next = applySetComponentDimension(cfg, "cmp_secA", "height", "320px");
+    const sec = findById(next.pages[0]?.rootComponent, "cmp_secA");
+    expect(sec?.style.height).toBe("320px");
+  });
+
+  it("writes style.width", () => {
+    const cfg = makeMultiSectionFixture();
+    const next = applySetComponentDimension(cfg, "cmp_secA", "width", "640px");
+    const sec = findById(next.pages[0]?.rootComponent, "cmp_secA");
+    expect(sec?.style.width).toBe("640px");
+  });
+
+  it("clears the field when value is undefined (revert to auto)", () => {
+    const cfg = makeMultiSectionFixture();
+    const cfg2 = applySetComponentDimension(cfg, "cmp_secA", "height", "320px");
+    const next = applySetComponentDimension(cfg2, "cmp_secA", "height", undefined);
+    const sec = findById(next.pages[0]?.rootComponent, "cmp_secA");
+    expect(sec?.style.height).toBeUndefined();
+  });
+
+  it("throws invalid_resize_target on Spacer (height belongs in props, not style)", () => {
+    const cfg: SiteConfig = {
+      meta: { siteName: "T", siteSlug: "t" },
+      brand: { palette: "ocean", fontFamily: "Inter" },
+      global: {
+        navBar: { links: [], logoPlacement: "left", sticky: false },
+        footer: { columns: [], copyright: "" },
+      },
+      pages: [
+        {
+          id: "p_home",
+          slug: "home",
+          name: "Home",
+          kind: "static",
+          rootComponent: makeNode("cmp_root", "Section", [makeNode("cmp_sp", "Spacer")]),
+        },
+      ],
+      forms: [],
+    };
+    try {
+      applySetComponentDimension(cfg, "cmp_sp", "height", "80px");
+      throw new Error("expected throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(EditorActionError);
+      expect((err as EditorActionError).code).toBe("invalid_resize_target");
+    }
+  });
+
+  it("throws component_not_found for an unknown id", () => {
+    const cfg = makeMultiSectionFixture();
+    expect(() => applySetComponentDimension(cfg, "missing", "height", "1px")).toThrow(
+      EditorActionError,
+    );
   });
 });

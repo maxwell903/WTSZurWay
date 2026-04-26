@@ -272,3 +272,163 @@ describe("editor store -- component-level mutators", () => {
     expect(useEditorStore.getState().selectedComponentId).toBe("cmp_root");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sprint 7 -- drag-and-drop and resize action wrappers
+// ---------------------------------------------------------------------------
+
+function makeDndFixtureConfig(): SiteConfig {
+  return {
+    meta: { siteName: "Test Site", siteSlug: "test-site" },
+    brand: { palette: "ocean", fontFamily: "Inter" },
+    global: {
+      navBar: { links: [], logoPlacement: "left", sticky: false },
+      footer: { columns: [], copyright: "" },
+    },
+    pages: [
+      {
+        id: "p_home",
+        slug: "home",
+        name: "Home",
+        kind: "static",
+        rootComponent: {
+          id: "cmp_root",
+          type: "Section",
+          props: {},
+          style: {},
+          children: [
+            {
+              id: "cmp_secA",
+              type: "Section",
+              props: {},
+              style: {},
+              children: [
+                { id: "cmp_h1", type: "Heading", props: {}, style: {} },
+                { id: "cmp_h2", type: "Heading", props: {}, style: {} },
+              ],
+            },
+            {
+              id: "cmp_secB",
+              type: "Section",
+              props: {},
+              style: {},
+              children: [],
+            },
+            {
+              id: "cmp_col1",
+              type: "Column",
+              props: { span: 12 },
+              style: {},
+              children: [],
+            },
+            {
+              id: "cmp_sp",
+              type: "Spacer",
+              props: { height: 40 },
+              style: {},
+            },
+          ],
+        },
+      },
+    ],
+    forms: [],
+  };
+}
+
+describe("editor store -- Sprint 7 dnd action wrappers", () => {
+  beforeEach(() => {
+    __resetEditorStoreForTests();
+    useEditorStore.getState().hydrate({
+      siteId: "s",
+      siteSlug: "x",
+      workingVersionId: "v",
+      initialConfig: makeDndFixtureConfig(),
+    });
+  });
+
+  it("addComponentChild inserts a node, sets selection to the new id, and flips saveState to dirty", () => {
+    const newNode = {
+      id: "cmp_new",
+      type: "Heading" as const,
+      props: { text: "x" },
+      style: {},
+    };
+    useEditorStore.getState().addComponentChild("cmp_secB", 0, newNode);
+    const s = useEditorStore.getState();
+    expect(s.saveState).toBe("dirty");
+    expect(s.selectedComponentId).toBe("cmp_new");
+    const sec = s.draftConfig.pages[0]?.rootComponent.children?.find((c) => c.id === "cmp_secB");
+    expect(sec?.children?.[0]?.id).toBe("cmp_new");
+  });
+
+  it("addComponentChild on an unknown parent throws and leaves the store unchanged", () => {
+    const before = useEditorStore.getState().draftConfig;
+    expect(() =>
+      useEditorStore.getState().addComponentChild("cmp_missing", 0, {
+        id: "cmp_new",
+        type: "Heading",
+        props: {},
+        style: {},
+      }),
+    ).toThrow();
+    expect(useEditorStore.getState().draftConfig).toBe(before);
+  });
+
+  it("moveComponent moves a node across parents and preserves selection on the moved node", () => {
+    useEditorStore.getState().selectComponent("cmp_h1");
+    useEditorStore.getState().moveComponent("cmp_h1", "cmp_secB", 0);
+    const s = useEditorStore.getState();
+    expect(s.selectedComponentId).toBe("cmp_h1");
+    expect(s.saveState).toBe("dirty");
+    const secB = s.draftConfig.pages[0]?.rootComponent.children?.find((c) => c.id === "cmp_secB");
+    expect(secB?.children?.[0]?.id).toBe("cmp_h1");
+  });
+
+  it("moveComponent rejects a self-descendant move and leaves the store unchanged", () => {
+    const before = useEditorStore.getState().draftConfig;
+    expect(() => useEditorStore.getState().moveComponent("cmp_secA", "cmp_secA", 0)).toThrow();
+    expect(useEditorStore.getState().draftConfig).toBe(before);
+  });
+
+  it("reorderChildren reorders within a parent and flips saveState to dirty", () => {
+    useEditorStore.getState().reorderChildren("cmp_secA", ["cmp_h2", "cmp_h1"]);
+    const s = useEditorStore.getState();
+    expect(s.saveState).toBe("dirty");
+    const secA = s.draftConfig.pages[0]?.rootComponent.children?.find((c) => c.id === "cmp_secA");
+    expect(secA?.children?.map((c) => c.id)).toEqual(["cmp_h2", "cmp_h1"]);
+  });
+
+  it("setComponentSpan updates Column.props.span and flips saveState to dirty", () => {
+    useEditorStore.getState().setComponentSpan("cmp_col1", 6);
+    const s = useEditorStore.getState();
+    expect(s.saveState).toBe("dirty");
+    const col = s.draftConfig.pages[0]?.rootComponent.children?.find((c) => c.id === "cmp_col1");
+    expect(col?.props.span).toBe(6);
+  });
+
+  it("setComponentSpan throws invalid_resize_target on a non-Column", () => {
+    expect(() => useEditorStore.getState().setComponentSpan("cmp_h1", 6)).toThrow();
+  });
+
+  it("setComponentDimension('height') writes to style.height and flips saveState to dirty", () => {
+    useEditorStore.getState().setComponentDimension("cmp_secA", "height", "240px");
+    const s = useEditorStore.getState();
+    expect(s.saveState).toBe("dirty");
+    const sec = s.draftConfig.pages[0]?.rootComponent.children?.find((c) => c.id === "cmp_secA");
+    expect(sec?.style.height).toBe("240px");
+  });
+
+  it("setComponentDimension(undefined) clears the field (revert to auto)", () => {
+    useEditorStore.getState().setComponentDimension("cmp_secA", "height", "240px");
+    useEditorStore.getState().setComponentDimension("cmp_secA", "height", undefined);
+    const s = useEditorStore.getState();
+    const sec = s.draftConfig.pages[0]?.rootComponent.children?.find((c) => c.id === "cmp_secA");
+    expect(sec?.style.height).toBeUndefined();
+  });
+
+  it("setComponentDimension throws invalid_resize_target on Spacer (height is a prop, not a style)", () => {
+    expect(() =>
+      useEditorStore.getState().setComponentDimension("cmp_sp", "height", "80px"),
+    ).toThrow();
+  });
+});

@@ -1,1102 +1,885 @@
-# CLAUDE.md — Sprint 8: Element Edit Mode (manual)
+# CLAUDE.md — Sprint 7: Drag-and-drop & resize
 
-> Drop this file at the repo root of `WTSZurWay/` for the duration of Sprint
-> 8, replacing the master `CLAUDE.md`. Restore the master `CLAUDE.md` after
-> the sprint's quality gates pass and the Sprint Completion Report has been
-> emitted. Per the 2026-04-25 entry in `DECISIONS.md`, this project uses a
-> single-branch workflow on `master` — there is no `sprint/08` branch.
-> Every commit lands on `master` after the quality gates pass. Hosted
-> Supabase is in use (no Docker, no local Postgres).
+> Drop this file at the repo root of `WTSZurWay/` for the duration of
+> Sprint 7, replacing the master `CLAUDE.md`. Restore the master
+> `CLAUDE.md` after the sprint's quality gates pass and the Sprint
+> Completion Report has been emitted. Per the 2026-04-25 entry in
+> `DECISIONS.md`, this project uses a single-branch workflow on
+> `master` — there is no `sprint/07` branch. Every commit lands on
+> `master` after the quality gates pass. Hosted Supabase is in use
+> (no Docker, no local Postgres).
 
 ## Mission
 
-Wire **Element Edit mode** for the editor. Right-clicking any component on
-the canvas swaps the LeftSidebar from its primary four-tab mode (Site /
-Pages / Add / Data) into a five-tab Element Edit panel — Content / Style /
-Animation / Visibility / Advanced — that edits the right-clicked node in
-place. Edits flow through new component-level mutators on the existing
-Zustand store, the existing autosave hook persists them to the working
-`site_versions` row, and the canvas re-renders immediately. Sprint 8 also
-fills in the seven Content panels named by the spec
-(`PROJECT_SPEC.md` §8.4 + `SPRINT_SCHEDULE.md` §2 Sprint 8 amendment):
-Heading, Paragraph, Button (with the §8.12 Link-mode controls), Image,
-NavBar, Footer, and InputField (with the §8.12
-`defaultValueFromQueryParam` control). The other thirteen components ship a
-documented Content-tab placeholder; their Style / Animation / Visibility
-tabs work in full.
+Wire **drag-and-drop and resize** into the editor canvas. Cards in
+the Add tab become drag sources; every component on the canvas
+becomes a sortable child of its parent and a drop target for
+compatible new children; selected resizable components display
+edge-handles that adjust `Column.span` (1–12) and the height of
+container/media components. The editor store gains three new
+component-tree mutators — `addComponentChild`, `moveComponent`, and
+`reorderChildren` — plus two resize-specific helpers
+(`setComponentSpan`, `setComponentDimension`). Existing Sprint-6
+selection chrome and Sprint-8 element-edit mode keep working
+unchanged: a left-click still selects, a right-click still opens the
+Element Edit panel, Esc still deselects, and autosave still PATCHes
+the working `site_versions` row through the Sprint-6 hook.
 
-This sprint **does not** ship drag-and-drop (Sprint 7), Repeater data
-binding (Sprint 9), Form submission wiring (Sprint 10), the AI chat right
-sidebar (Sprint 11), or the Deploy flow (Sprint 13). The Add tab cards
-remain non-draggable. The Right sidebar remains a placeholder. `setProp`
-inside a Repeater template still saves verbatim — Sprint 9 will resolve
-`{{ row.* }}` tokens at render time.
+This sprint **does not** ship Repeater data binding (Sprint 9), Form
+submission wiring (Sprint 10), the AI chat right sidebar (Sprint 11),
+the Deploy flow (Sprint 13), or the public site (also Sprint 13).
+The Right sidebar remains the Sprint-6 placeholder. The Add tab keeps
+its current six categories and 20 cards — Sprint 7 only swaps the
+static cards for draggable ones. Drag-and-drop **inside** a Repeater
+template is intentionally out of scope this sprint and is documented
+as an explicit Tier-2 concern for Sprint 9.
 
-This sprint is the spine of every later editor sprint that needs to read
-or write component state. Get the store mutators right; everything from
-Sprint 9 onward consumes them.
+This sprint makes the editor feel like an editor. Every later editor
+sprint that needs to insert, move, or resize components consumes the
+new store mutators below; get them right and the rest of the project
+runs on top of them.
 
 ## Pre-flight check (MANDATORY — emit before reading or writing any non-spec file)
 
-Before reading or modifying any file other than the items listed below in
-"Spec sections in scope", run these seven checks. If any fails, STOP and
-emit a Deviation Report per the protocol embedded in this file. Do not
-attempt to work around a failed check.
+Before reading or modifying any file other than the items listed in
+"Spec sections in scope" below, run these eight checks. If any
+fails, STOP and emit a Deviation Report per the protocol embedded in
+this file. Do not attempt to work around a failed check.
 
-1. **Single-branch workflow.** Run `git branch --show-current` and verify
-   the output is exactly `master`. If it is not, STOP and emit a
-   Deviation Report — the project workflow per the 2026-04-25 entry in
-   `DECISIONS.md` is single-branch on `master`; do NOT create a
-   `sprint/08` branch and do NOT switch branches.
+1. **Single-branch workflow.** Run `git branch --show-current` and
+   verify the output is exactly `master`. If it is not, STOP and
+   emit a Deviation Report — the project workflow per the
+   2026-04-25 entry in `DECISIONS.md` is single-branch on
+   `master`; do NOT create a `sprint/07` branch and do NOT switch
+   branches.
 
-2. **Sprint 6 is merged.** Confirm all of the following exist and exporta
-   from `apps/web/components/editor/index.ts`:
-   `TopBar`, `LeftSidebar`, `RightSidebar`, `Canvas`, `SelectionBreadcrumb`,
-   `PageSelector`, `PreviewToggle`, `DeployButton`, `SaveIndicator`,
-   `SiteNameInput`, `AddTab`, `ComponentCard`, `COMPONENT_CATALOG`,
-   `COMPONENT_GROUP_ORDER`, `DataTab`, `AddPageDialog`,
-   `DeletePageConfirm`, `PageRow`, `PagesTab`, `RenamePageDialog`,
-   `FontSelector`, `PaletteSelector`, `SiteTab`. If any is missing,
-   STOP and emit a Deviation Report — Sprint 8 extends Sprint 6 in
-   place; the editor shell must be present.
+2. **Sprint 6 is merged.** Confirm all of the following exist and
+   re-export from `apps/web/components/editor/index.ts`:
+   `TopBar`, `LeftSidebar`, `RightSidebar`, `Canvas`,
+   `SelectionBreadcrumb`, `PageSelector`, `PreviewToggle`,
+   `DeployButton`, `SaveIndicator`, `SiteNameInput`, `AddTab`,
+   `ComponentCard`, `COMPONENT_CATALOG`, `COMPONENT_GROUP_ORDER`,
+   `DataTab`, `AddPageDialog`, `DeletePageConfirm`, `PageRow`,
+   `PagesTab`, `RenamePageDialog`, `FontSelector`,
+   `PaletteSelector`, `SiteTab`. If any is missing, STOP and emit
+   a Deviation Report.
 
-3. **Editor store has the Sprint-6 surface.** Read
-   `apps/web/lib/editor-state/types.ts` and confirm `EditorState` has
-   `draftConfig`, `currentPageSlug`, `selectedComponentId`,
-   `hoveredComponentId`, `previewMode`, `leftSidebarTab`, `saveState`,
-   `lastSavedAt`, `saveError`, and `EditorActions` has `selectComponent`,
-   `setHoveredComponent`, `setLeftSidebarTab`, `setPreviewMode`,
-   `addPage`, `renamePage`, `deletePage`, `reorderPages`, `setSiteName`,
-   `setPalette`, `setFontFamily`, `markSaving`, `markSaved`, `markError`.
-   If any is missing, STOP and emit a Deviation Report.
+3. **Sprint 8 is merged.** Confirm
+   `apps/web/components/editor/edit-panels/EditPanelShell.tsx`
+   exists and that `apps/web/components/editor/index.ts` re-exports
+   `EditPanelShell`, `EditPanelTabs`, `ContentTabHost`, `StyleTab`,
+   `AnimationTab`, `VisibilityTab`, `AdvancedTab`, and
+   `DeleteComponentButton`. Confirm that the editor store actions
+   `enterElementEditMode`, `exitElementEditMode`,
+   `setElementEditTab`, `setComponentProps`, `setComponentStyle`,
+   `setComponentAnimation`, `setComponentVisibility`, and
+   `removeComponent` are all present in
+   `apps/web/lib/editor-state/types.ts`. If any is missing, STOP
+   and emit a Deviation Report — Sprint 7 layers on top of these.
 
-4. **`EditModeWrapper` exposes `onContextMenu`.** Read
-   `apps/web/components/renderer/EditModeWrapper.tsx`. Confirm the
-   component accepts an `onContextMenu?: (id: string) => void` prop, that
-   the `onContextMenu` event handler calls `e.preventDefault()` before
-   invoking the callback with the node id, and that the keyboard parity
-   handler (`Shift+F10` / `ContextMenu` key) does the same. If any of
-   that is missing, STOP and emit a Deviation Report — Sprint 8's
-   right-click trigger relies on the wrapper's existing wiring.
+4. **Renderer wrappers are stable.** Read
+   `apps/web/components/renderer/EditModeWrapper.tsx` and
+   `apps/web/components/renderer/ComponentRenderer.tsx`. Confirm
+   that `EditModeWrapper` accepts `id`, `selected`, `onSelect`,
+   `onContextMenu`, and `children`; that its `handleClick` and
+   `handleContextMenu` both call `e.stopPropagation()` (the Sprint
+   8 deviation); and that `ComponentRenderer` is `memo`-wrapped on
+   reference equality. If any of that is missing, STOP and emit a
+   Deviation Report.
 
-5. **`Renderer` and `ComponentRenderer` plumb `onContextMenu`.** Read
-   `apps/web/components/renderer/Renderer.tsx` and
-   `apps/web/components/renderer/ComponentRenderer.tsx`. Confirm both
-   declare an optional `onContextMenu?: (id: string) => void` prop and
-   forward it to the `EditModeWrapper` only in `mode === "edit"`. If
-   either is missing the prop, STOP and emit a Deviation Report.
+5. **Component registry exposes `childrenPolicy` for all 20
+   types.** Read `apps/web/components/site-components/registry.ts`
+   and confirm `componentRegistry[T].meta.childrenPolicy` is one of
+   `"none" | "one" | "many"` for every `ComponentType` `T` in
+   `COMPONENT_TYPES`. Sprint 7 routes drop validation through this
+   field. If the field is absent or the values are wrong for any
+   component, STOP and emit a Deviation Report.
 
-6. **`ComponentNode` schema does NOT have `htmlId` or `className`
-   fields.** Read `apps/web/lib/site-config/schema.ts` and confirm
-   `componentNodeSchema` does not include either field, and that
-   `PROJECT_SPEC.md` §11's `ComponentNode` definition likewise does
-   not include them. If either has been added since this CLAUDE.md was
-   written, STOP and emit a Deviation Report — the Advanced-tab
-   placeholder in this plan assumes the schema gap; if the schema has
-   been amended, the Advanced tab must ship live controls instead of
-   a placeholder.
+6. **Schema lock holds.** Read
+   `apps/web/lib/site-config/schema.ts` and confirm
+   `componentNodeSchema` is unchanged from the Sprint 3 / 3b
+   shape: `{ id, type, props, style, animation?, visibility?,
+   children?, dataBinding? }`. Sprint 7 must not add fields to
+   this schema. If you find yourself wanting to, that is a
+   Deviation. STOP and emit a Deviation Report.
 
-7. **All 20 `EditPanel.tsx` stubs exist.** For each
-   `T ∈ { Section, Row, Column, Heading, Paragraph, Button, Image, Logo,
-   Spacer, Divider, NavBar, Footer, HeroBanner, PropertyCard, UnitCard,
-   Repeater, InputField, Form, MapEmbed, Gallery }`, confirm
-   `apps/web/components/site-components/${T}/EditPanel.tsx` exists and
-   exports `${T}EditPanel`. If any is missing, STOP and emit a
-   Deviation Report — Sprint 8 fills these in; it does not create them
-   from scratch.
+7. **dnd-kit is not yet installed.** Read
+   `apps/web/package.json` and confirm `@dnd-kit/core` and
+   `@dnd-kit/sortable` are NOT present in `dependencies`. They
+   are introduced this sprint. If either is already present at an
+   unexpected version, STOP and emit a Deviation Report.
 
-Only after all seven checks pass may you proceed to write code.
+8. **`apps/web/components/editor/canvas/dnd/` does not yet
+   exist.** Run `ls apps/web/components/editor/canvas/dnd/
+   2>/dev/null || echo MISSING`. The expected output is `MISSING`.
+   If the directory exists, STOP and emit a Deviation Report — its
+   contents are owned by this sprint and must not pre-exist.
+
+After all eight checks pass, emit a one-line acknowledgement
+("Pre-flight: 8/8 PASS") and proceed.
 
 ## Spec sections in scope
 
-Read each of these end-to-end before writing any code. They are the
-authoritative source for everything below — when this file and the spec
-disagree, the spec wins; surface the conflict via the Deviation Protocol
-before proceeding.
-
-- `PROJECT_SPEC.md` §6.1 — Component catalog (informs which components
-  get a Content panel in this sprint vs. later).
-- `PROJECT_SPEC.md` §6.4 — Shared style controls (binding for the Style
-  tab).
-- `PROJECT_SPEC.md` §6.5 — Animation presets (the ten enum values; the
-  Animation tab edits exactly these).
-- `PROJECT_SPEC.md` §8.4 — Left sidebar element edit mode (the five
-  tabs, the back arrow, the bottom-of-panel Delete button).
-- `PROJECT_SPEC.md` §8.5 — Selection model (right-click selects and
-  swaps the left sidebar; left-click on background deselects; `Esc`
-  clears).
-- `PROJECT_SPEC.md` §8.6 — Canvas behavior in edit mode (selection
-  outline already shipped by Sprint 3; this sprint does not change the
-  canvas chrome beyond wiring `onContextMenu`).
-- `PROJECT_SPEC.md` §8.8 — Right sidebar in element edit mode (the
-  right sidebar STAYS as the AI-chat shell; the LEFT sidebar is the one
-  that swaps — this is a deliberate deviation from the brainstorm and
-  is binding).
-- `PROJECT_SPEC.md` §8.12 — Detail pages (Button gains a Link-mode
-  segmented control + Detail-page dropdown when `linkMode === "detail"`;
-  InputField gains a `Default from query parameter` field).
-- `PROJECT_SPEC.md` §10.1 — `RendererProps` (the canvas now passes
-  `onContextMenu` in addition to `onSelect`).
-- `PROJECT_SPEC.md` §11 — `SiteConfig` schema in full (canonical; you
-  read it, you do NOT modify it — schema-lock break would require its
-  own sprint per `SPRINT_SCHEDULE.md` §5).
+- `PROJECT_SPEC.md` §6.3 — Component spec format. Children policy
+  comes from each component's `SPEC.md`; the registry meta mirrors
+  it and Sprint 7 reads from the registry, never the SPEC files.
+- `PROJECT_SPEC.md` §6.4 — Shared style controls. Sprint 7 writes
+  to `style.height` (string, e.g. `"320px"`) for height resize on
+  every component except `Spacer`, which has its own
+  `props.height` numeric field per `Spacer/SPEC.md`.
+- `PROJECT_SPEC.md` §8.3 (Add tab) — the component palette.
+  Cards become drag sources this sprint.
+- `PROJECT_SPEC.md` §8.5 — The canvas, selection model, drop
+  zones, and reorder behavior. Sprint 7 implements drop zones and
+  drag-to-reorder.
+- `PROJECT_SPEC.md` §8.6 — Resize, position, and grid mechanics.
+  Binding paragraph: Columns adjust `span` 1–12 by dragging the
+  right edge; container heights are `auto` by default and become
+  fixed px by dragging a bottom handle. Vertical positioning is
+  order-based (drag-to-reorder), never absolute. The canvas is
+  NOT pixel-perfect Webflow.
+- `PROJECT_SPEC.md` §9.4 — AI ops vocabulary. Sprint 7 implements
+  the Tier-1 mutators `addComponent`, `moveComponent`, and the
+  Tier-2 mutator `reorderChildren` as editor-store actions backed
+  by pure helpers in `actions.ts`. The AI op layer in
+  `lib/site-config/ops.ts` is Sprint 11; Sprint 7 only ships the
+  store helpers, not the AI ops themselves.
+- `PROJECT_SPEC.md` §11 — `SiteConfig` schema (canonical).
+  Sprint 7 reads `componentNodeSchema` only — never modifies it.
 - `PROJECT_SPEC.md` §15 — Coding standards (binding; the relevant
   subset is copied below).
+- `PROJECT_SPEC.md` §16 — File scope rules.
 - Each component's `apps/web/components/site-components/${T}/SPEC.md`
-  for the seven components that get a Content panel in this sprint
-  (Heading, Paragraph, Button, Image, NavBar, Footer, InputField).
-  Their Style-tab carve-outs (Spacer and Divider's primitive notes;
-  HeroBanner's `height` prop; etc.) are binding.
+  for the seven resizable components: `Section`, `Row`, `Column`,
+  `Image`, `Spacer`, `PropertyCard`, `UnitCard`. Sprint 7 reads
+  these SPECs to confirm the height-resize is on the wrapper's
+  CSS (or, for `Spacer`, on the prop) — and never invents a new
+  prop surface.
 
 ## File scope
 
 ### Owned (this sprint may create or modify)
 
-**New: edit-panel infrastructure (this is the centerpiece of Sprint 8).**
+**New: dnd-kit glue (the centerpiece of Sprint 7).**
 
-- `apps/web/components/editor/edit-panels/EditPanelShell.tsx` — the
-  container that wraps the five tabs. Renders a back-arrow button at
-  the top (clicking returns the LeftSidebar to primary mode AND
-  clears the active selection — a single store action,
-  `exitElementEditMode`), the selected component's type as the panel
-  title, the tabs nav, the active tab's pane, and a footer
-  Delete-with-confirm button. Reads
-  `selectedComponentId` + `selectSelectedComponentNode` from the store;
-  if the selection resolves to `null` (selected node was removed
-  mid-flight), the shell calls `exitElementEditMode` and renders nothing
-  for one tick.
-- `apps/web/components/editor/edit-panels/EditPanelTabs.tsx` — the
-  tablist with five buttons, ARIA semantics (`role="tablist"`,
-  `role="tab"`, `aria-selected`), and a controlled `activeTab` prop
-  driven from the parent. Default tab is `"content"`. Tab order:
-  Content, Style, Animation, Visibility, Advanced.
-- `apps/web/components/editor/edit-panels/tabs/ContentTabHost.tsx` —
-  routes by `node.type` to the per-component Content panel from
-  `apps/web/components/site-components/${T}/EditPanel.tsx`. The
-  per-component panel exports a default function that takes
-  `{ node }` and uses store mutators directly. For component types
-  that do not have a Content panel in Sprint 8, this host renders the
-  documented placeholder (see "Sprint-8 Content panel matrix" below).
-- `apps/web/components/editor/edit-panels/tabs/StyleTab.tsx` — the
-  shared §6.4 style-control surface. Composes the sub-controls below.
-  Reads `node.style` and writes it back through `setComponentStyle`.
-  The tab honors per-component carve-outs by reading a small allow-list
-  computed from `node.type`:
-    - Spacer: only Visibility (no §6.4 chrome) — the Style tab renders
-      a one-line note "Spacer is a primitive; use the Content tab to
-      change its height" and nothing else.
-    - Divider: Margin only (per `Divider/SPEC.md`); the rest of the
-      Style tab is hidden, with a one-line note explaining that.
-    - All other 18 components: full §6.4 controls (background, padding,
-      margin, border, borderRadius, shadow, width, height, textColor).
-- `apps/web/components/editor/edit-panels/tabs/AnimationTab.tsx` —
-  edits `node.animation` with two `AnimationPreset` selects (onEnter,
-  onHover) and two non-negative number inputs (duration ms, delay ms).
-  Setting both preset selects to `"none"` and clearing duration/delay
-  writes `animation: undefined` on the node (i.e. removes the field
-  entirely). Otherwise writes the sparse `AnimationConfig` object.
-- `apps/web/components/editor/edit-panels/tabs/VisibilityTab.tsx` —
-  three radio cards (Always / Desktop only / Mobile only) bound to
-  `node.visibility`. Selecting "Always" writes `visibility: undefined`
-  on the node (i.e. removes the field entirely).
-- `apps/web/components/editor/edit-panels/tabs/AdvancedTab.tsx` —
-  documented placeholder ONLY (per the pre-flight check #6 outcome):
-  renders an `Info` icon (`lucide-react`), the heading "Custom CSS
-  class & HTML id", and the body copy "These escape hatches will land
-  once the SiteConfig schema gains `htmlId` and `className` fields on
-  `ComponentNode`. See `DECISIONS.md` for the planned schema
-  amendment." Renders the `data-testid="advanced-tab-placeholder"`
-  attribute so the smoke test can assert visibility. Does NOT mutate
-  the store. Does NOT add any input.
-- `apps/web/components/editor/edit-panels/DeleteComponentButton.tsx`
-  — the bottom-of-panel destructive button. On click, opens a shadcn
-  `AlertDialog` ("Delete this component? This cannot be undone.").
-  On confirm, calls `removeComponent(selectedComponentId)`, then
-  `exitElementEditMode`. Disabled with a tooltip ("The page root
-  cannot be deleted; switch to the Pages tab to delete the page
-  itself.") when the selected node is the current page's
-  `rootComponent` — that case is detected by reading
-  `selectCurrentPage(state).rootComponent.id === selectedComponentId`.
-- `apps/web/components/editor/edit-panels/controls/SpacingInput.tsx`
-  — controlled four-input row (top, right, bottom, left) for
-  `Spacing | undefined`. Numeric inputs accept non-negative integers;
-  empty fields encode "unset" by omitting the key. A "linked" toggle
-  collapses all four inputs to one when active and writes the same
-  value to all four sides on change. Writes `undefined` (clearing the
-  whole `padding` / `margin` block) when all four fields are empty.
-- `apps/web/components/editor/edit-panels/controls/ColorInput.tsx`
-  — controlled native `<input type="color">` paired with a hex text
-  input (kept in sync). Used by `textColor`, by `border.color`, and
-  inside the Background control.
-- `apps/web/components/editor/edit-panels/controls/BackgroundInput.tsx`
-  — segmented control (None / Color / Gradient). When None: writes
-  `background: undefined`. When Color: a single `ColorInput`. When
-  Gradient: two `ColorInput`s (from / to) and a numeric angle (degrees,
-  default 180). Reads / writes `ColorOrGradient | undefined`.
-- `apps/web/components/editor/edit-panels/controls/BorderInput.tsx`
-  — three controls (numeric width, enum select for `BORDER_STYLES`,
-  `ColorInput`). When width is `0` and style is `"none"`, writes
-  `border: undefined`.
-- `apps/web/components/editor/edit-panels/controls/ShadowSelect.tsx`
-  — five-button row (none / sm / md / lg / xl) bound to
-  `ShadowPreset | undefined`. Clicking the active preset clears the
-  field.
-- `apps/web/components/editor/edit-panels/controls/SizeUnitInput.tsx`
-  — text input that accepts any `SizeUnit` string per the schema
-  comment ("any CSS length token"). No regex validation — the schema
-  is intentionally permissive. Writes the empty string back as
-  `undefined`. Used for `width` and `height` on the Style tab and for
-  HeroBanner's `height` prop on its Content panel.
-- `apps/web/components/editor/edit-panels/controls/AnimationPresetSelect.tsx`
-  — a select of the ten `ANIMATION_PRESETS` values (with a leading
-  "(none)" entry that maps to `undefined`).
-- `apps/web/components/editor/edit-panels/controls/NumberInput.tsx`
-  — controlled non-negative integer input with `min` and `step`
-  props. Used for `borderRadius`, animation `duration` and `delay`,
-  Spacing values, NavBar / Footer link counts, etc.
-- `apps/web/components/editor/edit-panels/controls/TextInput.tsx`
-  — controlled text input that commits on every change. Used by
-  Heading text, Paragraph text, Button label, Image alt, etc.
-- `apps/web/components/editor/edit-panels/controls/SelectInput.tsx`
-  — generic controlled select used by Heading level, Image fit,
-  Button variant / size / buttonType, NavBar logoPlacement,
-  InputField inputType, etc.
-- `apps/web/components/editor/edit-panels/controls/SegmentedControl.tsx`
-  — generic segmented control (radio-group styled as buttons). Used
-  by Button's Link mode (Static URL / Detail page) and the Visibility
-  tab's three options.
-- `apps/web/components/editor/edit-panels/controls/SwitchInput.tsx`
-  — controlled boolean switch. Used by Button `fullWidth`, NavBar
-  `sticky`, HeroBanner `overlay`, InputField `required`.
-- `apps/web/components/editor/edit-panels/controls/LinksEditor.tsx`
-  — vertical list editor for `{ label: string; href: string }[]`.
-  Each row has Label + Href text inputs and a remove button; an Add
-  button appends a new row. Used inside NavBar Content panel and
-  inside Footer Content's per-column link list.
-- `apps/web/components/editor/edit-panels/controls/FooterColumnsEditor.tsx`
-  — vertical list editor for
-  `Array<{ title: string; links: Array<{ label: string; href: string }> }>`.
-  Each column has a Title input, a `LinksEditor`, and a remove button;
-  an Add column button appends a new column.
-- `apps/web/components/editor/edit-panels/controls/SelectOptionsEditor.tsx`
-  — vertical list editor for `Array<{ label: string; value: string }>`,
-  used by InputField when `inputType === "select"`. Hidden when the
-  type is anything else.
-- `apps/web/components/editor/edit-panels/controls/DetailPageSelect.tsx`
-  — select of detail pages on the current site. Reads
-  `state.draftConfig.pages.filter(p => p.kind === "detail")` and
-  renders one option per page with `value={page.slug}`. When the
-  list is empty, renders a disabled select with the placeholder
-  "Add a detail page from the Pages tab first." Used inside Button's
-  Content panel when `linkMode === "detail"`.
-- `apps/web/components/editor/edit-panels/index.ts` — barrel
-  re-export of every public component in this directory.
-- `apps/web/components/editor/edit-panels/__tests__/` — Vitest tests
-  for every non-trivial component above.
+- `apps/web/components/editor/canvas/dnd/DndCanvasProvider.tsx`
+  — the React component that wraps the canvas tree in dnd-kit's
+  `DndContext`. Configures pointer + keyboard sensors with the
+  10-pixel pointer activation distance recommended by dnd-kit
+  (so single clicks still register as clicks, not drags). Owns
+  the `onDragStart`, `onDragOver`, `onDragEnd`, `onDragCancel`
+  handlers. Reads the editor store directly for the current
+  config, computes the drag intent (palette-insert vs.
+  tree-reorder vs. tree-move), validates against the children
+  policy of the prospective parent (see
+  `dropTargetPolicy.ts`), and dispatches to the editor store
+  actions `addComponentChild`, `moveComponent`, or
+  `reorderChildren`. Renders a `DragOverlay` that shows the
+  catalog icon + label while a palette card is being dragged
+  and the component's type label while a canvas node is being
+  dragged.
+- `apps/web/components/editor/canvas/dnd/dnd-ids.ts` — the id
+  vocabulary used by dnd-kit. Three id flavors:
+  `palette:${ComponentType}`, `node:${ComponentId}`, and
+  `dropzone:${ComponentId}`. Exports type guards and parsers so
+  the `onDrag*` handlers don't string-sniff. Sprint 7 puts these
+  helpers behind named exports — no default exports.
+- `apps/web/components/editor/canvas/dnd/dropTargetPolicy.ts`
+  — pure functions:
+  `getChildrenPolicy(type: ComponentType): ChildrenPolicy`
+  (reads from the registry meta), `canAcceptChild(parent:
+  ComponentNode, candidate: ComponentType): boolean` (returns
+  `false` for `none`; `false` for `one` if parent already has a
+  child; `true` for `many`), and
+  `findInsertionIndex(parent: ComponentNode, overId: string):
+  number` (computes the index a drop should land at given the
+  hovered node id within the parent's children). All three are
+  pure and unit-tested.
+- `apps/web/components/editor/canvas/dnd/createDefaultNode.ts`
+  — `createDefaultNode(type: ComponentType): ComponentNode`.
+  Returns a freshly-id'd `ComponentNode` with a stable
+  `cmp_<short>` id (use `crypto.randomUUID().slice(0, 8)` and
+  prefix with `cmp_`), the registered type, an empty `style: {}`,
+  and props chosen from the catalog defaults — see the
+  per-component default-props table in "Default props for
+  palette inserts" below. The function does NOT add a
+  `dataBinding` (Sprint 9 owns that), does NOT add `animation`,
+  and does NOT add `visibility`. Pure; unit-tested with a case
+  per `ComponentType`.
+- `apps/web/components/editor/canvas/dnd/PaletteDraggable.tsx`
+  — wraps a Sprint-6 `ComponentCard` with dnd-kit's
+  `useDraggable({ id: paletteId(type) })`. Forwards the card's
+  `onSelect` so click-to-highlight still works (Sprint 6
+  behavior). Activation distance is inherited from the
+  pointer sensor in `DndCanvasProvider`, not configured
+  here.
+- `apps/web/components/editor/canvas/dnd/SortableNodeContext.tsx`
+  — exports `useNodeSortable(id: ComponentId)` which calls
+  dnd-kit's `useSortable({ id: nodeId(id) })` when a
+  `DndCanvasProvider` is in scope, and returns `null` otherwise.
+  The hook returns `{ setNodeRef, listeners, attributes,
+  transform, transition, isDragging } | null`. The
+  EditModeWrapper consumes this to attach refs/listeners
+  conditionally.
+- `apps/web/components/editor/canvas/dnd/DropZoneIndicator.tsx`
+  — a 4-px tall accent bar rendered as a child of every
+  `EditModeWrapper` whose `id` is the current drop target id.
+  Visible only during a drag (driven by a small Sprint-7
+  context, `DragStateContext`, defined in the same file).
+  Greys itself out when the policy in `dropTargetPolicy.ts`
+  rejects the candidate.
+- `apps/web/components/editor/canvas/dnd/ResizeHandles.tsx`
+  — overlays a right-edge handle and a bottom-edge handle on
+  the selected component when its type is in the resizable set
+  (`Section`, `Row`, `Column`, `Image`, `Spacer`, `PropertyCard`,
+  `UnitCard`). The right-edge handle is rendered ONLY for
+  `Column` and writes through `setComponentSpan`. The
+  bottom-edge handle writes through `setComponentDimension(id,
+  "height", "${px}px")` for every type except `Spacer`, which
+  writes through `setComponentProps(id, { ...node.props, height:
+  pixels })` (numeric, per `Spacer/SPEC.md`). Both handles use
+  pointer events directly (no dnd-kit) and snap on
+  `pointerup`. Span snaps to the integer 1–12 nearest the
+  release column inside the parent Row's bounding rect; height
+  snaps to the nearest 8-pixel multiple with a floor of 8 px
+  (Spacer floor is 0). Pressing Esc during a resize cancels
+  and reverts.
+- `apps/web/components/editor/canvas/dnd/index.ts` — barrel
+  exporting every public name from this directory (the
+  provider, the policy helpers, `createDefaultNode`, the id
+  helpers, `DropZoneIndicator`, `ResizeHandles`).
 
-**Per-component Content panels (filled in for Sprint 8).**
+**New: tests for dnd glue.**
 
-For each of the seven components below, replace the Sprint-5 stub with
-a full Content panel. Each panel takes `{ node: ComponentNode }`,
-parses `node.props` against that component's prop schema, holds local
-form state mirrored to `node.props`, and writes through
-`setComponentProps(node.id, nextProps)` on every change. Validation is
-best-effort (the schema's per-component `safeParse` guards the renderer
-already; the panel just edits the JSON).
-
-- `apps/web/components/site-components/Heading/EditPanel.tsx`
-  — Text (`TextInput`, multi-line allowed via `<textarea>` for now);
-  Level (`SelectInput` with options 1–6).
-- `apps/web/components/site-components/Paragraph/EditPanel.tsx`
-  — Text (`<textarea>`).
-- `apps/web/components/site-components/Button/EditPanel.tsx`
-  — Label, Href (text inputs); Variant
-  (`primary | secondary | outline | ghost | link`); Size
-  (`sm | md | lg`); Full width (`SwitchInput`); Button type
-  (`button | submit | reset`). **Detail-pages amendment (§8.12):**
-  Link mode (`SegmentedControl`: "Static URL" / "Detail page";
-  default "Static URL"). When "Detail page" is selected, Href becomes
-  read-only with the helper "Computed at render time as
-  `/{detailPageSlug}/{row.id}`" and `DetailPageSelect` appears below
-  Link mode. When "Static URL" is selected, the panel writes
-  `linkMode: "static"` and `detailPageSlug: undefined`. When "Detail
-  page" is selected, the panel writes `linkMode: "detail"` and
-  `detailPageSlug: <chosen-slug>`. The schema's `superRefine`
-  ("`detailPageSlug` is required when `linkMode === "detail"`") is the
-  ultimate guard; the panel disables Save when no detail pages exist
-  by guarding the select itself.
-- `apps/web/components/site-components/Image/EditPanel.tsx`
-  — Src, Alt (text inputs); Fit (`SelectInput` with the five
-  `object-fit` values from `Image/SPEC.md`).
-- `apps/web/components/site-components/NavBar/EditPanel.tsx`
-  — Links (`LinksEditor`); Logo placement
-  (`SelectInput`: left / center / right); Sticky (`SwitchInput`);
-  Logo URL (text input, optional — clears `logoSrc` when empty).
-- `apps/web/components/site-components/Footer/EditPanel.tsx`
-  — Columns (`FooterColumnsEditor`); Copyright (text input).
-- `apps/web/components/site-components/InputField/EditPanel.tsx`
-  — Name (text input, required); Label (text input); Input type
-  (`SelectInput`: text / email / tel / number / textarea / select /
-  checkbox); Placeholder (text input); Required (`SwitchInput`);
-  Default value (text input). When type is `"select"`,
-  `SelectOptionsEditor` appears below Default value. **Detail-pages
-  amendment (§8.12):** Default from query parameter (text input;
-  empty writes `undefined`). Help text under the field reads
-  "Reads `?<param>` from the current URL on render." The panel does
-  NOT validate that `defaultValueFromQueryParam` matches an existing
-  query string anywhere — that is a runtime concern.
-
-**Per-component Content panels (placeholder for Sprint 8).**
-
-For each of the thirteen components below, replace the Sprint-5 stub
-with a tagged placeholder. The placeholder renders an `Info` icon, the
-heading "Content fields for this component", and one of the following
-`<p>` lines depending on the component. **No mutators are wired.**
-Each placeholder still preserves `data-component-edit-panel="${T}"` as
-a `<div data-testid="content-placeholder-${T.toLowerCase()}">` so
-existing assertions and the Sprint 8 smoke test can detect them.
-
-- Section: "Section is a structural container; the Style tab handles
-  layout and the Pages tab handles its position."
-- Row: "Edit Row props (gap, alignment, wrap) once the Row Content
-  panel ships." 
-- Column: "Edit Column props (span, gap, alignment) once the Column
-  Content panel ships."
-- Spacer: "Edit the spacer's height once the Spacer Content panel
-  ships."
-- Divider: "Edit the divider's thickness and color once the Divider
-  Content panel ships."
-- Logo: "Edit the logo source and alt text once the Logo Content
-  panel ships."
-- HeroBanner: "Edit the hero's heading, sub-heading, CTA, and
-  background once the HeroBanner Content panel ships."
-- PropertyCard: "Edit the property card's static fields once the
-  PropertyCard Content panel ships."
-- UnitCard: "Edit the unit card's static fields once the UnitCard
-  Content panel ships."
-- Repeater: "Repeater data binding (data source, filters, connected
-  inputs, sort, limit) lands in Sprint 9."
-- Form: "Form configuration (form id, success message) lands in
-  Sprint 10."
-- MapEmbed: "Edit the embedded address once the MapEmbed Content
-  panel ships."
-- Gallery: "Edit the gallery images and grid once the Gallery Content
-  panel ships."
-
-The exact wording is binding for the Sprint 8 smoke test — copy each
-line verbatim into the corresponding `EditPanel.tsx`. Every other tab
-on these components (Style / Animation / Visibility / Advanced) ships
-in full per the matrix in the next section.
+- `apps/web/components/editor/canvas/dnd/__tests__/dropTargetPolicy.test.ts`
+  — covers every branch of `canAcceptChild` for all three
+  policies (none / one / many) plus the empty-vs-non-empty
+  variants for `one`. Covers `findInsertionIndex` for
+  before/middle/after positions and the empty-children case.
+  Covers `getChildrenPolicy` for every `ComponentType` against
+  the registry meta — this test acts as a contract guard
+  against future component additions.
+- `apps/web/components/editor/canvas/dnd/__tests__/createDefaultNode.test.ts`
+  — every `ComponentType` round-trips through
+  `componentNodeSchema.safeParse` successfully. Generated ids
+  match `/^cmp_[a-z0-9]+$/`. Two consecutive calls produce
+  distinct ids. The function never sets `animation`,
+  `visibility`, or `dataBinding`.
+- `apps/web/components/editor/canvas/dnd/__tests__/dnd-ids.test.ts`
+  — round-trip parse for every id flavor; rejection of
+  malformed strings.
+- `apps/web/components/editor/canvas/dnd/__tests__/DndCanvasProvider.test.tsx`
+  — uses `@testing-library/react` with manual `pointerDown` /
+  `pointerMove` / `pointerUp` events on dnd-kit-rendered cards.
+  Cases:
+  (a) palette card → empty Section drops at index 0 and
+      writes a new node into the store;
+  (b) palette card → `none`-policy Image drop is rejected
+      and the store is unchanged;
+  (c) palette card → `one`-policy Repeater drop on an empty
+      Repeater inserts; on an occupied Repeater is rejected;
+  (d) sortable reorder within a Section reorders children;
+  (e) sortable move from Section A to Section B updates both
+      parents in a single store transition;
+  (f) Esc during a drag cancels — store is unchanged from the
+      pre-drag snapshot;
+  (g) `previewMode === true` disables drag (no listeners
+      register, no drop validates).
 
 **Editor store extensions.**
 
-- `apps/web/lib/editor-state/types.ts` — extend `EditorState` with
-  `leftSidebarMode: "primary" | "element-edit"` (default `"primary"`)
-  and `elementEditTab: "content" | "style" | "animation" | "visibility" | "advanced"`
-  (default `"content"`). Extend `EditorActions` with:
-  `enterElementEditMode(componentId: ComponentId): void`,
-  `exitElementEditMode(): void`,
-  `setElementEditTab(tab: ElementEditTab): void`,
-  `setComponentProps(componentId: ComponentId, props: Record<string, unknown>): void`,
-  `setComponentStyle(componentId: ComponentId, style: StyleConfig): void`,
-  `setComponentAnimation(componentId: ComponentId, animation: AnimationConfig | undefined): void`,
-  `setComponentVisibility(componentId: ComponentId, visibility: "always" | "desktop" | "mobile" | undefined): void`,
-  `removeComponent(componentId: ComponentId): void`.
-  Add a new `EditorActionErrorCode`: `"component_not_found"`,
-  `"page_root_locked"`.
-- `apps/web/lib/editor-state/store.ts` — wire the new state defaults
-  and the new action wrappers. Each component-level mutator delegates
-  to a pure helper in `actions.ts`, flips `saveState` to `"dirty"`,
-  and (for `removeComponent`) clears `selectedComponentId` if the
-  removed node WAS selected. `enterElementEditMode(id)` calls
-  `selectComponent(id)` AND sets `leftSidebarMode = "element-edit"`
-  AND resets `elementEditTab = "content"`. `exitElementEditMode()`
-  sets `leftSidebarMode = "primary"` AND `selectedComponentId = null`
-  AND `elementEditTab = "content"`. `setPreviewMode(true)`
-  additionally exits element edit (preview hides selection chrome).
-  `setCurrentPageSlug(...)` additionally exits element edit (the
-  selected node would be on a different page).
+- `apps/web/lib/editor-state/types.ts` — extend `EditorActions`
+  with:
+  - `addComponentChild(parentId: ComponentId, index: number,
+    node: ComponentNode): void` — inserts `node` as a child of
+    `parentId` at position `index`. Throws
+    `EditorActionError("invalid_drop_target", ...)` if
+    `canAcceptChild` rejects the candidate. Throws
+    `EditorActionError("component_not_found", ...)` if
+    `parentId` does not resolve.
+  - `moveComponent(targetId: ComponentId, newParentId:
+    ComponentId, newIndex: number): void` — removes `targetId`
+    from its current parent and re-inserts it at `newIndex`
+    under `newParentId`. Same error semantics. The page-root
+    is not movable; attempting to move it throws
+    `EditorActionError("page_root_locked", ...)`.
+  - `reorderChildren(parentId: ComponentId, newOrder:
+    ComponentId[]): void` — replaces `parent.children` with the
+    nodes referenced by `newOrder` in the supplied order. Throws
+    `EditorActionError("reorder_mismatch", ...)` if `newOrder`
+    is not a permutation of the current children's ids.
+  - `setComponentSpan(id: ComponentId, span: 1|2|3|4|5|6|7|8|9|10|11|12): void`
+    — writes `span` into `node.props.span`, but only if `node.type
+    === "Column"`; otherwise throws
+    `EditorActionError("invalid_resize_target", ...)`.
+  - `setComponentDimension(id: ComponentId, axis: "width" |
+    "height", value: string | undefined): void` — writes
+    `node.style[axis] = value`. `undefined` clears the field
+    (e.g. revert to `auto`). For `Spacer`, throws
+    `EditorActionError("invalid_resize_target", ...)` — the
+    Spacer's height belongs in `props`, not `style`, and is set
+    via `setComponentProps`. The handle component knows this and
+    routes accordingly.
+  - Add to `EditorActionErrorCode`: `"invalid_drop_target"`,
+    `"reorder_mismatch"`, `"invalid_resize_target"`.
+- `apps/web/lib/editor-state/store.ts` — wire the new action
+  wrappers. Each delegates to a pure helper in `actions.ts`,
+  flips `saveState` to `"dirty"`, and (for `moveComponent`)
+  preserves `selectedComponentId` if the moved node was selected.
+  `addComponentChild` after a successful insert sets
+  `selectedComponentId = node.id` (the new node becomes the
+  selection) so the user immediately sees what they dropped.
 - `apps/web/lib/editor-state/actions.ts` — add:
-  `applySetComponentProps(config, componentId, props): SiteConfig`,
-  `applySetComponentStyle(config, componentId, style): SiteConfig`,
-  `applySetComponentAnimation(config, componentId, animation): SiteConfig`,
-  `applySetComponentVisibility(config, componentId, visibility): SiteConfig`,
-  `applyRemoveComponent(config, componentId): SiteConfig`. All five
-  are pure functions; all five throw `EditorActionError` with code
-  `"component_not_found"` if the id is not present in any page.
-  `applyRemoveComponent` additionally throws
-  `EditorActionError("page_root_locked", ...)` if the id is the
-  `rootComponent.id` of any page. The tree walker is depth-first and
-  rebuilds only the path from the page's `rootComponent` down to the
-  modified node (immutability via spread; no `immer` dependency).
-- `apps/web/lib/editor-state/selectors.ts` — add
-  `selectIsElementEditMode(state): boolean` (returns
-  `state.leftSidebarMode === "element-edit"`),
-  `selectElementEditTab(state)`, and
-  `selectSelectedComponentParentId(state): ComponentId | null`
-  (used by `DeleteComponentButton`'s page-root guard).
-- `apps/web/lib/editor-state/index.ts` — barrel update to re-export
-  every new symbol.
-- `apps/web/lib/editor-state/__tests__/store.test.ts` — extend with
-  tests for the new state and action wrappers.
-- `apps/web/lib/editor-state/__tests__/actions.test.ts` — extend
-  with tests for each new pure helper (happy path + not-found +
-  page-root-locked + style update + animation clear-to-undefined +
-  visibility clear-to-undefined).
+  - `applyAddComponentChild(config: SiteConfig, parentId:
+    ComponentId, index: number, node: ComponentNode): SiteConfig`
+    — pure; calls `canAcceptChild` against the resolved parent
+    and throws on rejection. Uses the same tree-walk pattern as
+    `applyRemoveComponent`. Tested for the four cases above
+    plus a deep-nesting case (3 levels deep).
+  - `applyMoveComponent(config: SiteConfig, targetId:
+    ComponentId, newParentId: ComponentId, newIndex: number):
+    SiteConfig` — pure; first removes the node from its current
+    parent, then inserts under the new parent. Disallows
+    moving a node under itself or any descendant
+    (`invalid_drop_target` with the message "Cannot move a
+    component into one of its own descendants.").
+  - `applyReorderChildren(config: SiteConfig, parentId:
+    ComponentId, newOrder: ComponentId[]): SiteConfig` — pure;
+    validates `newOrder` is a permutation of the parent's
+    current children's ids before writing.
+- `apps/web/lib/editor-state/index.ts` — export the three new
+  apply helpers and the new error codes from the public barrel.
+- `apps/web/lib/editor-state/__tests__/actions.test.ts`
+  (extend) — at least 12 new cases across the three new
+  helpers, hitting each error path explicitly.
+- `apps/web/lib/editor-state/__tests__/store.test.ts` (extend)
+  — at least 8 new cases for the new action wrappers,
+  including the autosave-dirty flip and the new-selection
+  side-effect of `addComponentChild`.
 
-**Editor wiring extensions.**
+**Renderer wrapper extension (minimal).**
 
-- `apps/web/components/editor/canvas/Canvas.tsx` — extend the
-  `<Renderer />` call to pass
-  `onContextMenu={(id) => enterElementEditMode(id)}` in addition to
-  the existing `onSelect`. Do NOT change the existing `onClick` /
-  `Esc` / `onSelect` semantics.
-- `apps/web/components/editor/sidebar/LeftSidebar.tsx` — read
-  `leftSidebarMode` from the store. When `"primary"`: render the
-  existing four-tab UI unchanged. When `"element-edit"`: render
-  `<EditPanelShell />` instead. The four-tab tablist is hidden when
-  the sidebar is in element-edit mode.
-- `apps/web/components/editor/__tests__/canvas.test.tsx` — extend
-  with right-click → `enterElementEditMode` test, and a test that
-  switching the current page exits element edit.
-- `apps/web/components/editor/__tests__/left-sidebar.test.tsx` (new
-  file or extension of existing) — test that the sidebar renders the
-  four-tab UI in primary mode and the `EditPanelShell` in
-  element-edit mode.
-- `apps/web/components/editor/index.ts` — barrel update to add
-  every new public export from `edit-panels/`.
+- `apps/web/components/renderer/EditModeWrapper.tsx` — extend
+  the wrapper to call `useNodeSortable(id)` from the new
+  `SortableNodeContext`. When the hook returns non-`null`,
+  apply the returned `setNodeRef` to the same `<div>` that
+  already carries `data-edit-id`, spread `attributes` and
+  `listeners` onto it, and apply
+  `style={{ ...callerStyle, transform:
+  CSS.Transform.toString(transform), transition, opacity:
+  isDragging ? 0.5 : undefined }}`. When the hook returns
+  `null` (no `DndCanvasProvider` in scope), behavior is
+  exactly the Sprint-6/8 wrapper. **Do not change** the
+  existing `onClick`, `onContextMenu`, `onKeyDown`, or
+  `data-edit-*` attributes — every existing test in
+  `EditModeWrapper.test.tsx` must continue to pass.
+  Add new tests covering: (a) rendered with a stub
+  `SortableNodeContext` that returns refs/listeners — the
+  wrapper applies them; (b) rendered without a provider — the
+  wrapper does not crash and behaves identically to Sprint
+  6/8.
 
-**Cross-document.**
+**Add-tab card extension (minimal).**
 
-- `DECISIONS.md` — append entries for any approved deviation. Also
-  append a planning entry naming this sprint's known schema gap
-  ("Advanced tab placeholder until `htmlId` / `className` ship") so
-  Sprint 15 has a paper trail.
+- `apps/web/components/editor/sidebar/add-tab/ComponentCard.tsx`
+  — rewrap the existing `<button>` in `PaletteDraggable`. Keep
+  every existing `data-testid`, `aria-pressed`, `onSelect`
+  prop, and Tailwind class. The card is BOTH a
+  click-to-highlight target (Sprint 6) AND a drag source
+  (Sprint 7). dnd-kit's pointer activation distance prevents
+  click and drag from firing simultaneously on a single
+  pointer-down→pointer-up.
+- `apps/web/components/editor/sidebar/add-tab/AddTab.tsx` —
+  remove the `<p>Drag-and-drop coming in the next update.</p>`
+  footer line. Replace it with nothing — the tab now ends at
+  the last category section.
+- `apps/web/components/editor/sidebar/add-tab/__tests__/ComponentCard.test.tsx`
+  (extend) — add a test confirming the card is wrapped in a
+  `useDraggable` source (assert presence of the
+  `data-dnd-handle` attribute the wrapper adds; verify the
+  existing `aria-pressed` selection assertion still passes).
 
-### Shared (read-only this sprint)
+**Canvas integration.**
 
-- `PROJECT_SPEC.md` — the authoritative spec (read, do not write).
-- `apps/web/lib/site-config/` — schema, types, parse, style helpers
-  (the schema is the contract; do NOT extend it).
-- `apps/web/lib/setup-form/palettes.ts` and
-  `apps/web/lib/setup-form/types.ts` — referenced indirectly through
-  the existing Site tab; not touched.
-- `apps/web/lib/sites/repo.ts` — autosave continues to use the
-  Sprint-6 PATCH endpoint; no changes required.
-- `apps/web/lib/supabase/` — autosave continues to use the
-  service-role client through the existing endpoint.
-- `apps/web/components/renderer/` — the renderer is final; if the
-  pre-flight check #5 finds it does not forward `onContextMenu`,
-  STOP and emit a Deviation Report rather than editing the renderer.
-- `apps/web/components/site-components/${T}/index.tsx` — every
-  component's runtime renderer; do NOT touch in this sprint. The
-  Content panel writes back through `node.props`; the renderer
-  consumes `node.props` exactly as Sprint 5/5b shipped.
-- `apps/web/components/site-components/${T}/SPEC.md` — read-only
-  reference for which props each Content panel exposes.
-- `apps/web/app/[site]/edit/page.tsx` and
-  `apps/web/app/[site]/edit/EditorShell.tsx` — Sprint 6 owns these;
-  do NOT touch unless the LeftSidebar wiring genuinely requires a
-  change (it should not — the LeftSidebar is composed from the
-  EditorShell already).
-- `apps/web/app/api/sites/[siteId]/working-version/route.ts` — the
-  PATCH endpoint already validates `siteConfigSchema` end-to-end;
-  Sprint 8's edits flow through it without modification.
+- `apps/web/components/editor/canvas/Canvas.tsx` — wrap the
+  `<Renderer>` in `<DndCanvasProvider>`. The provider is a
+  no-op when `previewMode === true` (it renders children
+  unchanged). The canvas onClick/onKeyDown deselect handler is
+  unchanged. Mount a `<ResizeHandles />` overlay positioned
+  absolutely inside the canvas card; it reads
+  `selectedComponentId` from the store and finds the selected
+  element's bounding rect via `document.querySelector(
+  '[data-edit-id="${id}"]')` so the handles align with the
+  rendered element. Update on resize / scroll via a
+  `ResizeObserver` and a `scroll` listener.
+- `apps/web/components/editor/canvas/__tests__/Canvas.test.tsx`
+  (extend if exists; create if not) — case: in preview mode,
+  no drag listeners attach (assert the absence of dnd-kit's
+  data attributes on rendered nodes). Case: a Section ID
+  becomes the new selection after a successful palette drop.
+- `apps/web/components/editor/index.ts` — export
+  `DndCanvasProvider` and the dnd folder's barrel from
+  `./canvas/dnd`.
 
-### Forbidden (this sprint MUST NOT modify)
+**Dependency manifest.**
 
-- `PROJECT_SPEC.md`. A spec change is its own sprint.
-- `apps/web/lib/site-config/schema.ts`,
-  `apps/web/lib/site-config/parse.ts`, and
-  `apps/web/lib/site-config/style.ts`. Schema-lock break would require
-  its own sprint per `SPRINT_SCHEDULE.md` §5.
-- `apps/web/components/site-components/${T}/index.tsx` for any `T`
-  (the runtime renderers are Sprint 5 / 5b territory). Touching one of
-  these is a Deviation regardless of how minor the change appears.
-- `apps/web/components/site-components/${T}/SPEC.md` for any `T`. The
-  Content-panel descriptions in this CLAUDE.md exactly mirror the
-  existing SPEC.md tables; if they drift, the SPEC.md is the source
-  of truth and Sprint 8 emits a Deviation rather than editing it.
-- `apps/web/components/site-components/registry.ts` and
-  `apps/web/components/site-components/__tests__/registry.test.ts`.
-- `apps/web/components/renderer/` — see "Shared" above.
-- `supabase/migrations/`, `supabase/seed.sql`. No DB changes this
-  sprint.
+- `apps/web/package.json` — add `@dnd-kit/core` and
+  `@dnd-kit/sortable` (and `@dnd-kit/utilities` if and only if
+  the typed `CSS` helper used in `EditModeWrapper.tsx` cannot be
+  imported from `@dnd-kit/sortable` directly). Pin all three
+  with `pnpm add -E`. The exact installed versions go into the
+  Sprint Completion Report. If `pnpm install` reports a peer
+  conflict against React 19.2.5, STOP and emit a Deviation
+  Report — do not downgrade React, do not patch the peer range,
+  do not `--legacy-peer-deps`.
+
+### Shared (read-only — read but do not modify)
+
+- `PROJECT_SPEC.md`
+- `apps/web/lib/site-config/schema.ts`
+- `apps/web/lib/site-config/style.ts`
+- `apps/web/components/site-components/registry.ts` and every
+  per-component `index.tsx` and `SPEC.md` under
+  `apps/web/components/site-components/${T}/`. The 20
+  components ship with their data attributes (e.g.
+  `data-component-id`, `data-component-type`,
+  `data-column-span` on Column) — Sprint 7 reads these,
+  never writes new ones to per-component files.
+- `apps/web/components/renderer/Renderer.tsx`,
+  `ComponentRenderer.tsx`, and `ComponentErrorBoundary.tsx`.
+  Sprint 7 modifies only `EditModeWrapper.tsx` in this
+  folder.
+- `apps/web/components/editor/edit-panels/**` (Sprint 8
+  territory).
+- `apps/web/components/editor/topbar/**` (Sprint 6 territory).
+- `apps/web/components/editor/sidebar/site-tab/**`,
+  `pages-tab/**`, `data-tab/**` (Sprint 6 territory).
+- `apps/web/lib/editor-state/autosave.ts` and `selectors.ts`
+  (Sprint 6 territory; Sprint 7 only adds new selectors via the
+  new actions, never edits the existing ones).
+- `DECISIONS.md` (append-only — never edit existing entries).
+- `SPRINT_SCHEDULE.md`.
+
+### Forbidden (do not touch under any circumstances)
+
+- `PROJECT_SPEC.md` (the spec is authoritative; raise concerns
+  via Deviation).
+- Existing entries in `DECISIONS.md`.
+- `apps/web/lib/site-config/schema.ts` — schema-lock break
+  would require its own sprint per `SPRINT_SCHEDULE.md` §5.
+- `apps/web/lib/ai/prompts/**` (Sprint 4 / Sprint 11).
 - `apps/web/app/api/**` — no API route changes this sprint.
-- The Sprint-3 dev fixtures at `apps/web/app/dev/components/` and
-  `apps/web/app/dev/preview/`.
-- Any other sprint's owned files that are not explicitly enumerated
-  in the "Owned" list above.
+- `apps/web/app/dev/**` — Sprint 3 / 5 fixtures stay frozen.
+- `apps/web/app/setup/**` — Sprint 1 / 2 / 4 territory.
+- `supabase/migrations/`, `supabase/seed.sql`. No DB changes
+  this sprint.
+- The seven Content panels Sprint 8 made live
+  (`apps/web/components/site-components/${T}/EditPanel.tsx` for
+  `Heading`, `Paragraph`, `Button`, `Image`, `NavBar`, `Footer`,
+  `InputField`).
 
-### Sprint-8 Content panel matrix (binding)
+### Default props for palette inserts (binding)
 
-| Component      | Content tab in Sprint 8           | Style | Animation | Visibility | Advanced  |
-| -------------- | --------------------------------- | ----- | --------- | ---------- | --------- |
-| Section        | Placeholder                       | Full  | Full      | Full       | Placeholder |
-| Row            | Placeholder                       | Full  | Full      | Full       | Placeholder |
-| Column         | Placeholder                       | Full  | Full      | Full       | Placeholder |
-| Heading        | **Live (text + level)**           | Full  | Full      | Full       | Placeholder |
-| Paragraph      | **Live (text)**                   | Full  | Full      | Full       | Placeholder |
-| Button         | **Live (+ §8.12 Link mode)**      | Full  | Full      | Full       | Placeholder |
-| Image          | **Live (src + alt + fit)**        | Full  | Full      | Full       | Placeholder |
-| Logo           | Placeholder                       | Full  | Full      | Full       | Placeholder |
-| Spacer         | Placeholder                       | None  | Full      | Full       | Placeholder |
-| Divider        | Placeholder                       | Margin only | Full | Full       | Placeholder |
-| NavBar         | **Live (links + placement + sticky + logoSrc)** | Full | Full | Full | Placeholder |
-| Footer         | **Live (columns + copyright)**    | Full  | Full      | Full       | Placeholder |
-| HeroBanner     | Placeholder                       | Full  | Full      | Full       | Placeholder |
-| PropertyCard   | Placeholder                       | Full  | Full      | Full       | Placeholder |
-| UnitCard       | Placeholder                       | Full  | Full      | Full       | Placeholder |
-| Repeater       | Placeholder (Sprint 9)            | Full  | Full      | Full       | Placeholder |
-| InputField     | **Live (+ §8.12 query-param)**    | Full  | Full      | Full       | Placeholder |
-| Form           | Placeholder (Sprint 10)           | Full  | Full      | Full       | Placeholder |
-| MapEmbed       | Placeholder                       | Full  | Full      | Full       | Placeholder |
-| Gallery        | Placeholder                       | Full  | Full      | Full       | Placeholder |
+`createDefaultNode(type)` MUST produce nodes whose `props`
+match the table below. Every default must validate against the
+component's runtime `safeParse` — Sprint 7's
+`createDefaultNode.test.ts` enforces this.
 
-"Full" means every §6.4 control listed in the corresponding
-`SPEC.md`. "None" / "Margin only" reflect the Spacer / Divider
-primitives carve-out from §6.4.
+| ComponentType  | Default `props`                                                                 |
+| -------------- | ------------------------------------------------------------------------------- |
+| `Section`      | `{ as: "section" }`                                                             |
+| `Row`          | `{ gap: 16, alignItems: "stretch", justifyContent: "start", wrap: false }`      |
+| `Column`       | `{ span: 12, gap: 8, alignItems: "stretch" }`                                   |
+| `Heading`      | `{ text: "New heading", level: 2 }`                                             |
+| `Paragraph`    | `{ text: "New paragraph." }`                                                    |
+| `Button`       | `{ label: "Button", href: "#", variant: "primary", linkMode: "static" }`        |
+| `Image`        | `{ src: "", alt: "", fit: "cover" }`                                            |
+| `Logo`         | `{}` (Logo reads from brand config)                                             |
+| `Spacer`       | `{ height: 40 }`                                                                |
+| `Divider`      | `{ thickness: 1, color: "#e5e7eb" }`                                            |
+| `NavBar`       | `{ links: [], logoPlacement: "left", sticky: false }`                           |
+| `Footer`       | `{ columns: [], copyright: "© 2026" }`                                          |
+| `HeroBanner`   | `{ headline: "New hero", subheadline: "", ctaLabel: "Learn more", ctaHref: "#" }` |
+| `PropertyCard` | `{ heading: "Property Name", body: "Property description goes here.", imageSrc: "", ctaLabel: "View Details", ctaHref: "#" }` |
+| `UnitCard`     | `{ unitName: "Unit", bedrooms: 1, bathrooms: 1, rent: 0, primaryImageUrl: "", ctaLabel: "View", ctaHref: "#" }` |
+| `Repeater`     | `{}` (data binding lands in Sprint 9)                                           |
+| `InputField`   | `{ name: "field", label: "Field", inputType: "text", required: false }`         |
+| `Form`         | `{ formId: "new_form", successMessage: "Thanks." }`                             |
+| `MapEmbed`     | `{ address: "" }`                                                               |
+| `Gallery`      | `{ images: [], columns: 3, gap: 8 }`                                            |
+
+If any of the above does not validate against the corresponding
+component's runtime `safeParse`, treat it as a Deviation. Do
+NOT silently fall back to the component's internal defaults —
+the schema is authoritative.
+
+### Resizable component matrix (binding)
+
+| ComponentType  | Right-edge handle      | Bottom-edge handle              | Notes                                                |
+| -------------- | ---------------------- | ------------------------------- | ---------------------------------------------------- |
+| `Section`      | none                   | `style.height` (px or `auto`)   | Width is parent-driven (canvas stage).               |
+| `Row`          | none                   | `style.height` (px or `auto`)   | Width fills parent.                                  |
+| `Column`       | `props.span` (1–12)    | `style.height` (px or `auto`)   | Span snap snaps to integers within parent Row width. |
+| `Image`        | none                   | `style.height` (px or `auto`)   | Width is parent-driven.                              |
+| `Spacer`       | none                   | `props.height` (number, px)     | Numeric prop, NOT `style.height`.                    |
+| `PropertyCard` | none                   | `style.height` (px or `auto`)   | Width is parent-driven.                              |
+| `UnitCard`     | none                   | `style.height` (px or `auto`)   | Width is parent-driven.                              |
+
+For every other `ComponentType`, no resize handles render.
+`ResizeHandles.tsx` reads from this matrix; the matrix lives
+in a const at the top of that file and is exported for the
+unit test that asserts it matches §8.6 verbatim.
 
 ## Coding standards (binding subset of `PROJECT_SPEC.md` §15)
 
-- TypeScript strict; `noUncheckedIndexedAccess`, `noImplicitAny` on.
-  No `any`. If you reach for it, use `unknown` and narrow.
-- One component per file. File name = export name. PascalCase for
-  components; camelCase for hooks (`useThing`); kebab-case for
-  filenames in non-component modules.
-- Server components by default; `"use client"` on line 1 only when
-  needed. Every file in
-  `apps/web/components/editor/edit-panels/` and every component-level
-  EditPanel is a client component (they read the Zustand store and
-  fire mutators). Add `"use client"` on line 1 of every such file.
-- No prop drilling deeper than two levels. Hoist to the store.
-- Shared components from `apps/web/components/ui/` are reusable; do
-  NOT introduce a second design system. Use shadcn primitives
-  (`Dialog`, `AlertDialog`, `Select`, `RadioGroup`, `Switch`,
-  `Input`, `Textarea`, `Label`, `Tooltip`) where they exist. If a
-  needed primitive is missing, run
-  `pnpm dlx shadcn@latest add <name>` and treat the new file as
-  Sprint-8-owned (`apps/web/components/ui/${name}.tsx`).
-- No commented-out code. No `console.log`. No `.skip` / `.only` in
-  tests. No `@ts-ignore`. No `as any`.
-- Tests live next to the file under `__tests__/${name}.test.tsx`.
-  Use Vitest + Testing Library; reset the editor store between cases
-  via `__resetEditorStoreForTests()`.
-- All paths, commands, and identifiers go in backticks in any prose.
+- TypeScript strict; `noUncheckedIndexedAccess`, `noImplicitAny`
+  on. No `any`. If you reach for it, use `unknown` and narrow.
+- One component per file. File name = export name. PascalCase
+  for components; camelCase for hooks (`useThing`); kebab-case
+  for filenames in non-component modules.
+- Server components by default; `"use client"` on line 1 only
+  when needed. Every file in
+  `apps/web/components/editor/canvas/dnd/` is a client
+  component (they read the Zustand store, attach pointer
+  handlers, or use dnd-kit hooks). Add `"use client"` on line
+  1 of every such file.
+- No prop drilling deeper than two levels. Hoist to the store
+  or to the dnd context.
+- Use `cn(...)` for class merging.
+- No commented-out code. No `console.log`. No `.skip` /
+  `.only` in tests. No `@ts-ignore`. No `as any`.
+- Tests live next to the file under
+  `__tests__/${name}.test.tsx`. Use Vitest + Testing Library;
+  reset the editor store between cases via
+  `__resetEditorStoreForTests()`.
+- All paths, commands, and identifiers go in backticks in any
+  prose.
+- Conventional commits: `feat:`, `fix:`, `chore:`, `refactor:`,
+  `docs:`, `test:`. One concern per commit.
 
 ## Definition of Done
 
-- [ ] **Right-click swaps the LeftSidebar to Element Edit and selects
-  the right-clicked component.** Right-clicking any component on the
-  canvas (or pressing `Shift+F10` / `ContextMenu` on a focused
-  component) calls `enterElementEditMode(id)`. The store's
-  `selectedComponentId` becomes `id`, `leftSidebarMode` becomes
-  `"element-edit"`, and `elementEditTab` resets to `"content"`. The
-  LeftSidebar replaces its four-tab UI with `<EditPanelShell />`.
-  Right-clicking a different component while already in element-edit
-  mode replaces the selection without exiting the mode.
+- [ ] **dnd-kit is installed at exact pinned versions.**
+  `pnpm add -E @dnd-kit/core @dnd-kit/sortable` (and
+  `@dnd-kit/utilities` only if needed for the `CSS` helper)
+  succeeds without peer-conflict overrides. The installed
+  versions appear in `apps/web/package.json` and in the Sprint
+  Completion Report. `pnpm install --frozen-lockfile` succeeds
+  cleanly afterwards.
 
-- [ ] **Five-tab Element Edit panel renders for every selected
-  component.** The shell shows the component's type as the panel
-  title, a back-arrow button, the five-tab tablist (Content / Style /
-  Animation / Visibility / Advanced) with `role="tablist"` and
-  ARIA-correct `aria-selected`, and the active tab's pane. Default
-  tab is Content. Switching tabs writes `elementEditTab` to the store
-  (and survives a renderer remount via the store).
+- [ ] **Drag from the Add tab to the canvas inserts a new
+  node into a valid parent.** Pointer-down on a palette card,
+  drag past the 10-px activation distance, drag onto a
+  rendered Section in the canvas, release. The store gains a
+  new node in that Section's `children`, with the props from
+  the "Default props for palette inserts" table; the new node
+  becomes the selection; `saveState === "dirty"`; the Sprint-6
+  autosave hook PATCHes the working version after the standard
+  debounce. The DragOverlay shows the catalog icon + label
+  while the drag is in progress.
 
-- [ ] **Back-arrow exits element-edit mode and clears the selection.**
-  Clicking the back arrow calls `exitElementEditMode`. The
-  LeftSidebar reverts to its four-tab UI on the previously-active
-  primary tab; `selectedComponentId` becomes `null`; the canvas
-  selection outline disappears. Switching the page or toggling
-  Preview mode also exits element-edit mode.
+- [ ] **Children policy is honored on every drop.** A drop
+  onto a `none`-policy component (e.g. `Heading`,
+  `Paragraph`, `Image`) is rejected: the visual indicator
+  greys out, releasing produces no store mutation, and a
+  `console.warn`-level message is logged ONLY in dev (the
+  warning is not in committed `console.log` calls — use a
+  Sprint-7 internal helper that no-ops in `process.env.NODE_ENV
+  === "production"`). A drop onto a `one`-policy component
+  (`Repeater`) is accepted iff the component currently has
+  zero children.
 
-- [ ] **Style tab applies §6.4 controls per the Sprint-8 matrix and
-  flows through `setComponentStyle`.** For every component except
-  Spacer (no Style controls) and Divider (Margin only), the Style
-  tab exposes Background, Padding, Margin, Border, Border radius,
-  Shadow, Width, Height, Text color. Edits commit on every change;
-  the canvas re-renders the affected node within the same React
-  commit as the store update. Setting all four sides of Padding /
-  Margin to empty writes the field as `undefined`. Choosing the
-  active Shadow preset clears the field. Setting Width / Height to
-  empty clears the field.
+- [ ] **Reorder within a parent works via drag.** Dragging
+  one of a Section's children past a sibling's midpoint
+  reorders them. The store's `reorderChildren` action fires
+  exactly once per drop. The selection persists on the moved
+  node.
 
-- [ ] **Animation tab edits `node.animation`.** The two preset selects
-  list the ten `ANIMATION_PRESETS` (with a leading "(none)" entry
-  that maps to `undefined`). Duration and Delay accept non-negative
-  integers in milliseconds. Setting both presets to `(none)` and
-  clearing duration/delay writes `animation: undefined` on the node.
+- [ ] **Cross-parent move works via drag.** Dragging a node
+  from Section A and dropping into Section B updates both
+  parents in a single store transition (one
+  `applyMoveComponent` call). The selection persists on the
+  moved node. Moving a node into one of its own descendants
+  is rejected.
 
-- [ ] **Visibility tab edits `node.visibility`.** Three radio cards
-  (Always / Desktop only / Mobile only). Selecting "Always" writes
-  `visibility: undefined` on the node.
+- [ ] **Esc cancels an in-progress drag.** Pressing Escape
+  while a palette card or a canvas node is being dragged
+  aborts the drop: dnd-kit's `onDragCancel` fires, no store
+  mutation occurs, the DragOverlay disappears, and the
+  rendered tree is identical to the pre-drag tree.
 
-- [ ] **Advanced tab is a documented placeholder.** Renders the `Info`
-  icon, the heading "Custom CSS class & HTML id", and the body copy
-  exactly as written in the Owned-paths section. Renders
-  `data-testid="advanced-tab-placeholder"`. Mutates nothing.
+- [ ] **Column right-edge resize adjusts `props.span`.**
+  Selecting a `Column` reveals a right-edge handle. Dragging
+  it leftward shrinks the span; rightward grows it. The span
+  snaps to integers 1–12 (the column index nearest the
+  pointer release). The store's `setComponentSpan` action
+  fires once on `pointerup`. Esc during the drag cancels and
+  reverts. The Column's `data-column-span` attribute (which
+  Column already emits) updates to match.
 
-- [ ] **Content panels are live for the seven named components.**
-  Heading, Paragraph, Button, Image, NavBar, Footer, and InputField
-  expose every prop documented in their respective `SPEC.md`. Edits
-  commit on every change through `setComponentProps`. The canvas
-  reflects the change within the same React commit. Each panel's
-  helper text and labels match the verbatim wording in the
-  Owned-paths section.
+- [ ] **Bottom-edge resize adjusts the height for the seven
+  resizable types.** For `Section`, `Row`, `Column`, `Image`,
+  `PropertyCard`, `UnitCard` the handle writes
+  `style.height = "${px}px"`; for `Spacer` it writes
+  `props.height = px` (number). Heights snap to the nearest
+  multiple of 8 with a floor of 8 px (Spacer floor 0). Esc
+  during the drag cancels and reverts. The handle is hidden
+  on every other component type.
 
-- [ ] **Button's Content panel implements §8.12 Link mode and Detail
-  page.** Selecting "Static URL" writes `linkMode: "static"` and
-  `detailPageSlug: undefined`; the Href input is editable. Selecting
-  "Detail page" writes `linkMode: "detail"` and a chosen
-  `detailPageSlug`; the Href input becomes read-only with the helper
-  "Computed at render time as `/{detailPageSlug}/{row.id}`." The
-  detail-page select reads
-  `state.draftConfig.pages.filter(p => p.kind === "detail")` and is
-  disabled with the placeholder copy when the list is empty.
+- [ ] **Right-click still opens the Element Edit panel.**
+  Sprint 8's right-click → element-edit flow is unchanged. A
+  right-click on a draggable node calls
+  `enterElementEditMode(id)` exactly once and does not
+  trigger a drag. The Element Edit panel shows the same
+  five tabs (Content / Style / Animation / Visibility /
+  Advanced).
 
-- [ ] **InputField's Content panel implements the §8.12
-  `defaultValueFromQueryParam` field.** A text input under Default
-  value, with helper text "Reads `?<param>` from the current URL on
-  render." Empty writes `undefined`.
+- [ ] **Preview mode disables drag and resize.** Toggling
+  preview via the topbar removes all dnd listeners and
+  hides resize handles. Switching back to edit re-enables
+  them. The Sprint-6 selection chrome still hides in preview.
 
-- [ ] **Content panels are placeholders for the other thirteen
-  components, with the verbatim copy specified above.** Each
-  placeholder exposes
-  `data-testid="content-placeholder-${T.toLowerCase()}"` for tests.
+- [ ] **Editor store actions are typed, error-coded, and
+  flip `saveState`.** `addComponentChild`, `moveComponent`,
+  `reorderChildren`, `setComponentSpan`,
+  `setComponentDimension` each delegate to a pure helper,
+  flip `saveState` to `"dirty"`, and trigger autosave via
+  the existing Sprint-6 hook. Each error path throws
+  `EditorActionError` with one of the new codes
+  (`invalid_drop_target`, `reorder_mismatch`,
+  `invalid_resize_target`) plus the existing
+  `component_not_found` and `page_root_locked`.
 
-- [ ] **Delete-component button removes the selected node and exits
-  element-edit mode.** Clicking the bottom-of-panel Delete button
-  opens a shadcn `AlertDialog` ("Delete this component? This cannot
-  be undone."). Confirming calls `removeComponent(id)`, then
-  `exitElementEditMode`. The page's tree no longer contains the
-  removed node; the autosave PATCH fires within the standard
-  debounce window. The button is disabled with a tooltip when the
-  selected node is the current page's `rootComponent`.
-
-- [ ] **Component-level mutators flip `saveState` to `"dirty"` and
-  trigger autosave.** Each of `setComponentProps`,
-  `setComponentStyle`, `setComponentAnimation`,
-  `setComponentVisibility`, and `removeComponent` writes a new
-  `draftConfig` and flips `saveState` to `"dirty"`. The existing
-  Sprint-6 autosave hook PATCHes
-  `/api/sites/[siteId]/working-version` after the standard debounce
-  with the new config; on 204, `SaveIndicator` reports "Saved Xs
-  ago". Concurrent mutations during an in-flight save coalesce per
-  the Sprint-6 contract.
+- [ ] **No new files outside the "Owned" scope above.** No
+  edits to forbidden files. No new dependencies beyond the
+  dnd-kit packages. No schema changes. If you catch yourself
+  wanting any of these, file a Deviation Report.
 
 - [ ] **Coding standards (§15) honored.** No `any`. No
-  `@ts-ignore`. No `.skip` or `.only` in tests. No commented-out
-  code. No `console.log`. Server-only files start with
-  `import "server-only";`. Client components start with
-  `"use client";` on line 1. New shadcn primitives (if any) live
-  under `apps/web/components/ui/` and are added through
-  `pnpm dlx shadcn@latest add`.
+  `@ts-ignore`. No `.skip` / `.only` in tests. No
+  commented-out code. No `console.log` in committed source
+  (the dev-mode warning helper noted above is the single
+  exception and lives behind a `NODE_ENV` guard).
 
-- [ ] **Tests added.** ≥ 25 new Vitest tests across:
-  - editor-state actions: `applySetComponentProps` happy path +
-    not-found + nested-tree round-trip; `applySetComponentStyle`
-    happy path + clear-to-undefined; `applySetComponentAnimation`
-    clear-to-undefined; `applySetComponentVisibility`
-    clear-to-undefined; `applyRemoveComponent` happy path +
-    not-found + page-root-locked.
-  - editor-state store: `enterElementEditMode` /
-    `exitElementEditMode` / `setElementEditTab` semantics;
-    page-switch and preview-toggle exit element-edit mode;
-    `removeComponent` clears `selectedComponentId` if it was
-    selected.
-  - canvas: right-click on a component fires
-    `enterElementEditMode` with the correct id; right-clicking a
-    different component while in element-edit replaces the
-    selection without exiting.
-  - left sidebar: renders the four-tab UI in primary mode; renders
-    `<EditPanelShell />` in element-edit mode.
-  - StyleTab: writes `setComponentStyle` on Background / Padding /
-    Border / Shadow change; honors the Spacer "no chrome" carve-out;
-    honors the Divider "Margin only" carve-out.
-  - AnimationTab: setting both presets to "(none)" writes
-    `animation: undefined`.
-  - VisibilityTab: selecting "Always" writes `visibility: undefined`.
-  - AdvancedTab: renders the placeholder testid and does not write.
-  - Heading EditPanel: text + level edits commit through the store.
-  - Paragraph EditPanel: text edits commit through the store.
-  - Button EditPanel: switching to Detail mode disables the Href
-    input and writes `linkMode: "detail"`; switching back to Static
-    clears `detailPageSlug`.
-  - Image EditPanel: src / alt / fit edits commit through the store.
-  - NavBar EditPanel: adding and removing a link writes the new
-    array.
-  - Footer EditPanel: adding and removing a column writes the new
-    array.
-  - InputField EditPanel: setting `defaultValueFromQueryParam`
-    writes the prop; clearing it writes `undefined`.
-  - DeleteComponentButton: confirming removes the node and exits
-    element-edit mode; disabled state tooltip text matches the
-    spec.
+- [ ] **Tests added.** ≥ 30 new Vitest tests across the dnd
+  module, the editor-state actions extension, the editor-state
+  store extension, the EditModeWrapper extension, and the
+  Add-tab ComponentCard extension. Every new error-code path
+  is covered by at least one test. Existing tests
+  (Sprint 3 / 5 / 6 / 8) continue to pass unchanged.
 
-- [ ] **All quality gates pass.**
-  - `pnpm test` — zero failures, zero skipped.
-  - `pnpm build` — zero TypeScript errors, zero warnings.
-  - `pnpm biome check` — zero warnings.
-  - Manual smoke test (below) — every step PASS.
+- [ ] **Quality gates pass.** `pnpm test` — zero failures,
+  zero skipped. `pnpm build` — zero TypeScript errors, zero
+  warnings. `pnpm biome check` — zero warnings. The manual
+  smoke test (next section) passes on a fresh `pnpm dev`.
 
-- [ ] **No new files outside the Owned scope.** `git status` shows
-  changed files only inside the Owned list above, plus any
-  shadcn primitive added via `pnpm dlx shadcn@latest add` (each one
-  noted in the Sprint Completion Report under External Actions
-  Required as "ran shadcn add for ${name}").
-
-- [ ] **No new dependencies added without an approved Deviation.**
-  Adding a shadcn primitive does NOT require a Deviation — that is
-  expected and pre-authorized. Adding any other npm package
-  requires the Deviation Protocol.
-
-- [ ] **No deviations were silently absorbed.** Every deviation that
-  occurred during the sprint was reported and approved per the
-  protocol below. `DECISIONS.md` has one new entry per approved
-  deviation with the user's verbatim approval text.
-
-- [ ] **Sprint Completion Report emitted verbatim** in the format at
-  the bottom of this file, with a populated External Actions Required
-  block (Vercel: none; Supabase: none — no migrations; Anthropic:
-  none — no AI calls in this sprint; Local: list any shadcn primitives
-  added; Other: none unless approved deviations dictate otherwise).
+- [ ] **`DECISIONS.md` updated if any deviation was approved
+  during this sprint.** If no deviations were approved, write
+  "None" in the Sprint Completion Report's Deviations field.
 
 ## Manual smoke test (numbered, click-by-click)
 
-This script runs against a clean `pnpm dev` after the sprint's automated
-gates pass. The seeded Aurora demo site is the default target.
+1. Run `pnpm dev` from the repo root.
+2. Open `http://localhost:3000/aurora-cincy/edit` in a fresh
+   incognito browser window.
+3. Wait for the editor to load. Confirm the canvas shows the
+   seeded Aurora home page with the hero, repeater, and
+   footer.
+4. In the left sidebar, click the **Add** tab.
+5. Confirm the Add tab no longer shows the
+   "Drag-and-drop coming in the next update." footer line.
+6. Find the **Heading** card under the Content category.
+   Press and hold the left mouse button on the card. Move
+   the cursor at least 10 pixels to enter drag mode.
+   Confirm a `DragOverlay` appears at the cursor showing
+   the Heading icon and label "Heading".
+7. Drag the cursor over the canvas. Confirm a Section in
+   the canvas highlights with a blue accent bar at the
+   intended drop position. Drag over a `Heading` already
+   in the canvas; confirm its highlight is greyed out
+   (children policy `none`).
+8. Release over a Section. Confirm a new "New heading"
+   `<h2>` appears in the canvas at the drop position. The
+   left sidebar shows it as the new selection. The
+   Sprint-6 SaveIndicator briefly reads "Saving…" and
+   then "Saved Xs ago".
+9. Right-click the new heading. Confirm the LeftSidebar
+   swaps to Element Edit mode and the panel title reads
+   "Heading". Click the back arrow to exit.
+10. Click the new heading once to select it. With it
+    selected, drag it past the next sibling. Release.
+    Confirm the order changed in the rendered DOM.
+11. Drag the new heading from its current Section into a
+    different Section on the page. Release. Confirm both
+    Sections updated.
+12. Locate a `Column` in the canvas (the seeded Aurora
+    page has multiple). Click to select it. A right-edge
+    handle appears. Press the handle, drag left a few
+    columns' width, release. Confirm the Column's
+    `data-column-span` attribute decreased and the
+    rendered width shrank. Press Cmd/Ctrl+Z does NOT need
+    to work this sprint — undo lands later. Just confirm
+    the new span persists.
+13. Locate the seeded `Spacer`. Click to select it.
+    Drag the bottom-edge handle downward by ~80 px.
+    Release. Inspect the rendered `<div data-component-type="Spacer">` —
+    its `style.height` should be the new value in px.
+14. Locate a `Section`. Click to select it. Drag its
+    bottom-edge handle downward by ~120 px. Release. The
+    Section's height grows. Re-select it and drag the
+    handle back to its original position.
+15. Drag a palette card (any) and press **Esc** mid-drag.
+    Confirm the drop is cancelled — no new node appears,
+    the DragOverlay disappears, and the SaveIndicator
+    does NOT change to "Saving…".
+16. Toggle **Preview** in the topbar. Confirm: the
+    Add-tab cards still render but cannot be dragged onto
+    the canvas (try it — nothing happens); resize handles
+    do not appear on selected components; selection chrome
+    is hidden. Toggle Preview off; confirm everything
+    re-enables.
+17. With drag and resize working, click around the page,
+    confirm the Sprint-6 selection chrome and the
+    Sprint-8 right-click panel both still work without
+    regressions. Refresh the browser; confirm the new
+    nodes and resized values persist (Sprint-6 autosave
+    + initial-load round-trip).
+18. Open the browser DevTools Console. There should be no
+    `console.log`, `console.warn`, or `console.error`
+    output during normal use.
+19. Stop the dev server. Run `pnpm test`, `pnpm build`,
+    and `pnpm biome check`. All three pass with zero
+    failures and zero warnings.
 
-1. Run `pnpm install` to pick up any new shadcn primitives.
-2. Run `pnpm seed` if the hosted Supabase data is not loaded for this
-   workstation (re-uses the Sprint-1b/2a seeded Aurora rows).
-3. Run `pnpm dev` and open `http://localhost:3000/`.
-4. Click **Open Setup**, fill the form with placeholder data, click
-   **Ready to Preview & Edit?**, and wait for the iframe preview to
-   resolve. (Sprint 4 path; this primes a working version.)
-5. Click **Open in Editor** in the Element-1 footer. Verify the URL
-   becomes `/{site-slug}/edit` and the editor chrome (top bar, left
-   sidebar with four tabs, canvas, right sidebar) is visible.
-6. **Right-click the HeroBanner heading on the canvas.** Verify the
-   left sidebar replaces its four-tab UI with the Element Edit panel,
-   the title shows "Heading", and the active tab is Content.
-7. In the Content tab, change the Heading text from its current
-   value to `Welcome to Aurora`. Verify the canvas updates within
-   one second AND the SaveIndicator in the top bar transitions
-   `Unsaved changes → Saving… → Saved 1s ago` over the next few
-   seconds.
-8. Click the **Style** tab. Change Padding (linked) to `24`. Verify
-   the canvas reflects the new padding within one second.
-9. Click **Animation**. Set onEnter to `fadeInUp`, duration to `300`.
-   Verify the change saves (SaveIndicator goes through the
-   dirty → saving → saved cycle).
-10. Click **Visibility**. Select **Desktop only**. Verify the change
-    saves and the canvas continues to render the heading (Visibility
-    is honored at deploy time only — no client-side hide in the
-    editor).
-11. Click **Advanced**. Verify the placeholder copy ("Custom CSS
-    class & HTML id …") renders and no inputs are present.
-12. Click the **back arrow** at the top of the panel. Verify the
-    left sidebar reverts to its four-tab UI on the previously-active
-    primary tab and the canvas selection outline disappears.
-13. **Right-click a Button anywhere in the canvas** (or temporarily
-    add one via the Pages-tab → Add page flow if no Button exists on
-    the home page). In the Button Content panel, switch Link mode
-    to **Detail page**. Verify the Href input becomes read-only, the
-    Detail-page select appears, and (because the demo site does not
-    have a detail page yet) the select is disabled with the helper
-    "Add a detail page from the Pages tab first."
-14. Click the back arrow. Switch to the Pages tab. Click **Add
-    page**. Set kind to **Detail**, data source to **units**, slug
-    to `unit`. Submit.
-15. Right-click the same Button as in step 13. Switch Link mode to
-    **Detail page**. Verify the Detail-page select now lists "Unit
-    Detail" (the page name), choose it, and verify the panel writes
-    `linkMode: "detail"` and `detailPageSlug: "unit"` (visible by
-    refreshing or by inspecting the working-version row in the
-    Supabase dashboard). The canvas Button's `data-link-mode` and
-    `data-detail-page-slug` attributes update accordingly per the
-    Sprint-5b Button renderer.
-16. Right-click an InputField (the demo seeded form has one; if not,
-    add a Form via Pages-tab template flow — Sprint 10 work — OR
-    open `/dev/components` and right-click the seeded
-    `cmp_input_query` InputField in the canvas-rendered fixture).
-    In its Content panel, set Default from query parameter to
-    `propertyId`. Verify the change saves and the InputField's
-    runtime hydration (visible at the same dev preview) reads
-    `?propertyId=…` on next page load.
-17. Right-click any leaf component. Click **Delete component** at
-    the bottom of the panel. Confirm the AlertDialog. Verify the
-    component disappears from the canvas, the panel exits to
-    primary mode, and the SaveIndicator goes through the
-    dirty → saving → saved cycle.
-18. Right-click the page's outermost Section (its `rootComponent`).
-    Verify the **Delete component** button is disabled with the
-    tooltip "The page root cannot be deleted; switch to the Pages
-    tab to delete the page itself."
-19. Toggle Preview mode in the top bar. Verify the LeftSidebar
-    automatically exits element-edit (if it was in element-edit) and
-    the canvas removes the selection outline.
-20. Reload the editor URL. Verify every change made above
-    persisted: the heading text, the padding, the animation preset,
-    the Button's Detail-mode link, the InputField's query-param
-    default, and the deleted component is still gone.
+If any step fails, treat it as a Deviation per the protocol
+below.
 
-Every step must PASS before the sprint is declared done. A single
-FAIL is a Deviation, not a "we'll fix it next sprint" item.
+## Known risks & failure modes
 
-## Known risks and failure modes
+- **dnd-kit React 19 peer-dependency conflict.** `@dnd-kit/core`
+  historically pegs to React 16/17/18. If `pnpm install`
+  rejects the install or warns about peer deps, STOP and emit
+  a Deviation Report — do NOT use `--legacy-peer-deps`, do
+  NOT downgrade React, do NOT pin to an older dnd-kit major
+  without approval. Likelihood: medium. Mitigation: Sprint 7
+  is the first time dnd-kit appears in this codebase; its
+  React-19 compatibility is the most likely point of friction.
 
-- **Edit-panel re-render thrash on every keystroke.** Each keystroke
-  in a text input writes a new `draftConfig` reference. The renderer
-  is memoized at the `ComponentRenderer` level, so only the affected
-  subtree re-renders, but the LeftSidebar itself reads `draftConfig`
-  for the detail-page select and the page-root guard. Mitigation:
-  the LeftSidebar's `EditPanelShell` selects only what it needs
-  (`selectedComponentId`, `leftSidebarMode`,
-  `selectSelectedComponentNode`) — do NOT subscribe the whole
-  `draftConfig` reference inside the Shell or any tab. Use Zustand's
-  selector form (`useEditorStore((s) => s.selectedComponentId)`) and
-  shallow-equal comparators where helpful.
-- **Component-level mutator races with autosave.** A mutation that
-  fires while `saveState === "saving"` flips state back to
-  `"dirty"`; the autosave hook coalesces into one follow-up save.
-  This is identical to Sprint-6 behavior; do NOT add a second
-  debouncer in the edit panel. If you see double-PATCHes in the
-  Network tab, that is a Deviation — escalate.
-- **Pre-Sprint-3b configs in the store.** A working version saved
-  before the Sprint-3b schema-lock break does not have `kind` on
-  any page. `parseSiteConfig` injects `kind: "static"` on read; the
-  Pages tab and `DetailPageSelect` rely on that. If a working
-  version is read raw (without `parseSiteConfig`) anywhere in the
-  edit-panel code, the Detail-page select will appear empty when it
-  should not. Always use the parsed config.
-- **shadcn primitives may be missing.** If the editor uses any
-  shadcn primitive that is not yet in `apps/web/components/ui/`
-  (e.g., `Select`, `RadioGroup`, `Switch`, `Tooltip`,
-  `AlertDialog`), run `pnpm dlx shadcn@latest add ${name}` and treat
-  the new file as Sprint-8 owned. Note each one in the Sprint
-  Completion Report's External Actions Required block. Do NOT roll
-  your own; use the canonical primitive.
-- **`onContextMenu` swallowed by inner elements.** If a child element
-  inside a component (e.g., a NavBar `<a>`) prevents-default on
-  right-click before `EditModeWrapper` sees it, the swap will not
-  fire. Mitigation: `EditModeWrapper` already uses
-  `onContextMenu={handleContextMenu}` which is captured at the
-  wrapper level; React's bubbling delivers it after the inner
-  default. If a specific component's renderer prevents bubbling,
-  that is a Sprint-5 bug, not Sprint-8 — emit a Deviation.
-- **Detail-page select with zero detail pages.** The select is
-  intentionally disabled with the placeholder "Add a detail page
-  from the Pages tab first." Do NOT auto-create a detail page; the
-  user must do that explicitly.
-- **Schema mismatch on advanced fields.** If pre-flight check #6
-  finds `htmlId` / `className` already on `componentNodeSchema`,
-  the Advanced placeholder is wrong. Emit a Deviation Report
-  rather than silently shipping live controls.
-- **Right-click on the page-root component.** The page-root delete
-  guard relies on
-  `selectCurrentPage(state).rootComponent.id === selectedComponentId`.
-  If a page somehow has no `rootComponent` (impossible per schema,
-  but defend defensively), treat the panel as if no node is
-  selected and exit element-edit mode.
+- **Click vs. drag activation on palette cards.** Without an
+  activation distance, every click on a palette card would
+  start a drag and prevent the Sprint-6 selection chrome from
+  firing. Mitigation: configure the dnd-kit pointer sensor
+  with `activationConstraint: { distance: 10 }`. Tested in
+  `DndCanvasProvider.test.tsx` case (g).
 
-## Notes and hints (non-binding context)
+- **Right-click triggering drag.** dnd-kit's pointer sensor
+  listens to the primary button only by default; a `button:
+  2` (right-click) on a draggable element should not start a
+  drag. Verify in the smoke test step 9 — if the Element
+  Edit panel does not open on right-click of a draggable
+  node, treat it as a Deviation and emit a report.
 
-- **Tab default and keyboard nav.** Initial tab is Content. Left and
-  Right arrow keys cycle the tablist; the active tab gets focus.
-- **Where to put local form state.** Each component-specific Content
-  panel can hold local `useState` for in-flight text edits if
-  necessary (e.g., to debounce by 200ms before committing), but
-  prefer immediate `setComponentProps` writes. The autosave debounce
-  protects the network; per-keystroke local debouncing only helps if
-  Vitest tests measure render counts (they do not in Sprint 8).
-- **Schema-aware fallback in panels.** Use each component's existing
-  prop schema (e.g., `buttonPropsSchema` is module-private inside
-  `Button/index.tsx`). Since you cannot import it (Forbidden file),
-  re-derive the panel's local validators using `z.object(...)` to
-  match the SPEC.md table — the runtime renderer's `safeParse` is the
-  ultimate guard regardless.
-- **Background gradient angle.** Default to 180 degrees per
-  `styleConfigToCss`'s fallback. The Background control surfaces
-  the angle as a numeric input with default 180.
-- **Spacing "linked" toggle.** When linked, all four sides share one
-  value; the linked control writes the same value to all four sides
-  on every change. Toggling linked off does not zero anything.
-- **Selection trail across tab switches.** Switching tabs MUST NOT
-  change the selection. Switching the active tab is purely a UI
-  concern in the store — `selectedComponentId` stays put.
-- **Esc inside the edit panel.** The Sprint-6 Canvas Esc handler
-  bails when focus is in an input / textarea / select. That logic
-  applies inside the edit panel for free — Esc inside a
-  panel input does NOT clear selection. Esc on the canvas
-  (background-focused) still clears.
-- **Delete confirm copy.** "Delete this component? This cannot be
-  undone." (sentence case; period). Confirm button reads "Delete";
-  cancel reads "Cancel". Use shadcn `AlertDialog` defaults.
-- **Detail-page select rendering.** Render
-  `<option value={page.slug}>{page.name}</option>` per detail page,
-  sorted by `name` ascending. Two detail pages with the same name
-  is permitted by the schema; surface the slug in parentheses to
-  disambiguate when names collide.
-- **Test fixture pattern.** Re-use `__resetEditorStoreForTests` from
-  `apps/web/lib/editor-state/store.ts` and `hydrate` a minimal
-  config in `beforeEach`. Every action test imports
-  `applyXxxxx` directly from `actions.ts`, never the store.
-- **Renderer memoization.** `ComponentRenderer` is memoized on
-  `node` reference equality. The action helpers preserve referential
-  equality for unchanged subtrees by structural sharing (only the
-  changed subtree gets a new object). Verify by running a render-count
-  test on a deep fixture — not required for the sprint, but a useful
-  sanity check during development.
+- **`useSortable` stripping `EditModeWrapper`'s click
+  handler.** Spreading dnd-kit listeners last would
+  shadow the click handler. Mitigation: spread
+  `attributes` and `listeners` BEFORE `onClick` /
+  `onContextMenu` / `onKeyDown` in EditModeWrapper, so the
+  Sprint-6/8 handlers win. Tested in
+  `EditModeWrapper.test.tsx` extension cases.
 
-## Deviation Protocol (mandatory — do not modify)
+- **ResizeHandles aligning to the wrong DOM node after a
+  drop.** The handle queries by `data-edit-id`. If the
+  selected node is removed mid-render (e.g. by a sibling
+  drop op), the query returns null. Mitigation:
+  ResizeHandles renders nothing when the query returns
+  null and re-runs on every store transition. Tested.
 
-If you (Claude Code) discover during this sprint that ANY part of the plan
-cannot be implemented exactly as written, you MUST stop and emit a Deviation
-Report in the format below. You MUST NOT proceed with an alternative until
-the user has explicitly approved it with the words "Approved" or equivalent.
+- **Drop onto a `Repeater` template child.** Sprint 9 will
+  introduce row context; Sprint 7 must NOT special-case
+  Repeater children beyond the `one`-policy gate. If a
+  user drops a Heading inside an empty Repeater, the
+  template position is filled — this is correct Sprint-7
+  behavior. Sprint 9 will then resolve `{{ row.* }}`
+  tokens on render. Document this in the
+  `dropTargetPolicy.test.ts` file's header comment.
 
-A "deviation" includes: missing/broken/incompatible libraries, impossible
-function signatures, scope additions, file additions outside the declared
-scope, test plans that cannot be executed as written, and any case where you
-catch yourself thinking "I'll just do it slightly differently."
+- **Resize math drifting under nested transforms.** If a
+  parent applies `transform: scale(...)` (none currently
+  do, but a Section could via a future style), the
+  pointer delta would not match pixel delta. Sprint 7
+  uses `getBoundingClientRect()` for span snap and
+  pointer delta for height, both unaffected by transforms
+  applied to ancestors of `document.body`. Document this
+  in `ResizeHandles.tsx`'s file header.
 
-### Deviation Report (emit verbatim)
+## Notes & hints (non-binding context)
 
-```🛑 DEVIATION DETECTEDSprint: Sprint 8 — Element Edit Mode (manual)
-Failed DoD item: [The exact bullet from Definition of Done that this blocks]What's not working (1–2 sentences, plain English):
-[Describe the problem like you're talking to a non-engineer.]Why it's not working (1–2 sentences, technical):
-[Brief technical reason.]Proposed alternative (1–2 sentences, plain English):
-[Describe the replacement like you're talking to a non-engineer.]Trade-offs:
-
-Gain: [What we get]
-Lose: [What we give up]
-Risk:  [What might break]
-Estimated impact on the rest of the sprint:
-[Will this affect later DoD items? Other sprints? Be honest.]Awaiting approval to proceed. Reply "Approved" to continue, or describe a
-different direction.
-
-After emitting the report, STOP. Do not write code. Do not edit files. Wait.
-
-### Approval handling
-
-- "Approved" → implement the proposed alternative as written.
-- "Approved with changes: [...]" → implement with the user's modifications.
-- "Rejected — [direction]" → discard the proposal; follow the new direction.
-- A clarifying question → answer it; do not start work yet.
-- Anything else → ask "Is that an approval to proceed?" Do not assume.
-
-After any approved deviation, append an entry to `/DECISIONS.md` with date,
-sprint, what was changed, and the user's approval message verbatim.
+- dnd-kit's `useSortable` returns a `transform` matrix that
+  must be stringified via `CSS.Transform.toString(transform)`.
+  Import `CSS` from `@dnd-kit/utilities` (preferred) or from
+  `@dnd-kit/sortable` if Sprint 7 chooses to skip the
+  `utilities` package.
+- The 10-px activation constraint is a dnd-kit config:
+  `useSensor(PointerSensor, { activationConstraint: { distance: 10 } })`.
+- Vitest can drive dnd-kit drags with synthetic
+  `pointerdown`/`pointermove`/`pointerup` events on the
+  rendered card; see the dnd-kit docs' "Testing" page for
+  the exact event sequence. If a test consistently fails to
+  observe a drag, switch to manual `dispatchEvent` calls on
+  the actual DOM node returned by the sensor's ref.
+- The `ResizeObserver` global is available in jsdom 26
+  (already a dev dependency) — no polyfill needed.
+- `crypto.randomUUID` is available in jsdom 26 too; the new
+  node id helper does not need a polyfill.
+- The `componentRegistry`'s `meta.childrenPolicy` is the
+  authoritative source for drop-target validity. Do NOT
+  duplicate the policy in Sprint 7. Do NOT teach Sprint 7
+  about per-component prop shapes — `createDefaultNode`
+  uses the explicit table above and the runtime `safeParse`
+  is the only validator.
 
 ## Definition of "done" gating
 
-A sprint is not done until all of the following pass with no warnings:
+A sprint is not done until all of the following pass with no
+warnings:
 
 - `pnpm test`
 - `pnpm build`
 - `pnpm biome check`
 - The manual smoke test above.
 
-If any check fails, treat it as a Deviation. Do not commit. Do not declare
-the sprint complete.
+If any check fails, treat it as a Deviation. Do not commit.
+Do not declare the sprint complete.
 
 ## Useful local commands
 
-- `pnpm dev` — local dev server (against the hosted Supabase project).
+- `pnpm dev` — local dev server (against the hosted Supabase
+  project).
 - `pnpm test` — Vitest.
-- `pnpm test:e2e` — Playwright (only the demo flow; not required for
-  Sprint 8).
-- `pnpm seed` — `supabase db reset --linked`; reloads the hosted
-  Aurora seed.
+- `pnpm test:e2e` — Playwright (only the demo flow; not
+  required for Sprint 7).
+- `pnpm seed` — `supabase db reset --linked`; reloads the
+  hosted Aurora seed.
 - `pnpm db:push` — apply pending migrations against the hosted
-  Supabase project.
-- `pnpm db:types` — regenerate `apps/web/types/database.ts` after
-  any schema change. Sprint 8 should not need this.
+  Supabase project. **Sprint 7 should not touch the DB and
+  should not run this.**
+- `pnpm db:types` — regenerate `apps/web/types/database.ts`
+  after any schema change. **Sprint 7 should not need this.**
 
-## Sprint Completion Report (emit verbatim when finished)✅ SPRINT 8 COMPLETEPre-flight check:
+## Deviation Protocol (mandatory — do not modify)
 
- git branch is master
- Sprint 6 is merged (editor barrel exposes the expected exports)
- Editor store has the Sprint-6 surface (state + actions)
- EditModeWrapper exposes onContextMenu (and Shift+F10 / ContextMenu key)
- Renderer + ComponentRenderer plumb onContextMenu in mode="edit"
- componentNodeSchema does NOT have htmlId / className (Advanced is a placeholder)
- All 20 EditPanel.tsx stubs exist
-Definition of Done:
+If you (Claude Code) discover during this sprint that ANY part
+of the plan cannot be implemented exactly as written, you MUST
+stop and emit a Deviation Report in the format below. You MUST
+NOT proceed with an alternative until the user has explicitly
+approved it with the words "Approved" or equivalent.
 
- Right-click swaps the LeftSidebar to Element Edit and selects the right-clicked component
- Five-tab Element Edit panel renders for every selected component
- Back-arrow exits element-edit mode and clears the selection
- Style tab applies §6.4 controls per the Sprint-8 matrix and flows through setComponentStyle
- Animation tab edits node.animation
- Visibility tab edits node.visibility
- Advanced tab is a documented placeholder
- Content panels are live for the seven named components
- Button's Content panel implements §8.12 Link mode and Detail page
- InputField's Content panel implements the §8.12 defaultValueFromQueryParam field
- Content panels are placeholders for the other thirteen components, with verbatim copy
- Delete-component button removes the selected node and exits element-edit mode
- Component-level mutators flip saveState to "dirty" and trigger autosave
- Coding standards (§15) honored
- Tests added (count: N)
- All quality gates pass
- No new files outside the Owned scope
- No new dependencies added without an approved Deviation
- No deviations were silently absorbed
- Sprint Completion Report emitted verbatim
-Files created:
+A "deviation" includes: missing/broken/incompatible libraries,
+impossible function signatures, scope additions, file additions
+outside the declared scope, test plans that cannot be executed
+as written, and any case where you catch yourself thinking
+"I'll just do it slightly differently."
 
-apps/web/components/editor/edit-panels/EditPanelShell.tsx (X lines)
-apps/web/components/editor/edit-panels/EditPanelTabs.tsx (X lines)
-apps/web/components/editor/edit-panels/DeleteComponentButton.tsx (X lines)
-apps/web/components/editor/edit-panels/tabs/ContentTabHost.tsx (X lines)
-apps/web/components/editor/edit-panels/tabs/StyleTab.tsx (X lines)
-apps/web/components/editor/edit-panels/tabs/AnimationTab.tsx (X lines)
-apps/web/components/editor/edit-panels/tabs/VisibilityTab.tsx (X lines)
-apps/web/components/editor/edit-panels/tabs/AdvancedTab.tsx (X lines)
-apps/web/components/editor/edit-panels/controls/{SpacingInput,ColorInput,BackgroundInput,BorderInput,ShadowSelect,SizeUnitInput,AnimationPresetSelect,NumberInput,TextInput,SelectInput,SegmentedControl,SwitchInput,LinksEditor,FooterColumnsEditor,SelectOptionsEditor,DetailPageSelect}.tsx (X lines each)
-apps/web/components/editor/edit-panels/index.ts (X lines)
-apps/web/components/editor/edit-panels/tests/*.test.tsx (X test files)
-Files modified:
+### Deviation Report (emit verbatim)
 
-apps/web/lib/editor-state/types.ts (+A −B)
-apps/web/lib/editor-state/actions.ts (+A −B)
-apps/web/lib/editor-state/store.ts (+A −B)
-apps/web/lib/editor-state/selectors.ts (+A −B)
-apps/web/lib/editor-state/index.ts (+A −B)
-apps/web/lib/editor-state/tests/store.test.ts (+A −B)
-apps/web/lib/editor-state/tests/actions.test.ts (+A −B)
-apps/web/components/editor/canvas/Canvas.tsx (+A −B)
-apps/web/components/editor/sidebar/LeftSidebar.tsx (+A −B)
-apps/web/components/editor/tests/canvas.test.tsx (+A −B)
-apps/web/components/editor/index.ts (+A −B)
-apps/web/components/site-components/Heading/EditPanel.tsx (+A −B)
-apps/web/components/site-components/Paragraph/EditPanel.tsx (+A −B)
-apps/web/components/site-components/Button/EditPanel.tsx (+A −B)
-apps/web/components/site-components/Image/EditPanel.tsx (+A −B)
-apps/web/components/site-components/NavBar/EditPanel.tsx (+A −B)
-apps/web/components/site-components/Footer/EditPanel.tsx (+A −B)
-apps/web/components/site-components/InputField/EditPanel.tsx (+A −B)
-apps/web/components/site-components/{Section,Row,Column,Logo,Spacer,Divider,HeroBanner,PropertyCard,UnitCard,Repeater,Form,MapEmbed,Gallery}/EditPanel.tsx (+A −B each, placeholder)
-Tests added: N (all passing)
-Test command output: [paste last 5 lines of pnpm test]
-Build output: [paste the "Compiled successfully" line]
-Biome output: [paste the "No fixes applied." line]Deviations approved during sprint: [list with date + DECISIONS.md anchor, or "None"]Manual smoke test result: [PASS / FAIL with details]External Actions Required (the user does these before declaring the sprint shipped):
-
-Vercel: none.
-Supabase: none. No new migrations. No DB schema changes.
-Anthropic: none. No AI calls in this sprint.
-Local: pnpm install (if any shadcn primitives were added).
-Other: none unless approved deviations dictate otherwise.
-Recommended next steps:
-
-Sprint 7 (Drag-and-drop). Sprint 7 wires dnd-kit so users can drag
-Add-tab cards onto the canvas and reorder existing components. Sprint 7
-consumes the same Zustand store this sprint extended; the new
-setComponentProps and tree-walk helpers in actions.ts are
-reusable for "move under a different parent". Sprint 7 also adds
-resize handles to Section / Row / Column / Image / Spacer / Cards;
-those handles call setComponentStyle for width / height and
-setComponentProps for Column.span.
+```

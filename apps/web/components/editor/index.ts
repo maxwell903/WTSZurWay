@@ -1,4 +1,35 @@
 export { Canvas } from "./canvas/Canvas";
+export {
+  canAcceptChild,
+  createDefaultNode,
+  DndCanvasProvider,
+  DragStateProvider,
+  DropZoneIndicator,
+  dropZoneId,
+  findInsertionIndex,
+  getChildrenPolicy,
+  isDropZoneId,
+  isNodeId,
+  isPaletteId,
+  nodeId,
+  paletteId,
+  PaletteDraggable,
+  parseDropZoneId,
+  parseNodeId,
+  parsePaletteId,
+  RESIZE_MATRIX,
+  ResizeHandles,
+  SortableProviderActive,
+  useDragState,
+  useNodeSortable,
+} from "./canvas/dnd";
+export type {
+  DragStateValue,
+  DropZoneId,
+  NodeDragId,
+  NodeSortableState,
+  PaletteDragId,
+} from "./canvas/dnd";
 export { SelectionBreadcrumb } from "./canvas/SelectionBreadcrumb";
 export {
   AdvancedTab,

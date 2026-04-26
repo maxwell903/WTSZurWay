@@ -906,3 +906,83 @@ known schema gap (\"Advanced tab placeholder until `htmlId` /
 
 **Cross-sprint impact:** The future schema sprint is the work item.
 No other Sprint 8 sibling files are affected.
+
+
+## 2026-04-26 — Sprint 7 — Default props table aligned to runtime safeParse for Form, HeroBanner, UnitCard
+
+**Context:** Sprint 7's "Default props for palette inserts" table is
+binding ("Every default must validate against the component's runtime
+`safeParse` … Do NOT silently fall back to the component's internal
+defaults — the schema is authoritative."). On entering the sprint,
+three rows in the table did not match the prop names that the
+corresponding `apps/web/components/site-components/${T}/index.tsx`
+runtime `safeParse` reads:
+
+- `Form` — table: `{ formId: "new_form", successMessage: "Thanks." }`.
+  Runtime: `formName: z.string().min(1)` (required), `submitLabel`,
+  `successMessage`. Without `formName`, runtime safeParse fails outright
+  and the component falls back to a hardcoded `"form"` string — exactly
+  the silent-fallback case the binding rule prohibits.
+- `HeroBanner` — table: `{ headline, subheadline, ctaLabel, ctaHref }`.
+  Runtime: `heading, subheading, ctaLabel, ctaHref, backgroundImage?,
+  overlay, height`. Zod's `.strip()` makes safeParse "succeed" by
+  silently dropping the orphan `headline`/`subheadline` keys, then the
+  runtime applies internal defaults (`heading: "Welcome"`,
+  `subheading: ""`).
+- `UnitCard` — table: `{ unitName, bedrooms, bathrooms, rent,
+  primaryImageUrl, ctaLabel, ctaHref }`. Runtime: `unitId?, heading,
+  beds, baths, sqft, rent, imageSrc, ctaLabel, ctaHref`. Same
+  silent-fallback pattern as HeroBanner.
+
+The other 17 rows match.
+
+**Original plan:** The table in Sprint 7's CLAUDE.md was treated as
+binding verbatim, with a per-`ComponentType` test in
+`createDefaultNode.test.ts` asserting the runtime `safeParse` accepts
+each default.
+
+**What changed:** Three rows revised to use the runtime-correct keys
+while preserving the table author's "intent" values. The Sprint-7
+default-props table is treated as if it read:
+
+| ComponentType  | Default `props` (revised)                                                                 |
+| -------------- | ----------------------------------------------------------------------------------------- |
+| `HeroBanner`   | `{ heading: "New hero", subheading: "", ctaLabel: "Learn more", ctaHref: "#" }`           |
+| `UnitCard`     | `{ heading: "Unit Name", beds: 0, baths: 0, sqft: 0, rent: 0, imageSrc: "", ctaLabel: "View Unit", ctaHref: "#" }` |
+| `Form`         | `{ formName: "new_form", submitLabel: "Submit", successMessage: "Thanks." }`              |
+
+`createDefaultNode.test.ts` round-trips each new node through both
+`componentNodeSchema.safeParse` (the structural schema) AND the
+component's runtime `safeParse` (the per-component prop schema), so a
+future drift on either side is caught at test time.
+
+**Rationale:** The binding rule explicitly forbids silent fallback to
+internal defaults; the only rule-respecting move was to align the
+table with the runtime contracts the components actually export. No
+runtime-component edits — those files remain in Sprint 7's Shared
+read-only category. The minimal renames preserve the visible intent
+(a "New hero" hero, a `0`-everything unit card, a named form).
+
+**User approval (verbatim):** "Approved"
+
+**Trade-offs accepted:**
+- Gain: drag-from-palette inserts produce a node whose props are
+  actually consumed by the renderer; `createDefaultNode.test.ts` can
+  enforce the per-component runtime schema as a contract guard
+  against future drift.
+- Lose: a small visible change to the binding table (3 rows out of 20).
+- Risk: zero behavior risk — these are brand-new defaults for new
+  palette drops; no existing seeded config is affected, no schema
+  changes, no runtime-component edits.
+
+**Affected files / modules:**
+- `apps/web/components/editor/canvas/dnd/createDefaultNode.ts` (uses
+  the revised props for Form / HeroBanner / UnitCard).
+- `apps/web/components/editor/canvas/dnd/__tests__/createDefaultNode.test.ts`
+  (asserts the revised props validate against each component's
+  runtime `safeParse`).
+
+**Cross-sprint impact:** Sprint 9 (data binding on Repeater children)
+will resolve `{{ row.* }}` tokens against the runtime keys
+(`heading`, `imageSrc`, `beds`, etc.) — same set Sprint 7 now writes
+on insert. No effect on Sprint 8 (already merged). No schema changes.

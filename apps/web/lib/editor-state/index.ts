@@ -1,12 +1,17 @@
 export { useAutosave, type UseAutosaveOptions } from "./autosave";
 export {
+  applyAddComponentChild,
   applyAddPage,
   applyDeletePage,
+  applyMoveComponent,
   applyRemoveComponent,
   applyRenamePage,
+  applyReorderChildren,
   applyReorderPages,
   applySetComponentAnimation,
+  applySetComponentDimension,
   applySetComponentProps,
+  applySetComponentSpan,
   applySetComponentStyle,
   applySetComponentVisibility,
   applySetFontFamily,
@@ -27,7 +32,12 @@ export {
   selectSelectionTrail,
   type PagePickerEntry,
 } from "./selectors";
-export { useEditorStore } from "./store";
+export {
+  findComponentById,
+  findComponentParentId,
+  findComponentTrail,
+  useEditorStore,
+} from "./store";
 export type {
   AddPageInput,
   ComponentId,

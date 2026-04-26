@@ -32,9 +32,6 @@ export function AddTab() {
           </section>
         );
       })}
-      <p className="mt-auto text-center text-[11px] text-zinc-500">
-        Drag-and-drop coming in the next update.
-      </p>
     </div>
   );
 }

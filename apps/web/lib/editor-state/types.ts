@@ -87,6 +87,19 @@ export type EditorActions = {
   setComponentAnimation: (id: ComponentId, animation: AnimationConfig | undefined) => void;
   setComponentVisibility: (id: ComponentId, visibility: ComponentVisibility | undefined) => void;
   removeComponent: (id: ComponentId) => void;
+  // Sprint 7 — drag-and-drop and resize mutators.
+  addComponentChild: (parentId: ComponentId, index: number, node: ComponentNode) => void;
+  moveComponent: (targetId: ComponentId, newParentId: ComponentId, newIndex: number) => void;
+  reorderChildren: (parentId: ComponentId, newOrder: ComponentId[]) => void;
+  setComponentSpan: (
+    id: ComponentId,
+    span: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12,
+  ) => void;
+  setComponentDimension: (
+    id: ComponentId,
+    axis: "width" | "height",
+    value: string | undefined,
+  ) => void;
   markSaving: () => void;
   markSaved: (at: number) => void;
   markError: (message: string) => void;
@@ -103,7 +116,11 @@ export type EditorActionErrorCode =
   | "page_not_found"
   | "out_of_bounds"
   | "component_not_found"
-  | "page_root_locked";
+  | "page_root_locked"
+  // Sprint 7 — drag-and-drop and resize error codes.
+  | "invalid_drop_target"
+  | "reorder_mismatch"
+  | "invalid_resize_target";
 
 export class EditorActionError extends Error {
   readonly code: EditorActionErrorCode;

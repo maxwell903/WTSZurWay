@@ -1,3 +1,4 @@
+import { canAcceptChild } from "@/components/editor/canvas/dnd/dropTargetPolicy";
 import { newComponentId } from "@/lib/site-config";
 import type {
   AnimationConfig,
@@ -331,4 +332,170 @@ export function applyRemoveComponent(config: SiteConfig, id: ComponentId): SiteC
     return { ...config, pages: nextPages };
   }
   fail("component_not_found", `Component "${id}" not found in any page.`);
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 7 -- drag-and-drop and resize tree mutators
+//
+// Same depth-first walk + structural-sharing pattern as the Sprint 8
+// component-level mutators. Children policy is checked here against the
+// component registry (the single source of truth — Sprint 7 CLAUDE.md
+// forbids duplicating the policy outside the registry meta).
+// `dropTargetPolicy.ts` exposes the same `canAcceptChild` for UI consumers
+// (DropZoneIndicator, DndCanvasProvider) so Sprint 7's two call sites
+// stay aligned via the registry.
+// ---------------------------------------------------------------------------
+
+function findNodeById(node: ComponentNode, id: ComponentId): ComponentNode | null {
+  if (node.id === id) return node;
+  for (const child of node.children ?? []) {
+    const found = findNodeById(child, id);
+    if (found) return found;
+  }
+  return null;
+}
+
+function findNodeAcrossPages(config: SiteConfig, id: ComponentId): ComponentNode | null {
+  for (const page of config.pages) {
+    const found = findNodeById(page.rootComponent, id);
+    if (found) return found;
+  }
+  return null;
+}
+
+function isInSubtree(root: ComponentNode, id: ComponentId): boolean {
+  if (root.id === id) return true;
+  for (const child of root.children ?? []) {
+    if (isInSubtree(child, id)) return true;
+  }
+  return false;
+}
+
+export function applyAddComponentChild(
+  config: SiteConfig,
+  parentId: ComponentId,
+  index: number,
+  node: ComponentNode,
+): SiteConfig {
+  return applyMapToConfig(config, parentId, (parent) => {
+    if (!canAcceptChild(parent, node.type)) {
+      fail(
+        "invalid_drop_target",
+        `Component "${parent.type}" cannot accept a child of type "${node.type}".`,
+      );
+    }
+    const children = (parent.children ?? []).slice();
+    const safeIndex = Math.max(0, Math.min(index, children.length));
+    children.splice(safeIndex, 0, node);
+    return { ...parent, children };
+  });
+}
+
+export function applyMoveComponent(
+  config: SiteConfig,
+  targetId: ComponentId,
+  newParentId: ComponentId,
+  newIndex: number,
+): SiteConfig {
+  // Page-root nodes are not movable.
+  for (const page of config.pages) {
+    if (page.rootComponent.id === targetId) {
+      fail("page_root_locked", "The page root cannot be moved.");
+    }
+  }
+  const target = findNodeAcrossPages(config, targetId);
+  if (!target) fail("component_not_found", `Component "${targetId}" not found in any page.`);
+
+  const newParent = findNodeAcrossPages(config, newParentId);
+  if (!newParent) {
+    fail("component_not_found", `Component "${newParentId}" not found in any page.`);
+  }
+
+  // A node cannot be moved into itself or any of its own descendants.
+  if (isInSubtree(target, newParentId)) {
+    fail("invalid_drop_target", "Cannot move a component into one of its own descendants.");
+  }
+
+  if (!canAcceptChild(newParent, target.type)) {
+    fail(
+      "invalid_drop_target",
+      `Component "${newParent.type}" cannot accept a child of type "${target.type}".`,
+    );
+  }
+
+  // Remove from current location, then re-insert under the new parent at
+  // the requested index. Children policy was already validated above.
+  const removed = applyRemoveComponent(config, targetId);
+  return applyAddComponentChild(removed, newParentId, newIndex, target);
+}
+
+export function applyReorderChildren(
+  config: SiteConfig,
+  parentId: ComponentId,
+  newOrder: ComponentId[],
+): SiteConfig {
+  return applyMapToConfig(config, parentId, (parent) => {
+    const currentChildren = parent.children ?? [];
+    const currentIds = currentChildren.map((c) => c.id);
+    if (newOrder.length !== currentIds.length) {
+      fail(
+        "reorder_mismatch",
+        `Reorder list length ${newOrder.length} does not match current children length ${currentIds.length}.`,
+      );
+    }
+    const currentSet = new Set(currentIds);
+    const seen = new Set<ComponentId>();
+    for (const id of newOrder) {
+      if (!currentSet.has(id)) {
+        fail("reorder_mismatch", `Reorder list contains unknown id "${id}".`);
+      }
+      if (seen.has(id)) {
+        fail("reorder_mismatch", `Reorder list contains duplicate id "${id}".`);
+      }
+      seen.add(id);
+    }
+    const lookup = new Map<ComponentId, ComponentNode>();
+    for (const child of currentChildren) lookup.set(child.id, child);
+    const reordered = newOrder.map((id) => {
+      const child = lookup.get(id);
+      // Already validated above; this branch is unreachable.
+      if (!child) fail("reorder_mismatch", `Child id "${id}" missing.`);
+      return child;
+    });
+    return { ...parent, children: reordered };
+  });
+}
+
+export function applySetComponentSpan(
+  config: SiteConfig,
+  id: ComponentId,
+  span: number,
+): SiteConfig {
+  return applyMapToConfig(config, id, (node) => {
+    if (node.type !== "Column") {
+      fail(
+        "invalid_resize_target",
+        `setComponentSpan can only target Column components; got "${node.type}".`,
+      );
+    }
+    return { ...node, props: { ...node.props, span } };
+  });
+}
+
+export function applySetComponentDimension(
+  config: SiteConfig,
+  id: ComponentId,
+  axis: "width" | "height",
+  value: string | undefined,
+): SiteConfig {
+  return applyMapToConfig(config, id, (node) => {
+    if (node.type === "Spacer") {
+      fail(
+        "invalid_resize_target",
+        "Spacer height belongs in props, not style. Use setComponentProps instead.",
+      );
+    }
+    const nextStyle: StyleConfig = { ...node.style, [axis]: value };
+    return { ...node, style: nextStyle };
+  });
 }

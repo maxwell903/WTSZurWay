@@ -4,6 +4,8 @@ import { Renderer } from "@/components/renderer";
 import { selectCurrentPage, useEditorStore } from "@/lib/editor-state";
 import { useEffect } from "react";
 import { SelectionBreadcrumb } from "./SelectionBreadcrumb";
+import { DndCanvasProvider } from "./dnd/DndCanvasProvider";
+import { ResizeHandles } from "./dnd/ResizeHandles";
 
 export function Canvas() {
   const draftConfig = useEditorStore((s) => s.draftConfig);
@@ -61,16 +63,19 @@ export function Canvas() {
       }}
     >
       <div className="mx-auto my-6 w-full max-w-[1280px] rounded-lg border border-zinc-800 bg-white text-zinc-900 shadow-2xl">
-        <Renderer
-          config={draftConfig}
-          page={currentPage.slug}
-          mode={previewMode ? "preview" : "edit"}
-          selection={selectedComponentId ? [selectedComponentId] : undefined}
-          onSelect={(id) => selectComponent(id)}
-          onContextMenu={(id) => enterElementEditMode(id)}
-        />
+        <DndCanvasProvider>
+          <Renderer
+            config={draftConfig}
+            page={currentPage.slug}
+            mode={previewMode ? "preview" : "edit"}
+            selection={selectedComponentId ? [selectedComponentId] : undefined}
+            onSelect={(id) => selectComponent(id)}
+            onContextMenu={(id) => enterElementEditMode(id)}
+          />
+        </DndCanvasProvider>
       </div>
       {!previewMode ? <SelectionBreadcrumb /> : null}
+      {!previewMode ? <ResizeHandles /> : null}
     </main>
   );
 }

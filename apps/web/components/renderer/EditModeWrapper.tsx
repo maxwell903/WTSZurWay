@@ -1,7 +1,10 @@
 "use client";
 
+import { DropZoneIndicator } from "@/components/editor/canvas/dnd/DropZoneIndicator";
+import { useNodeSortable } from "@/components/editor/canvas/dnd/SortableNodeContext";
 import { cn } from "@/lib/utils";
-import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
+import { CSS } from "@dnd-kit/utilities";
+import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from "react";
 
 type Props = {
   id: string;
@@ -12,6 +15,12 @@ type Props = {
 };
 
 export function EditModeWrapper({ id, selected, onSelect, onContextMenu, children }: Props) {
+  // Sprint 7: when wrapped in a DndCanvasProvider, this returns dnd-kit's
+  // sortable state for this node id. Otherwise (preview mode, standalone
+  // tests, public site) it returns null and the wrapper behaves exactly
+  // as it did in Sprints 6 and 8.
+  const sortable = useNodeSortable(id);
+
   const handleClick = (e: MouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
     onSelect?.(id);
@@ -39,8 +48,27 @@ export function EditModeWrapper({ id, selected, onSelect, onContextMenu, childre
     }
   };
 
+  // CSS.Transform.toString returns a string when transform is set, or null.
+  // The wrapper's caller never passes its own transform, so this is the only
+  // contributor.
+  const transformString = sortable ? CSS.Transform.toString(sortable.transform) : null;
+  const sortableStyle: CSSProperties = sortable
+    ? {
+        transform: transformString ?? undefined,
+        transition: sortable.transition ?? undefined,
+        opacity: sortable.isDragging ? 0.5 : undefined,
+      }
+    : {};
+
+  // Sprint 7 "Known risks": dnd-kit's listeners spread BEFORE the explicit
+  // onClick / onContextMenu / onKeyDown so the Sprint-6/8 handlers win the
+  // dispatch race. The pointer sensor's 10-px activation distance keeps
+  // single clicks from being interpreted as drags.
   return (
     <div
+      ref={sortable?.setNodeRef ?? undefined}
+      {...(sortable?.attributes ?? {})}
+      {...(sortable?.listeners ?? {})}
       data-edit-id={id}
       data-edit-selected={selected ? "true" : undefined}
       // biome-ignore lint/a11y/useSemanticElements: a real <button> cannot legally contain block-level children (sections, paragraphs, etc.) — EditModeWrapper makes those interactive in edit mode only.
@@ -49,13 +77,19 @@ export function EditModeWrapper({ id, selected, onSelect, onContextMenu, childre
       onClick={handleClick}
       onContextMenu={handleContextMenu}
       onKeyDown={handleKeyDown}
+      style={sortableStyle}
       className={cn(
-        "outline-offset-2",
+        "relative outline-offset-2",
         selected
           ? "outline outline-2 outline-blue-500"
           : "hover:outline hover:outline-1 hover:outline-blue-300",
       )}
     >
+      {/* Sprint 7: 4-px accent bar drawn while a drag is in progress and this
+          wrapper's id is the current drop target. Self-renders to null when
+          no DndCanvasProvider is in scope, so existing Sprint 5/6/8 callers
+          (preview mode, standalone tests, public site) emit identical DOM. */}
+      <DropZoneIndicator id={id} />
       {children}
     </div>
   );

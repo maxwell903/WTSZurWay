@@ -1,13 +1,18 @@
 import type { ComponentNode, SiteConfig } from "@/lib/site-config";
 import { type StateCreator, create } from "zustand";
 import {
+  applyAddComponentChild,
   applyAddPage,
   applyDeletePage,
+  applyMoveComponent,
   applyRemoveComponent,
   applyRenamePage,
+  applyReorderChildren,
   applyReorderPages,
   applySetComponentAnimation,
+  applySetComponentDimension,
   applySetComponentProps,
+  applySetComponentSpan,
   applySetComponentStyle,
   applySetComponentVisibility,
   applySetFontFamily,
@@ -195,6 +200,48 @@ const creator: StateCreator<EditorStore> = (set) => ({
         saveState: "dirty",
       };
     }),
+
+  // -------- Sprint 7: drag-and-drop and resize --------
+  addComponentChild: (parentId, index, node) =>
+    set((state) => {
+      const next = applyAddComponentChild(state.draftConfig, parentId, index, node);
+      // The new node becomes the selection so the user immediately sees
+      // what they dropped (Sprint 7 CLAUDE.md DoD).
+      return {
+        draftConfig: next,
+        selectedComponentId: node.id,
+        saveState: "dirty",
+      };
+    }),
+
+  moveComponent: (targetId, newParentId, newIndex) =>
+    set((state) => {
+      const next = applyMoveComponent(state.draftConfig, targetId, newParentId, newIndex);
+      // The moved node retains its id; selectedComponentId naturally
+      // persists when it pointed at the moved node.
+      return {
+        draftConfig: next,
+        saveState: "dirty",
+      };
+    }),
+
+  reorderChildren: (parentId, newOrder) =>
+    set((state) => ({
+      draftConfig: applyReorderChildren(state.draftConfig, parentId, newOrder),
+      saveState: "dirty",
+    })),
+
+  setComponentSpan: (id, span) =>
+    set((state) => ({
+      draftConfig: applySetComponentSpan(state.draftConfig, id, span),
+      saveState: "dirty",
+    })),
+
+  setComponentDimension: (id, axis, value) =>
+    set((state) => ({
+      draftConfig: applySetComponentDimension(state.draftConfig, id, axis, value),
+      saveState: "dirty",
+    })),
 });
 
 // Sprint 6: zustand devtools middleware was deferred -- the conditional-wrap
