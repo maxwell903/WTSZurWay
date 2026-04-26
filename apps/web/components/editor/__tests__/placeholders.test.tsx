@@ -17,11 +17,13 @@ describe("placeholder shells", () => {
     toastMock.mockReset();
   });
 
-  it("Right sidebar renders the Sprint 11 placeholder copy", () => {
+  // Sprint 11 (2026-04-26) — the right sidebar is now the AI chat shell, not
+  // the Sprint 6 placeholder. The Sprint 6 placeholder copy was removed by
+  // the authorized RightSidebar hand-off; per CLAUDE.md §15.9 this assertion
+  // is rewritten to a behavior-preserving "renders without crashing" check.
+  it("Right sidebar renders the Sprint 11 AI chat shell", () => {
     render(<RightSidebar />);
-    expect(
-      screen.getByText(/Select a component to edit it, or chat with the AI assistant/),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("right-sidebar")).toBeInTheDocument();
   });
 
   it("Deploy button fires a toast and does not navigate", () => {

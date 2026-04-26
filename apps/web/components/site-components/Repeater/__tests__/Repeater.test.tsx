@@ -82,8 +82,12 @@ describe("<Repeater> (Sprint 9 behavior)", () => {
   it("renders an aria-hidden skeleton with three placeholders during the first load", async () => {
     let resolveUnits: (value: unknown) => void = () => {};
     vi.mocked(getUnits).mockReturnValueOnce(
+      // Sprint 11 (2026-04-26) — cast added per CLAUDE.md §15.9. The Promise's
+      // resolver narrows to (Unit[] | PromiseLike<Unit[]>) -> void, which is
+      // narrower than `(value: unknown) => void`; the cast makes the
+      // contravariant assignment explicit. Behavior is unchanged.
       new Promise((resolve) => {
-        resolveUnits = resolve;
+        resolveUnits = resolve as (value: unknown) => void;
       }),
     );
     const { container } = render(

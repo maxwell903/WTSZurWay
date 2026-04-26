@@ -432,3 +432,59 @@ describe("editor store -- Sprint 7 dnd action wrappers", () => {
     ).toThrow();
   });
 });
+
+// Sprint 11 — AI Edit Accept folds the proposed Operation[] into draftConfig.
+describe("editor store -- Sprint 11 commitAiEditOperations", () => {
+  beforeEach(() => {
+    __resetEditorStoreForTests();
+    useEditorStore.getState().hydrate({
+      siteId: "s",
+      siteSlug: "x",
+      workingVersionId: "v",
+      initialConfig: makeFixtureConfig(),
+    });
+  });
+
+  it("applies a batch of valid operations and flips saveState to dirty", () => {
+    useEditorStore.getState().commitAiEditOperations([
+      { type: "setText", targetId: "cmp_h1", text: "Hello" },
+      {
+        type: "setSiteSetting",
+        path: "meta.siteName",
+        value: "New Name",
+      },
+    ]);
+    const s = useEditorStore.getState();
+    expect(s.saveState).toBe("dirty");
+    expect(s.saveError).toBeNull();
+    expect(s.draftConfig.meta.siteName).toBe("New Name");
+    const heading = s.draftConfig.pages[0]?.rootComponent.children?.find((c) => c.id === "cmp_h1");
+    expect(heading?.props.text).toBe("Hello");
+  });
+
+  it("on OperationInvalidError, flips saveState to error and writes saveError without mutating draftConfig", () => {
+    const before = useEditorStore.getState().draftConfig;
+    useEditorStore.getState().commitAiEditOperations([
+      // setText on a Section is invalid -- only Heading/Paragraph/Button.
+      { type: "setText", targetId: "cmp_root", text: "boom" },
+    ]);
+    const s = useEditorStore.getState();
+    expect(s.saveState).toBe("error");
+    expect(s.saveError).toContain("setText only applies");
+    expect(s.draftConfig).toBe(before);
+  });
+
+  it("clears any prior saveError on a successful commit", () => {
+    // Force an error first.
+    useEditorStore
+      .getState()
+      .commitAiEditOperations([{ type: "setText", targetId: "cmp_root", text: "boom" }]);
+    expect(useEditorStore.getState().saveError).not.toBeNull();
+    // Now apply a valid op.
+    useEditorStore
+      .getState()
+      .commitAiEditOperations([{ type: "setText", targetId: "cmp_h1", text: "ok" }]);
+    expect(useEditorStore.getState().saveError).toBeNull();
+    expect(useEditorStore.getState().saveState).toBe("dirty");
+  });
+});

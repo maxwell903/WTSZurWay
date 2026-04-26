@@ -63,3 +63,27 @@ export { PreviewToggle } from "./topbar/PreviewToggle";
 export { SaveIndicator } from "./topbar/SaveIndicator";
 export { SiteNameInput } from "./topbar/SiteNameInput";
 export { TopBar } from "./topbar/TopBar";
+// Sprint 11 — AI Chat re-exports (alphabetical, appended).
+export {
+  AI_EDIT_NARRATION_STRINGS,
+  AiEditNarration,
+  Composer as AiChatComposer,
+  MessageBubble as AiChatMessageBubble,
+  MessageList as AiChatMessageList,
+  NARRATION_INTERVAL_MS,
+  RightSidebarAiChat,
+  SelectionChip as AiChatSelectionChip,
+  SuggestedPrompts as AiChatSuggestedPrompts,
+  pendingSuggestionCount,
+  suggestionsForSelection,
+  useAiEditChat,
+} from "./ai-chat";
+export type {
+  AiEditNarrationProps,
+  AssistantMessage,
+  Attachment as AiChatAttachment,
+  LoadingState as AiChatLoadingState,
+  Message as AiChatMessage,
+  ProposedDiff,
+  UseAiEditChat,
+} from "./ai-chat";

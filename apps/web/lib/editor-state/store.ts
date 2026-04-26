@@ -1,8 +1,10 @@
 import type { ComponentNode, SiteConfig } from "@/lib/site-config";
+import { OperationInvalidError } from "@/lib/site-config/ops";
 import { type StateCreator, create } from "zustand";
 import {
   applyAddComponentChild,
   applyAddPage,
+  applyCommitAiEditOperations,
   applyDeletePage,
   applyMoveComponent,
   applyRemoveComponent,
@@ -197,6 +199,25 @@ const creator: StateCreator<EditorStore> = (set) => ({
       draftConfig: applySetComponentDataBinding(state.draftConfig, id, dataBinding),
       saveState: "dirty",
     })),
+
+  // Sprint 11 — AI Edit Accept folds the proposed Operation[] into the
+  // working draftConfig. OperationInvalidError surfaces via saveError +
+  // saveState: "error" so the chat can show a §9.6-shaped message.
+  commitAiEditOperations: (operations) =>
+    set((state) => {
+      try {
+        const next = applyCommitAiEditOperations(state.draftConfig, operations);
+        return { draftConfig: next, saveState: "dirty", saveError: null };
+      } catch (e) {
+        const message =
+          e instanceof OperationInvalidError
+            ? e.message
+            : e instanceof Error
+              ? e.message
+              : "Failed to apply AI Edit operations.";
+        return { saveState: "error", saveError: message };
+      }
+    }),
 
   removeComponent: (id) =>
     set((state) => {

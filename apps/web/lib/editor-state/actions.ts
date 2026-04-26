@@ -9,6 +9,7 @@ import type {
   SiteConfig,
   StyleConfig,
 } from "@/lib/site-config";
+import { type Operation, applyOperations } from "@/lib/site-config/ops";
 import type {
   AddPageInput,
   ComponentId,
@@ -297,6 +298,18 @@ export function applySetComponentDataBinding(
     }
     return { ...node, dataBinding };
   });
+}
+
+// Sprint 11 — folder for AI Edit Accept. Delegates to `applyOperations` from
+// `@/lib/site-config/ops`, which is the single source of truth for diff
+// semantics. The store-level wrapper catches OperationInvalidError and flips
+// saveState to "error"; this helper itself is a thin passthrough so unit
+// tests can exercise the fold without touching the store.
+export function applyCommitAiEditOperations(
+  config: SiteConfig,
+  operations: readonly Operation[],
+): SiteConfig {
+  return applyOperations(config, operations);
 }
 
 function removeChildById(

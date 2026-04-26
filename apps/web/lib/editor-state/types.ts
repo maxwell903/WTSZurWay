@@ -9,6 +9,7 @@ import type {
   SiteConfig,
   StyleConfig,
 } from "@/lib/site-config";
+import type { Operation } from "@/lib/site-config/ops";
 
 export type ComponentId = string;
 
@@ -89,6 +90,8 @@ export type EditorActions = {
   setComponentVisibility: (id: ComponentId, visibility: ComponentVisibility | undefined) => void;
   // Sprint 9 — Repeater data binding mutator.
   setComponentDataBinding: (id: ComponentId, dataBinding: DataBinding | undefined) => void;
+  // Sprint 11 — AI Edit Accept folds an Operation[] into draftConfig.
+  commitAiEditOperations: (operations: readonly Operation[]) => void;
   removeComponent: (id: ComponentId) => void;
   // Sprint 7 — drag-and-drop and resize mutators.
   addComponentChild: (parentId: ComponentId, index: number, node: ComponentNode) => void;

@@ -1161,3 +1161,34 @@ without the RPC; client paths use the same `fetchSource` action).
 Sprint 11 (AI Edit) is unaffected — its fetch state goes through
 `/api/ai-edit`, not through `fetchSource`. Sprint 14 (fixtures) is
 unaffected — fixtures are generated server-side.
+
+## 2026-04-26 — Sprint 11 — Retroactive cross-sprint test-file fixes (CLAUDE.md §15.9)
+
+**Context:** Sprint 11's quality gates (`pnpm typecheck` and the placeholder
+test inside `pnpm test`) surfaced two failures that originated in earlier
+sprints' test files. Per the §15.9 carve-out, applied minimal,
+behavior-preserving fixes; logged here so the edits are visible at review.
+
+**Files / lines:**
+
+1. `apps/web/components/site-components/Repeater/__tests__/Repeater.test.tsx`
+   (line 86 region). The `let resolveUnits: (value: unknown) => void` was
+   being assigned a Promise resolver typed as
+   `(value: Unit[] | PromiseLike<Unit[]>) => void`; the contravariant
+   assignment is a real TS error in strict mode. Added a one-line cast
+   `resolve as (value: unknown) => void`. No runtime change. Sprint 9
+   territory.
+
+2. `apps/web/components/editor/__tests__/placeholders.test.tsx` (the
+   "Right sidebar renders the Sprint 11 placeholder copy" assertion).
+   Sprint 11's authorized RightSidebar rewrite removed the Sprint-6
+   placeholder copy "Select a component to edit it, or chat with the AI
+   assistant". The test was rewritten to assert the new shell renders
+   (`getByTestId("right-sidebar")`). The intent — "the right sidebar
+   renders without crashing" — is preserved. Sprint 6 territory.
+
+**Both fixes are test-file only.** Production code in another sprint's
+domain was not touched.
+
+**No user approval was solicited per §15.9.** Each occurrence is
+behavior-preserving and constrained to a single line / single assertion.
