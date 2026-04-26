@@ -598,3 +598,55 @@ files compiled and passed without modification.
 - `apps/web/components/site-components/InputField/__tests__/InputField.test.tsx`
 - `apps/web/app/dev/components/fixtures.ts`
 - `DECISIONS.md` (this entry, appended below the planning entry).
+
+
+## 2026-04-25 — Sprint 4 — Add missing .env.example to satisfy pre-flight assertion 11
+
+**Context:** Sprint 4's pre-flight assertion 11 requires `.env.example` (or
+`apps/web/.env.example`) to document `ANTHROPIC_API_KEY`. On entering Sprint
+4, no such file existed at either location — a glob across the whole tree
+returned only `apps/web/.env.local` (gitignored, personal). The repo root
+README explicitly references the file
+(`cp .env.example apps/web/.env.local`), so the broken onboarding step has
+been latent since Sprint 0. Sprint 4's "Files you may create or modify"
+list does not include `.env.example`, making creation a scope addition
+requiring a Deviation per the Protocol.
+
+**Original plan:** Sprint 0 was supposed to commit `.env.example`; Sprint 4
+inherits a working file and only references it in user-actions.
+
+**What changed:** Sprint 4 creates `.env.example` at the repo root (the
+location the README's `cp` command points to) listing the five env vars
+the Sprint 4 smoke-test prerequisites enumerate — `NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+`SUPABASE_PROJECT_REF`, `ANTHROPIC_API_KEY` — each with an empty
+placeholder and a one-line comment. No real secrets in the file. No code
+imports it; it is documentation only.
+
+**Rationale:** Without this file the README's onboarding step is broken
+and pre-flight assertion 11 fails, blocking Sprint 4 entirely. Creating a
+template file is a one-line scope addition with zero behavioral risk —
+the file holds only placeholders. Sprint 0 is the rightful owner but is
+closed; Sprint 4 absorbs the housekeeping rather than indefinitely
+deferring the fix.
+
+**User approval (verbatim):** "approved"
+
+**Trade-offs accepted:**
+- Gain: pre-flight assertion 11 passes; README onboarding step works for
+  the next contributor; Sprint 4's user-actions list points at a real
+  template the user can copy.
+- Lose: one file added outside Sprint 4's declared "Files you may create
+  or modify" list. Sprint 0 (rightful owner) is closed, so the addition
+  is permanent.
+- Risk: very low. The file holds no real values; never imported by code;
+  only documents the env contract. Future env-var additions (e.g.
+  Sprint 13's Vercel keys) will need to update this file.
+
+**Affected files / modules:**
+- `.env.example` (new — repo root).
+- `DECISIONS.md` (this entry).
+
+**Cross-sprint impact:** Sprint 13 (Vercel) and any later sprint that
+introduces a new required env var should update `.env.example` to keep
+the onboarding template current.

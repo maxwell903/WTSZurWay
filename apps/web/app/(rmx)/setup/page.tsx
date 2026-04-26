@@ -1,12 +1,12 @@
 import { SetSubBarTitle } from "@/components/rmx-shell/sub-bar-context";
-import { SetupForm } from "@/components/setup-form/setup-form";
+import { SetupExperience } from "@/components/setup-form/SetupExperience";
 import { Toaster } from "@/components/ui/sonner";
 
 export default function SetupPage() {
   return (
     <>
       <SetSubBarTitle title="Add Website Template" />
-      <SetupForm />
+      <SetupExperience />
       <Toaster richColors position="top-right" />
     </>
   );
