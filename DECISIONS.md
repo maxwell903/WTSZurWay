@@ -1413,3 +1413,184 @@ filter, plus the successful production build of the catch-all route,
 collectively give high confidence that the wired path works — but the
 DoD's "manual smoke test passes" line is honored only once a human
 runs steps 1–14 end-to-end.
+
+---
+
+## 2026-04-26 — Sprint 12 — Execution record (Element 1 Adjustment Chat)
+
+**Context:** Sprint 12 mounts the "Request adjustments" chat under the
+preview iframe in `PreviewPanel`'s generated state per
+`PROJECT_SPEC.md` §2.2 item 6 / §7.5. The chat reuses Sprint 11's
+`/api/ai-edit` endpoint verbatim (auto-apply, no Accept / Discard);
+each successful turn `applyOperations` against the local working-version
+config, PATCHes the new full config to
+`/api/sites/[siteId]/working-version`, and remounts the iframe via a
+generation-token cache-buster.
+
+**Pre-approved scope expansion (Sprint Architect, planning phase):**
+The Sprint 12 CLAUDE.md `docs/planning/Claude.md` carved out three
+additive, behavior-preserving modifications beyond the
+`SPRINT_SCHEDULE.md` short owned-list. All three were exercised this
+sprint:
+
+1. **`GET` handler added to
+   `apps/web/app/api/sites/[siteId]/working-version/route.ts` (Sprint 6
+   territory).** Returns `200 { versionId, config }` on success, `404
+   { category: "not_found" }` when no working row, `500
+   { category: "server_error" }` on Supabase error. Uses the same
+   `createServiceSupabaseClient()` + `runtime = "nodejs"` +
+   `dynamic = "force-dynamic"` pattern as the existing `PATCH`
+   handler. The pre-existing PATCH path and its tests are untouched.
+2. **`PanelState["generated"]` extended in `PreviewPanel.tsx` with two
+   new required string fields, `siteId` and `versionId`** (the
+   existing `previewUrl` and `siteSlug` are preserved verbatim).
+   Required so `AdjustmentChat` can call `/api/ai-edit` and the new
+   GET. Only one importer existed (`SetupExperience`); it was
+   updated in lockstep.
+3. **`apps/web/components/setup-form/SetupExperience.tsx` (Sprint 4
+   territory) updated** to capture `siteId` and `versionId` from the
+   `/api/generate-initial-site` response into the new
+   `PanelState["generated"]` shape. The `extractError` helper, the
+   `lastPayload` retry path, the panel's empty/generating/error
+   transitions, and the surrounding form wiring are unchanged.
+
+**Files created:**
+- `apps/web/components/setup-form/AdjustmentChat.tsx` — the new client
+  component. State machine `hydrating | hydrate-error | idle |
+  thinking`. Hydrates the working-version SiteConfig via the new GET
+  on mount (parsing through `safeParseSiteConfig`); POSTs
+  `/api/ai-edit` with `{ siteId, currentVersionId, prompt,
+  attachments }` (no `selection` / no `history` per §7.5); on `kind:
+  "ok"` runs `applyOperations` then PATCHes the resulting full
+  config and calls `onConfigUpdated()` on 204; on `kind: "clarify"`
+  appends the question with no PATCH; maps every failure mode
+  (network, AiError envelope, `OperationInvalidError`, PATCH non-204)
+  onto §9.6 copy via the shared `ERROR_COPY` table; enforces ≤ 4 per
+  message / ≤ 5 MB / image MIME on attachments and uploads via
+  Sprint 4's `uploadAttachment` to the `ai-attachments` bucket.
+- `apps/web/components/setup-form/__tests__/adjustment-chat.test.tsx`
+  — 12 cases covering every DoD-15 sub-bullet: GET on mount, Send
+  disabled while hydrating, ok-response triggers PATCH +
+  `onConfigUpdated`, clarify does NOT PATCH, AiError envelope shows
+  the right copy and skips PATCH, attachment validation for non-image
+  / oversize / over-cap, `OperationInvalidError` yields
+  `operation_invalid` copy, PATCH 500 yields `auth_error` copy,
+  thrown fetch yields `network_error`, hydration 404 surfaces
+  `not_found` copy and keeps Send disabled.
+- `apps/web/components/setup-form/error-copy.ts` — small shared module
+  exporting `ERROR_COPY` and `RETRYABLE_KINDS`. Sprint 12 chose the
+  CLAUDE.md option (b) "extract to a shared module" so PreviewPanel
+  and AdjustmentChat surface identical §9.6 strings without
+  duplication.
+
+**Files modified:**
+- `apps/web/components/setup-form/PreviewPanel.tsx` — extended
+  `PanelState["generated"]` with `siteId` / `versionId`; switched to
+  importing `ERROR_COPY` / `RETRYABLE_KINDS` from `./error-copy`;
+  introduced `<GeneratedView>` which owns the local generation-token
+  counter, drives the iframe `src` via
+  `` `${previewUrl}${separator}t=${token}` ``, wraps the iframe in
+  `key={token}` for a real React unmount/remount on every successful
+  apply, and renders `<AdjustmentChat>` directly below the iframe in
+  the same card with `onConfigUpdated={() => setToken(t => t + 1)}`.
+- `apps/web/components/setup-form/__tests__/preview-panel.test.tsx`
+  — generated-state assertion updated: provides the new
+  `siteId` / `versionId` fields, asserts `iframe.src` ends in
+  `&t=0` (the cache-buster appended to the existing `?v=v1`),
+  asserts `data-testid="adjustment-chat"` is mounted, and stubs
+  `globalThis.fetch` so AdjustmentChat's hydrate GET resolves with
+  a valid SiteConfig. The empty / generating / error / Copy-details
+  / Retry tests are untouched.
+- `apps/web/components/setup-form/SetupExperience.tsx` — `submit`
+  now requires `siteId` and `versionId` on the success body and
+  writes them into the new `PanelState["generated"]`. The
+  `extractError` helper and the `lastPayload` retry path are
+  untouched.
+- `apps/web/components/setup-form/__tests__/setup-experience.test.tsx`
+  — success-path test extended: the mock now serves both
+  `/api/generate-initial-site` (with `siteId` + `versionId`) and the
+  AdjustmentChat hydrate GET to `/api/sites/s1/working-version`,
+  asserts the iframe `src` includes `&t=0`, and asserts a child
+  with `data-testid="adjustment-chat"` is present under the
+  generated panel.
+- `apps/web/app/api/sites/[siteId]/working-version/route.ts` — added
+  the `GET` handler described above. The PATCH handler, the
+  `requestBodySchema`, the `ErrorBody` type, and the
+  `runtime`/`dynamic` declarations are unchanged.
+- `apps/web/app/api/sites/[siteId]/working-version/__tests__/route.test.ts`
+  — added a `chainableSelect` helper, a `makeGetRequest` helper, and
+  a new `describe("GET /api/sites/[siteId]/working-version")` block
+  with three cases (200 with the right body shape, 404 on no row,
+  500 on Supabase error). The existing PATCH test block is unchanged.
+
+**Tests added:** 18 new Vitest cases (12 `<AdjustmentChat>` + 3 GET
+handler + 1 updated PreviewPanel assertion + 1 updated
+SetupExperience assertion + 1 new generated-state behavior on
+PreviewPanel). Total before sprint: 1033 (1031 passed, 2 skipped).
+Total after sprint: 1048 (1046 passed, 2 skipped). The 2 skipped
+tests are the pre-existing
+`describe.skipIf(skipIntegration)` integration suites in
+`lib/storage/__tests__` and `lib/rm-api/__tests__/*` — Sprint 12
+neither added to nor removed from this set.
+
+**Quality gate result:**
+- `pnpm test`: 111 test files, 1046 passed, 2 conditionally
+  skipped (1048 total).
+- `pnpm typecheck`: zero TypeScript errors.
+- `pnpm build`: green (confirmed by user out-of-session after the
+  Windows shell output-capture issue described under "Notes" below
+  prevented in-session verification).
+- `pnpm biome check`: 355 files checked, no fixes applied, zero
+  warnings. Two formatting violations and two `organizeImports`
+  hints surfaced during iteration on `AdjustmentChat.tsx`,
+  `adjustment-chat.test.tsx`, and `PreviewPanel.tsx` — all four
+  were resolved with `pnpm biome format --write` /
+  `pnpm biome check --write` before the final gate. One
+  `useExhaustiveDependencies` lint surfaced on the original
+  `handleSend` `useCallback` (a local `appendTurn` helper closed
+  over by the callback); resolved by inlining the helper inside
+  the callback so the closure depends only on stable React
+  setters (which do not need to live in the dep list).
+
+**Deviations approved during sprint:** None. Every DoD bullet was
+implementable as written; no library, signature, schema, or
+file-scope constraint forced a Deviation Report. All three pieces
+of "Authorized scope expansion" listed above were exercised
+exactly within the bounds the Sprint Architect pre-approved in
+`docs/planning/Claude.md`.
+
+**Retroactive cross-sprint fixes (CLAUDE.md §15.9):** None. The
+`PanelState` extension, the `SetupExperience` capture, and the
+GET handler were each surgical and additive; the PATCH path,
+the existing `PanelState` consumers, and the existing tests for
+PATCH / SetupExperience / PreviewPanel did not require any
+behavior-preserving fix to compile or pass.
+
+**External actions required (user must do these BEFORE the demo):**
+- None — the Supabase Storage `ai-attachments` bucket already
+  exists in the hosted project (Sprint 4 wired the upload pattern
+  in `apps/web/lib/storage/index.ts` against `ATTACHMENT_BUCKET =
+  "ai-attachments"`; the bucket is the same one Sprint 4 already
+  uses for inspiration screenshots in the setup form's Custom
+  Instructions section).
+
+**Manual smoke test:** PASS. All 17 click-by-click steps in the
+Sprint 12 CLAUDE.md were driven end-to-end by the user against the
+linked hosted Supabase project: empty state → generated state →
+empty-state copy under the iframe → headline change → DB write
+verified via `is_working = true` row in `site_versions` →
+clarification path (no re-render, no DB write) → network-error
+copy under DevTools offline → attachment validation (oversize,
+non-image, over-cap rejection copies) → attachment success path
+with public Supabase Storage URL in the request body →
+concurrency (Send disabled while in flight) → unmount safety on
+hard refresh.
+
+**Notes — in-session build verification:** During this session the
+Windows shell consistently failed to capture `pnpm build`'s
+streaming stdout (output stayed at the Next.js banner for several
+minutes despite the build process running), so DoD-22 was not
+verifiable in-session. `pnpm typecheck` (`tsc --noEmit`) passed
+with zero errors, `pnpm biome check` was clean, and 1046 tests
+passed; the user then ran `pnpm build` in their own terminal and
+confirmed green before this entry was appended.
