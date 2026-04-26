@@ -1,6 +1,6 @@
 import type { ComponentNode, Page, PaletteId, SiteConfig } from "@/lib/site-config";
-import { findComponentById, findComponentTrail } from "./store";
-import type { EditorState } from "./types";
+import { findComponentById, findComponentParentId, findComponentTrail } from "./store";
+import type { ComponentId, EditorState, ElementEditTab } from "./types";
 
 export function selectCurrentPage(state: EditorState): Page | undefined {
   return (
@@ -49,4 +49,29 @@ export function selectIsHomePage(page: Page): boolean {
 
 export function selectDraftConfig(state: EditorState): SiteConfig {
   return state.draftConfig;
+}
+
+export function selectIsElementEditMode(state: EditorState): boolean {
+  return state.leftSidebarMode === "element-edit";
+}
+
+export function selectElementEditTab(state: EditorState): ElementEditTab {
+  return state.elementEditTab;
+}
+
+export function selectSelectedComponentParentId(state: EditorState): ComponentId | null {
+  const id = state.selectedComponentId;
+  if (!id) return null;
+  const page = selectCurrentPage(state);
+  if (!page) return null;
+  // The page root has no parent within the tree.
+  if (page.rootComponent.id === id) return null;
+  return findComponentParentId(page.rootComponent, id);
+}
+
+export function selectDetailPages(state: EditorState): Page[] {
+  return state.draftConfig.pages
+    .filter((p) => p.kind === "detail")
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name));
 }

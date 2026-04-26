@@ -4,7 +4,11 @@
       "Bash(git -C /c/Users/maxwa/WTSZurWay/ ls-files)",
       "Bash(pnpm -v)",
       "Bash(git -C /c/Users/maxwa/WTSZurWay/ branch -a)",
-      "Bash(pnpm test *)"
+      "Bash(pnpm test *)",
+      "Bash(yes n *)",
+      "Bash(pnpm dlx *)",
+      "Bash(pnpm build *)",
+      "Bash(pnpm lint *)"
     ]
   }
 }

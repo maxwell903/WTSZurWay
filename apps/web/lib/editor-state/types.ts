@@ -1,15 +1,23 @@
 import type {
+  AnimationConfig,
   ComponentNode,
   DetailDataSource,
   Page,
   PageKind,
   PaletteId,
   SiteConfig,
+  StyleConfig,
 } from "@/lib/site-config";
 
 export type ComponentId = string;
 
 export type LeftSidebarTab = "site" | "pages" | "add" | "data";
+
+export type LeftSidebarMode = "primary" | "element-edit";
+
+export type ElementEditTab = "content" | "style" | "animation" | "visibility" | "advanced";
+
+export type ComponentVisibility = "always" | "desktop" | "mobile";
 
 export type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 
@@ -50,6 +58,8 @@ export type EditorState = {
   hoveredComponentId: ComponentId | null;
   previewMode: boolean;
   leftSidebarTab: LeftSidebarTab;
+  leftSidebarMode: LeftSidebarMode;
+  elementEditTab: ElementEditTab;
   saveState: SaveState;
   lastSavedAt: number | null;
   saveError: string | null;
@@ -69,6 +79,14 @@ export type EditorActions = {
   renamePage: (input: RenamePageInput) => void;
   deletePage: (slug: string, kind: PageKind) => void;
   reorderPages: (input: ReorderPagesInput) => void;
+  enterElementEditMode: (id: ComponentId) => void;
+  exitElementEditMode: () => void;
+  setElementEditTab: (tab: ElementEditTab) => void;
+  setComponentProps: (id: ComponentId, props: Record<string, unknown>) => void;
+  setComponentStyle: (id: ComponentId, style: StyleConfig) => void;
+  setComponentAnimation: (id: ComponentId, animation: AnimationConfig | undefined) => void;
+  setComponentVisibility: (id: ComponentId, visibility: ComponentVisibility | undefined) => void;
+  removeComponent: (id: ComponentId) => void;
   markSaving: () => void;
   markSaved: (at: number) => void;
   markError: (message: string) => void;
@@ -83,7 +101,9 @@ export type EditorActionErrorCode =
   | "invalid_name"
   | "missing_detail_data_source"
   | "page_not_found"
-  | "out_of_bounds";
+  | "out_of_bounds"
+  | "component_not_found"
+  | "page_root_locked";
 
 export class EditorActionError extends Error {
   readonly code: EditorActionErrorCode;

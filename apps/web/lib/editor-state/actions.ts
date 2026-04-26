@@ -1,7 +1,16 @@
 import { newComponentId } from "@/lib/site-config";
-import type { ComponentNode, Page, PageKind, SiteConfig } from "@/lib/site-config";
+import type {
+  AnimationConfig,
+  ComponentNode,
+  Page,
+  PageKind,
+  SiteConfig,
+  StyleConfig,
+} from "@/lib/site-config";
 import type {
   AddPageInput,
+  ComponentId,
+  ComponentVisibility,
   EditorActionErrorCode,
   RenamePageInput,
   ReorderPagesInput,
@@ -169,4 +178,157 @@ export function applySetFontFamily(config: SiteConfig, fontFamily: string): Site
     ...config,
     brand: { ...config.brand, fontFamily },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Component-level mutators (Sprint 8)
+//
+// All five rebuild the path from the page's rootComponent down to the
+// modified node via depth-first walk + structural sharing. Sibling subtrees
+// keep their object identity so the memoized ComponentRenderer skips
+// re-rendering them.
+// ---------------------------------------------------------------------------
+
+type NodeMutator = (node: ComponentNode) => ComponentNode;
+
+function mapNodeById(
+  node: ComponentNode,
+  id: ComponentId,
+  transform: NodeMutator,
+): { node: ComponentNode; found: boolean } {
+  if (node.id === id) {
+    return { node: transform(node), found: true };
+  }
+  if (!node.children || node.children.length === 0) {
+    return { node, found: false };
+  }
+  let foundAt = -1;
+  let updatedChild: ComponentNode | null = null;
+  for (let i = 0; i < node.children.length; i++) {
+    const child = node.children[i];
+    if (!child) continue;
+    const res = mapNodeById(child, id, transform);
+    if (res.found) {
+      foundAt = i;
+      updatedChild = res.node;
+      break;
+    }
+  }
+  if (foundAt === -1 || updatedChild === null) {
+    return { node, found: false };
+  }
+  const nextChildren = node.children.slice();
+  nextChildren[foundAt] = updatedChild;
+  return { node: { ...node, children: nextChildren }, found: true };
+}
+
+function applyMapToConfig(config: SiteConfig, id: ComponentId, transform: NodeMutator): SiteConfig {
+  for (let i = 0; i < config.pages.length; i++) {
+    const page = config.pages[i];
+    if (!page) continue;
+    const res = mapNodeById(page.rootComponent, id, transform);
+    if (!res.found) continue;
+    const nextPages = config.pages.slice();
+    nextPages[i] = { ...page, rootComponent: res.node };
+    return { ...config, pages: nextPages };
+  }
+  fail("component_not_found", `Component "${id}" not found in any page.`);
+}
+
+export function applySetComponentProps(
+  config: SiteConfig,
+  id: ComponentId,
+  props: Record<string, unknown>,
+): SiteConfig {
+  return applyMapToConfig(config, id, (node) => ({ ...node, props }));
+}
+
+export function applySetComponentStyle(
+  config: SiteConfig,
+  id: ComponentId,
+  style: StyleConfig,
+): SiteConfig {
+  return applyMapToConfig(config, id, (node) => ({ ...node, style }));
+}
+
+export function applySetComponentAnimation(
+  config: SiteConfig,
+  id: ComponentId,
+  animation: AnimationConfig | undefined,
+): SiteConfig {
+  return applyMapToConfig(config, id, (node) => {
+    if (animation === undefined) {
+      const { animation: _omit, ...rest } = node;
+      return rest;
+    }
+    return { ...node, animation };
+  });
+}
+
+export function applySetComponentVisibility(
+  config: SiteConfig,
+  id: ComponentId,
+  visibility: ComponentVisibility | undefined,
+): SiteConfig {
+  return applyMapToConfig(config, id, (node) => {
+    if (visibility === undefined) {
+      const { visibility: _omit, ...rest } = node;
+      return rest;
+    }
+    return { ...node, visibility };
+  });
+}
+
+function removeChildById(
+  node: ComponentNode,
+  id: ComponentId,
+): { node: ComponentNode; found: boolean } {
+  if (!node.children || node.children.length === 0) {
+    return { node, found: false };
+  }
+  const directIdx = node.children.findIndex((c) => c.id === id);
+  if (directIdx !== -1) {
+    const nextChildren = node.children.slice();
+    nextChildren.splice(directIdx, 1);
+    return { node: { ...node, children: nextChildren }, found: true };
+  }
+  let foundAt = -1;
+  let updatedChild: ComponentNode | null = null;
+  for (let i = 0; i < node.children.length; i++) {
+    const child = node.children[i];
+    if (!child) continue;
+    const res = removeChildById(child, id);
+    if (res.found) {
+      foundAt = i;
+      updatedChild = res.node;
+      break;
+    }
+  }
+  if (foundAt === -1 || updatedChild === null) {
+    return { node, found: false };
+  }
+  const nextChildren = node.children.slice();
+  nextChildren[foundAt] = updatedChild;
+  return { node: { ...node, children: nextChildren }, found: true };
+}
+
+export function applyRemoveComponent(config: SiteConfig, id: ComponentId): SiteConfig {
+  for (const page of config.pages) {
+    if (page.rootComponent.id === id) {
+      fail(
+        "page_root_locked",
+        "The page root cannot be deleted; switch to the Pages tab to delete the page itself.",
+      );
+    }
+  }
+  for (let i = 0; i < config.pages.length; i++) {
+    const page = config.pages[i];
+    if (!page) continue;
+    const res = removeChildById(page.rootComponent, id);
+    if (!res.found) continue;
+    const nextPages = config.pages.slice();
+    nextPages[i] = { ...page, rootComponent: res.node };
+    return { ...config, pages: nextPages };
+  }
+  fail("component_not_found", `Component "${id}" not found in any page.`);
 }

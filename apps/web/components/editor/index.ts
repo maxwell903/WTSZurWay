@@ -1,5 +1,15 @@
 export { Canvas } from "./canvas/Canvas";
 export { SelectionBreadcrumb } from "./canvas/SelectionBreadcrumb";
+export {
+  AdvancedTab,
+  AnimationTab,
+  ContentTabHost,
+  DeleteComponentButton,
+  EditPanelShell,
+  EditPanelTabs,
+  StyleTab,
+  VisibilityTab,
+} from "./edit-panels";
 export { LeftSidebar } from "./sidebar/LeftSidebar";
 export { RightSidebar } from "./sidebar/RightSidebar";
 export { AddTab } from "./sidebar/add-tab/AddTab";

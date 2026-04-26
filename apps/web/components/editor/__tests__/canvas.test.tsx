@@ -84,4 +84,44 @@ describe("<Canvas>", () => {
     });
     expect(container.querySelector('[data-testid="selection-breadcrumb"]')).toBeNull();
   });
+
+  it("right-click on a component fires enterElementEditMode with its id", () => {
+    const { container } = render(<Canvas />);
+    const wrapper = container.querySelector('[data-edit-id="cmp_h1"]');
+    expect(wrapper).not.toBeNull();
+    fireEvent.contextMenu(wrapper as Element);
+    const s = useEditorStore.getState();
+    expect(s.selectedComponentId).toBe("cmp_h1");
+    expect(s.leftSidebarMode).toBe("element-edit");
+    expect(s.elementEditTab).toBe("content");
+  });
+
+  it("right-clicking a different component while in element-edit replaces selection without exiting", () => {
+    const { container } = render(<Canvas />);
+    const root = container.querySelector('[data-edit-id="cmp_root"]');
+    const heading = container.querySelector('[data-edit-id="cmp_h1"]');
+    expect(root).not.toBeNull();
+    expect(heading).not.toBeNull();
+    fireEvent.contextMenu(heading as Element);
+    expect(useEditorStore.getState().selectedComponentId).toBe("cmp_h1");
+    fireEvent.contextMenu(root as Element);
+    const s = useEditorStore.getState();
+    expect(s.selectedComponentId).toBe("cmp_root");
+    expect(s.leftSidebarMode).toBe("element-edit");
+  });
+
+  it("setCurrentPageSlug exits element-edit mode", () => {
+    render(<Canvas />);
+    act(() => {
+      useEditorStore.getState().addPage({ name: "Properties", slug: "properties", kind: "static" });
+      useEditorStore.getState().enterElementEditMode("cmp_h1");
+    });
+    expect(useEditorStore.getState().leftSidebarMode).toBe("element-edit");
+    act(() => {
+      useEditorStore.getState().setCurrentPageSlug("properties");
+    });
+    const s = useEditorStore.getState();
+    expect(s.leftSidebarMode).toBe("primary");
+    expect(s.selectedComponentId).toBeNull();
+  });
 });

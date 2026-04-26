@@ -3,8 +3,13 @@ import { type StateCreator, create } from "zustand";
 import {
   applyAddPage,
   applyDeletePage,
+  applyRemoveComponent,
   applyRenamePage,
   applyReorderPages,
+  applySetComponentAnimation,
+  applySetComponentProps,
+  applySetComponentStyle,
+  applySetComponentVisibility,
   applySetFontFamily,
   applySetPalette,
   applySetSiteName,
@@ -22,7 +27,7 @@ const EMPTY_CONFIG: SiteConfig = {
   forms: [],
 };
 
-const creator: StateCreator<EditorStore> = (set, get) => ({
+const creator: StateCreator<EditorStore> = (set) => ({
   // -------- state --------
   siteId: "",
   siteSlug: "",
@@ -33,6 +38,8 @@ const creator: StateCreator<EditorStore> = (set, get) => ({
   hoveredComponentId: null,
   previewMode: false,
   leftSidebarTab: "pages",
+  leftSidebarMode: "primary",
+  elementEditTab: "content",
   saveState: "idle",
   lastSavedAt: null,
   saveError: null,
@@ -49,6 +56,8 @@ const creator: StateCreator<EditorStore> = (set, get) => ({
       hoveredComponentId: null,
       previewMode: false,
       leftSidebarTab: "pages",
+      leftSidebarMode: "primary",
+      elementEditTab: "content",
       saveState: "idle",
       lastSavedAt: null,
       saveError: null,
@@ -57,10 +66,39 @@ const creator: StateCreator<EditorStore> = (set, get) => ({
   selectComponent: (id) => set({ selectedComponentId: id }),
   setHoveredComponent: (id) => set({ hoveredComponentId: id }),
   setCurrentPageSlug: (slug) =>
-    set({ currentPageSlug: slug, selectedComponentId: null, hoveredComponentId: null }),
+    set({
+      currentPageSlug: slug,
+      selectedComponentId: null,
+      hoveredComponentId: null,
+      leftSidebarMode: "primary",
+      elementEditTab: "content",
+    }),
   setPreviewMode: (preview) =>
-    set({ previewMode: preview, selectedComponentId: preview ? null : get().selectedComponentId }),
+    set(
+      preview
+        ? {
+            previewMode: true,
+            selectedComponentId: null,
+            leftSidebarMode: "primary",
+            elementEditTab: "content",
+          }
+        : { previewMode: false },
+    ),
   setLeftSidebarTab: (tab) => set({ leftSidebarTab: tab }),
+
+  enterElementEditMode: (id) =>
+    set({
+      selectedComponentId: id,
+      leftSidebarMode: "element-edit",
+      elementEditTab: "content",
+    }),
+  exitElementEditMode: () =>
+    set({
+      selectedComponentId: null,
+      leftSidebarMode: "primary",
+      elementEditTab: "content",
+    }),
+  setElementEditTab: (tab) => set({ elementEditTab: tab }),
 
   markSaving: () => set({ saveState: "saving", saveError: null }),
   markSaved: (at) => set({ saveState: "saved", lastSavedAt: at, saveError: null }),
@@ -122,6 +160,41 @@ const creator: StateCreator<EditorStore> = (set, get) => ({
       draftConfig: applyReorderPages(state.draftConfig, input),
       saveState: "dirty",
     })),
+
+  setComponentProps: (id, props) =>
+    set((state) => ({
+      draftConfig: applySetComponentProps(state.draftConfig, id, props),
+      saveState: "dirty",
+    })),
+
+  setComponentStyle: (id, style) =>
+    set((state) => ({
+      draftConfig: applySetComponentStyle(state.draftConfig, id, style),
+      saveState: "dirty",
+    })),
+
+  setComponentAnimation: (id, animation) =>
+    set((state) => ({
+      draftConfig: applySetComponentAnimation(state.draftConfig, id, animation),
+      saveState: "dirty",
+    })),
+
+  setComponentVisibility: (id, visibility) =>
+    set((state) => ({
+      draftConfig: applySetComponentVisibility(state.draftConfig, id, visibility),
+      saveState: "dirty",
+    })),
+
+  removeComponent: (id) =>
+    set((state) => {
+      const next = applyRemoveComponent(state.draftConfig, id);
+      const wasSelected = state.selectedComponentId === id;
+      return {
+        draftConfig: next,
+        selectedComponentId: wasSelected ? null : state.selectedComponentId,
+        saveState: "dirty",
+      };
+    }),
 });
 
 // Sprint 6: zustand devtools middleware was deferred -- the conditional-wrap
@@ -143,6 +216,8 @@ export function __resetEditorStoreForTests(): void {
     hoveredComponentId: null,
     previewMode: false,
     leftSidebarTab: "pages",
+    leftSidebarMode: "primary",
+    elementEditTab: "content",
     saveState: "idle",
     lastSavedAt: null,
     saveError: null,
@@ -173,4 +248,14 @@ export function findComponentTrail(root: ComponentNode | undefined, id: string):
     if (trail.length > 0) return [root, ...trail];
   }
   return [];
+}
+
+export function findComponentParentId(root: ComponentNode | undefined, id: string): string | null {
+  if (!root || !root.children) return null;
+  for (const child of root.children) {
+    if (child.id === id) return root.id;
+    const deeper = findComponentParentId(child, id);
+    if (deeper !== null) return deeper;
+  }
+  return null;
 }

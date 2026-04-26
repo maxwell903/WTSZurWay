@@ -1,6 +1,7 @@
 "use client";
 
-import { useEditorStore } from "@/lib/editor-state";
+import { EditPanelShell } from "@/components/editor/edit-panels/EditPanelShell";
+import { selectIsElementEditMode, useEditorStore } from "@/lib/editor-state";
 import type { LeftSidebarTab } from "@/lib/editor-state";
 import { cn } from "@/lib/utils";
 import { Database, FileText, Layers, Palette } from "lucide-react";
@@ -23,10 +24,24 @@ const TAB_TRIGGERS: Array<{ id: LeftSidebarTab; label: string; icon: typeof Pale
 export function LeftSidebar() {
   const tab = useEditorStore((s) => s.leftSidebarTab);
   const setTab = useEditorStore((s) => s.setLeftSidebarTab);
+  const isElementEdit = useEditorStore(selectIsElementEditMode);
+
+  if (isElementEdit) {
+    return (
+      <aside
+        data-testid="left-sidebar"
+        data-mode="element-edit"
+        className="flex w-72 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950"
+      >
+        <EditPanelShell />
+      </aside>
+    );
+  }
 
   return (
     <aside
       data-testid="left-sidebar"
+      data-mode="primary"
       className="flex w-72 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950"
     >
       <div

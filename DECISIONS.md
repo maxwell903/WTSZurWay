@@ -780,3 +780,129 @@ without sacrificing any smoke-test behavior.
 Tooltip behavior should install the matching shadcn primitive via
 `pnpm dlx shadcn@latest add ...` under their own deviation; Sprint 6
 intentionally leaves them off the dependency list.
+
+
+## 2026-04-26 — Sprint 8 — Add `e.stopPropagation()` to `EditModeWrapper.handleContextMenu`
+
+**Context:** Sprint 8 wires the right-click swap from canvas to LeftSidebar
+element-edit mode. The Sprint-5 `EditModeWrapper` accepts an `onContextMenu`
+prop (pre-flight check #4 confirmed) but its `handleContextMenu` calls only
+`e.preventDefault()` — no `stopPropagation()`. Because every component on
+the canvas is wrapped in its own `EditModeWrapper` and the wrappers nest
+(Section → Row → Column → leaf), a contextmenu event on a leaf element
+bubbles up through every ancestor wrapper. Each ancestor's handler fires
+`onContextMenu(itsOwnId)` in turn, so the OUTERMOST wrapper's id is the
+one that actually wins the store update. Right-clicking a Heading inside
+a Section ends up selecting the Section. The companion `handleClick` in
+the same file already calls `stopPropagation()`; the asymmetry is the bug.
+
+**Original plan:** Sprint 8 was supposed to consume `EditModeWrapper`'s
+existing context-menu wiring unchanged; `apps/web/components/renderer/`
+is in Sprint 8's "Forbidden / Shared (read-only)" file scope.
+
+**What changed:** Sprint 8 added `e.stopPropagation()` to two branches of
+`apps/web/components/renderer/EditModeWrapper.tsx`:
+1. `handleContextMenu` (the mouse path), and
+2. The `Shift+F10` / `ContextMenu`-key branch of `handleKeyDown` (the
+   keyboard parity path).
+
+The change is two lines total. Behavior change: contextmenu on a nested
+component now fires `onContextMenu(id)` for ONLY the innermost wrapper,
+matching the existing click behavior.
+
+**Rationale:** Without this fix, the spec wording "selects the
+right-clicked component" (DoD #1) and smoke-test step 6 (which expects
+the panel title to read "Heading" after right-clicking the HeroBanner
+heading) cannot pass. The fix restores symmetry with the click handler
+that has shipped this way since Sprint 5/6.
+
+**User approval (verbatim):** "approve"
+
+**Trade-offs accepted:**
+- Gain: Right-click on any nested component selects the leaf the user
+  clicked, unblocking DoD #1 and smoke-test steps 6, 13, 16, 17, 18.
+  Symmetry with the already-stopPropagating click handler.
+- Lose: One file (`apps/web/components/renderer/EditModeWrapper.tsx`)
+  edited outside Sprint 8's "Owned" list — Sprint-5 territory. Two
+  added lines.
+- Risk: Very low. Behavior change is localized and mirrors the
+  click-handler behavior already in place. Existing
+  `EditModeWrapper.test.tsx` tests a single (non-nested) wrapper, so
+  no regression to that suite. Any downstream consumer that relied on
+  contextmenu bubbling to ancestor wrappers would have been getting
+  the wrong selection anyway.
+
+**Affected files / modules:**
+- `apps/web/components/renderer/EditModeWrapper.tsx` (added
+  `e.stopPropagation()` in two handler branches; no other change).
+
+**Cross-sprint impact:** None expected. Sprint 5 / Sprint 6 carry the
+same wrapper unchanged behaviorally for clicks; this brings right-click
+into line. Future sprints that add new event handlers to the wrapper
+should consider whether they too need `stopPropagation()` for the
+nested-wrapper case.
+
+
+## 2026-04-26 — Sprint 8 — Planning: Advanced-tab placeholder until `htmlId` / `className` ship on `ComponentNode`
+
+**Context:** Sprint 8's element-edit panel ships a five-tab UI per
+`PROJECT_SPEC.md` §8.4. The fifth tab, **Advanced**, is supposed to expose
+"custom CSS class (escape hatch), HTML id" controls. The `SiteConfig`
+schema's `componentNodeSchema` does NOT currently carry `htmlId` or
+`className` fields (verified via Sprint 8's pre-flight check #6, and again
+in `apps/web/lib/site-config/schema.ts`). Adding those fields would be a
+schema-lock break (per `SPRINT_SCHEDULE.md` §5) and is out of scope for
+Sprint 8.
+
+**Original plan:** Sprint 8 ships the Advanced tab as a documented
+placeholder with an `Info` icon and the body copy "These escape hatches
+will land once the SiteConfig schema gains `htmlId` and `className`
+fields on `ComponentNode`." See Sprint 8's CLAUDE.md.
+
+**What changed:** Nothing — this entry is a planning record so a future
+sprint (likely numbered between Sprint 13 and Sprint 15 per
+`SPRINT_SCHEDULE.md` §5 row 2) has a paper trail of the deferred work.
+That sprint will:
+1. Amend `componentNodeSchema` to add optional `htmlId?: string` and
+   `className?: string` fields, with the same nullability semantics as
+   `animation` / `visibility`.
+2. Replace
+   `apps/web/components/editor/edit-panels/tabs/AdvancedTab.tsx`'s
+   placeholder with two `TextInput` controls bound to the new fields
+   via `setComponentProps` (or a new `setComponentMeta` mutator if the
+   schema places them outside `props`).
+3. Update the renderer to pass `htmlId` to the rendered DOM `id`
+   attribute and `className` (merged with the existing `cn(...)`
+   class string).
+4. Update `Renderer.test.tsx` and `EditModeWrapper.test.tsx` to confirm
+   the values flow through.
+
+**Rationale:** Capturing the deferral now prevents the placeholder from
+becoming permanent debris and makes the future schema amendment
+discoverable from `DECISIONS.md`.
+
+**User approval (verbatim):** Authorized in advance via Sprint 8's
+CLAUDE.md ("Cross-document … `DECISIONS.md` — append entries for any
+approved deviation. Also append a planning entry naming this sprint's
+known schema gap (\"Advanced tab placeholder until `htmlId` /
+`className` ship\") so Sprint 15 has a paper trail.").
+
+**Trade-offs accepted:**
+- Gain: Sprint 8 ships within the schema-lock; the future amendment
+  has a clear "do this" anchor.
+- Lose: Two CSS escape hatches the user might want today are not
+  available until the future schema sprint runs.
+- Risk: None — the placeholder mutates nothing and renders only
+  documentation copy.
+
+**Affected files / modules:**
+- `apps/web/components/editor/edit-panels/tabs/AdvancedTab.tsx`
+  (placeholder shipped this sprint; will be replaced by the future
+  schema sprint).
+- `apps/web/lib/site-config/schema.ts` (NOT modified this sprint;
+  named here as the future amendment target).
+- `apps/web/components/renderer/ComponentRenderer.tsx` (NOT modified
+  this sprint; named here as the future renderer-amendment target).
+
+**Cross-sprint impact:** The future schema sprint is the work item.
+No other Sprint 8 sibling files are affected.

@@ -19,6 +19,7 @@ export function EditModeWrapper({ id, selected, onSelect, onContextMenu, childre
 
   const handleContextMenu = (e: MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
+    e.stopPropagation();
     onContextMenu?.(id);
   };
 
@@ -33,6 +34,7 @@ export function EditModeWrapper({ id, selected, onSelect, onContextMenu, childre
     }
     if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
       e.preventDefault();
+      e.stopPropagation();
       onContextMenu?.(id);
     }
   };

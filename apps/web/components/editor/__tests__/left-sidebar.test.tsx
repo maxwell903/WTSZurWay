@@ -18,7 +18,21 @@ function makeFixtureConfig(): SiteConfig {
         slug: "home",
         name: "Home",
         kind: "static",
-        rootComponent: { id: "cmp_root", type: "Section", props: {}, style: {}, children: [] },
+        rootComponent: {
+          id: "cmp_root",
+          type: "Section",
+          props: {},
+          style: {},
+          children: [
+            {
+              id: "cmp_h1",
+              type: "Heading",
+              props: { text: "Hi" },
+              style: {},
+              children: [],
+            },
+          ],
+        },
       },
     ],
     forms: [],
@@ -51,5 +65,21 @@ describe("<LeftSidebar>", () => {
     expect(useEditorStore.getState().leftSidebarTab).toBe("site");
     fireEvent.click(screen.getByTestId("left-sidebar-tab-data"));
     expect(useEditorStore.getState().leftSidebarTab).toBe("data");
+  });
+
+  it("renders the EditPanelShell when leftSidebarMode === 'element-edit'", () => {
+    useEditorStore.getState().enterElementEditMode("cmp_h1");
+    render(<LeftSidebar />);
+    expect(screen.getByTestId("edit-panel-shell")).toBeInTheDocument();
+    expect(screen.getByTestId("edit-panel-title")).toHaveTextContent("Heading");
+    expect(screen.queryByTestId("left-sidebar-tab-site")).toBeNull();
+  });
+
+  it("back arrow returns the sidebar to primary mode", () => {
+    useEditorStore.getState().enterElementEditMode("cmp_h1");
+    render(<LeftSidebar />);
+    fireEvent.click(screen.getByTestId("edit-panel-back"));
+    expect(useEditorStore.getState().leftSidebarMode).toBe("primary");
+    expect(useEditorStore.getState().selectedComponentId).toBeNull();
   });
 });

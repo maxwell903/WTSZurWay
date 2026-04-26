@@ -138,3 +138,137 @@ describe("editor store", () => {
     expect(s.saveError).toBe("Network down");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sprint 8 -- element edit mode & component-level mutators
+// ---------------------------------------------------------------------------
+
+describe("editor store -- element edit mode", () => {
+  beforeEach(() => {
+    __resetEditorStoreForTests();
+    useEditorStore.getState().hydrate({
+      siteId: "s",
+      siteSlug: "x",
+      workingVersionId: "v",
+      initialConfig: makeFixtureConfig(),
+    });
+  });
+
+  it("enterElementEditMode selects the id, flips mode, and resets the tab to content", () => {
+    useEditorStore.getState().setElementEditTab("style");
+    useEditorStore.getState().enterElementEditMode("cmp_h1");
+    const s = useEditorStore.getState();
+    expect(s.selectedComponentId).toBe("cmp_h1");
+    expect(s.leftSidebarMode).toBe("element-edit");
+    expect(s.elementEditTab).toBe("content");
+  });
+
+  it("exitElementEditMode clears selection, returns mode to primary, resets tab", () => {
+    useEditorStore.getState().enterElementEditMode("cmp_h1");
+    useEditorStore.getState().setElementEditTab("animation");
+    useEditorStore.getState().exitElementEditMode();
+    const s = useEditorStore.getState();
+    expect(s.selectedComponentId).toBeNull();
+    expect(s.leftSidebarMode).toBe("primary");
+    expect(s.elementEditTab).toBe("content");
+  });
+
+  it("setElementEditTab persists the active tab", () => {
+    useEditorStore.getState().setElementEditTab("visibility");
+    expect(useEditorStore.getState().elementEditTab).toBe("visibility");
+  });
+
+  it("setCurrentPageSlug exits element-edit mode", () => {
+    useEditorStore.getState().addPage({ name: "Properties", slug: "properties", kind: "static" });
+    useEditorStore.getState().enterElementEditMode("cmp_h1");
+    useEditorStore.getState().setCurrentPageSlug("properties");
+    const s = useEditorStore.getState();
+    expect(s.leftSidebarMode).toBe("primary");
+    expect(s.selectedComponentId).toBeNull();
+    expect(s.elementEditTab).toBe("content");
+  });
+
+  it("setPreviewMode(true) exits element-edit mode", () => {
+    useEditorStore.getState().enterElementEditMode("cmp_h1");
+    useEditorStore.getState().setPreviewMode(true);
+    const s = useEditorStore.getState();
+    expect(s.previewMode).toBe(true);
+    expect(s.leftSidebarMode).toBe("primary");
+    expect(s.selectedComponentId).toBeNull();
+  });
+
+  it("setPreviewMode(false) does not affect the sidebar mode", () => {
+    useEditorStore.getState().setPreviewMode(true);
+    // Mode is "primary" now (preview cleared). Re-enter edit and confirm.
+    useEditorStore.getState().setPreviewMode(false);
+    expect(useEditorStore.getState().leftSidebarMode).toBe("primary");
+  });
+});
+
+describe("editor store -- component-level mutators", () => {
+  beforeEach(() => {
+    __resetEditorStoreForTests();
+    useEditorStore.getState().hydrate({
+      siteId: "s",
+      siteSlug: "x",
+      workingVersionId: "v",
+      initialConfig: makeFixtureConfig(),
+    });
+  });
+
+  it("setComponentProps updates the node and flips saveState to dirty", () => {
+    useEditorStore.getState().setComponentProps("cmp_h1", { text: "Updated" });
+    const s = useEditorStore.getState();
+    expect(s.saveState).toBe("dirty");
+    const home = s.draftConfig.pages.find((p) => p.slug === "home");
+    expect(home?.rootComponent.children?.[0]?.props).toEqual({ text: "Updated" });
+  });
+
+  it("setComponentStyle updates the node's style and flips saveState to dirty", () => {
+    useEditorStore.getState().setComponentStyle("cmp_h1", { textColor: "#ff0000" });
+    const s = useEditorStore.getState();
+    expect(s.saveState).toBe("dirty");
+    const home = s.draftConfig.pages.find((p) => p.slug === "home");
+    expect(home?.rootComponent.children?.[0]?.style).toEqual({ textColor: "#ff0000" });
+  });
+
+  it("setComponentAnimation(undefined) removes the animation field", () => {
+    useEditorStore.getState().setComponentAnimation("cmp_h1", { onEnter: "fadeIn" });
+    useEditorStore.getState().setComponentAnimation("cmp_h1", undefined);
+    const s = useEditorStore.getState();
+    const node = s.draftConfig.pages.find((p) => p.slug === "home")?.rootComponent.children?.[0];
+    expect(node).toBeDefined();
+    expect("animation" in (node as object)).toBe(false);
+  });
+
+  it("setComponentVisibility(undefined) removes the visibility field", () => {
+    useEditorStore.getState().setComponentVisibility("cmp_h1", "desktop");
+    useEditorStore.getState().setComponentVisibility("cmp_h1", undefined);
+    const s = useEditorStore.getState();
+    const node = s.draftConfig.pages.find((p) => p.slug === "home")?.rootComponent.children?.[0];
+    expect(node).toBeDefined();
+    expect("visibility" in (node as object)).toBe(false);
+  });
+
+  it("removeComponent drops the node and clears selectedComponentId if it was selected", () => {
+    useEditorStore.getState().enterElementEditMode("cmp_h1");
+    useEditorStore.getState().removeComponent("cmp_h1");
+    const s = useEditorStore.getState();
+    expect(s.selectedComponentId).toBeNull();
+    expect(s.saveState).toBe("dirty");
+    const home = s.draftConfig.pages.find((p) => p.slug === "home");
+    expect(home?.rootComponent.children).toEqual([]);
+  });
+
+  it("removeComponent leaves selectedComponentId untouched when a different node is removed", () => {
+    // Add a sibling and select cmp_h1; remove the sibling.
+    useEditorStore.getState().setComponentProps("cmp_root", {});
+    useEditorStore.getState().selectComponent("cmp_h1");
+    // The fixture has only cmp_h1 inside the root; nothing else to remove cleanly here.
+    // Instead, verify the inverse: removing a non-selected leaf does not touch selection.
+    useEditorStore.getState().selectComponent("cmp_root");
+    expect(useEditorStore.getState().selectedComponentId).toBe("cmp_root");
+    useEditorStore.getState().removeComponent("cmp_h1");
+    expect(useEditorStore.getState().selectedComponentId).toBe("cmp_root");
+  });
+});

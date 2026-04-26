@@ -1,112 +1,111 @@
-# CLAUDE.md — Sprint 6: Element 2 Layout Shell
+# CLAUDE.md — Sprint 8: Element Edit Mode (manual)
 
 > Drop this file at the repo root of `WTSZurWay/` for the duration of Sprint
-> 6, replacing the master `CLAUDE.md`. Restore the master `CLAUDE.md` after
+> 8, replacing the master `CLAUDE.md`. Restore the master `CLAUDE.md` after
 > the sprint's quality gates pass and the Sprint Completion Report has been
 > emitted. Per the 2026-04-25 entry in `DECISIONS.md`, this project uses a
-> single-branch workflow on `master` — there is no `sprint/06` branch.
+> single-branch workflow on `master` — there is no `sprint/08` branch.
 > Every commit lands on `master` after the quality gates pass. Hosted
 > Supabase is in use (no Docker, no local Postgres).
 
 ## Mission
 
-Build the visual chrome of Element 2 — the editor — at `/[site]/edit`.
-Specifically: a top bar (logo, editable site name, page selector with
-add/rename/delete and a "DETAIL" badge for detail pages, preview-mode
-toggle, decorative deploy button), a four-tab left sidebar (Site, Pages,
-Add, Data), a right-sidebar placeholder shell (Sprint 11 fills it with the
-AI chat), and a center canvas that renders the current page through the
-already-shipped shared `<Renderer>` in `mode="edit"` with click-to-select
-and hover highlighting. All editor state lives in a Zustand store at
-`apps/web/lib/editor-state/`. A debounced autosave persists the draft
-`SiteConfig` back to the working `site_versions` row through a new
-`PATCH /api/sites/[siteId]/working-version` endpoint.
+Wire **Element Edit mode** for the editor. Right-clicking any component on
+the canvas swaps the LeftSidebar from its primary four-tab mode (Site /
+Pages / Add / Data) into a five-tab Element Edit panel — Content / Style /
+Animation / Visibility / Advanced — that edits the right-clicked node in
+place. Edits flow through new component-level mutators on the existing
+Zustand store, the existing autosave hook persists them to the working
+`site_versions` row, and the canvas re-renders immediately. Sprint 8 also
+fills in the seven Content panels named by the spec
+(`PROJECT_SPEC.md` §8.4 + `SPRINT_SCHEDULE.md` §2 Sprint 8 amendment):
+Heading, Paragraph, Button (with the §8.12 Link-mode controls), Image,
+NavBar, Footer, and InputField (with the §8.12
+`defaultValueFromQueryParam` control). The other thirteen components ship a
+documented Content-tab placeholder; their Style / Animation / Visibility
+tabs work in full.
 
-This sprint ships the **shell**, not the editing surfaces. Drag-and-drop
-(Sprint 7), the right-click Element Edit panels (Sprint 8), Repeater data
-binding (Sprint 9), the Data tab's submission list (Sprint 10), the AI
-chat right sidebar (Sprint 11), and the Deploy flow (Sprint 13) are out of
-scope and must remain so. The Add tab cards are visible and selectable
-(visually) but **not draggable**. Right-click on the canvas does **nothing**
-(Sprint 8 wires it). The Data tab shows a "Coming soon" placeholder. The
-Right sidebar is an empty pane with a "Select a component to edit, or use
-the AI chat (coming soon)" placeholder. The Deploy button renders enabled
-but its `onClick` only opens a `Sonner` toast that says
-"Deploy is coming in a later sprint."
+This sprint **does not** ship drag-and-drop (Sprint 7), Repeater data
+binding (Sprint 9), Form submission wiring (Sprint 10), the AI chat right
+sidebar (Sprint 11), or the Deploy flow (Sprint 13). The Add tab cards
+remain non-draggable. The Right sidebar remains a placeholder. `setProp`
+inside a Repeater template still saves verbatim — Sprint 9 will resolve
+`{{ row.* }}` tokens at render time.
 
-This sprint is the spine of every later editor sprint. Get the Zustand
-store shape and the canvas → renderer wiring right; everything from
-Sprint 7 onward extends them.
+This sprint is the spine of every later editor sprint that needs to read
+or write component state. Get the store mutators right; everything from
+Sprint 9 onward consumes them.
 
 ## Pre-flight check (MANDATORY — emit before reading or writing any non-spec file)
 
 Before reading or modifying any file other than the items listed below in
-"Spec sections in scope", run these six checks. If any fails, STOP and
+"Spec sections in scope", run these seven checks. If any fails, STOP and
 emit a Deviation Report per the protocol embedded in this file. Do not
 attempt to work around a failed check.
 
-1. **Spec amendment §8.12 is in place.** Read `PROJECT_SPEC.md` §8.12
-   ("Detail pages"). Confirm the section exists and describes:
-   - The `Page.kind: "static" | "detail"` field with default `"static"`.
-   - The `Page.detailDataSource: "properties" | "units"` field, required
-     iff `kind === "detail"`.
-   - The per-kind slug uniqueness rule (a static page and a detail page
-     may share a slug — the U2 same-slug coexistence pattern; two pages
-     of the same kind may not share a slug).
-   - The Pages-tab "Add page" modal exposes a `Page kind` dropdown and,
-     when `Detail` is selected, a `Detail data source` dropdown.
-   If §8.12 is missing or the prop shapes / rules differ, STOP and emit a
-   Deviation Report with failure reason "PROJECT_SPEC.md §8.12 has not
-   been amended; Sprint 6 cannot generate UI that contradicts the spec."
+1. **Single-branch workflow.** Run `git branch --show-current` and verify
+   the output is exactly `master`. If it is not, STOP and emit a
+   Deviation Report — the project workflow per the 2026-04-25 entry in
+   `DECISIONS.md` is single-branch on `master`; do NOT create a
+   `sprint/08` branch and do NOT switch branches.
 
-2. **Sprint 3b schema landed.** Read `apps/web/lib/site-config/schema.ts`.
-   Confirm `pageSchema` contains the `kind` field
-   (`z.enum(["static", "detail"]).default("static")`) and the
-   `detailDataSource` field
-   (`z.enum(["properties", "units"]).optional()`), and that
-   `siteConfigSchema` has a `superRefine` enforcing per-kind slug
-   uniqueness AND the "detailDataSource required iff kind=detail" rule.
-   If any of these is missing, Sprint 3b has not landed against this
-   branch — STOP and emit a Deviation Report.
+2. **Sprint 6 is merged.** Confirm all of the following exist and exporta
+   from `apps/web/components/editor/index.ts`:
+   `TopBar`, `LeftSidebar`, `RightSidebar`, `Canvas`, `SelectionBreadcrumb`,
+   `PageSelector`, `PreviewToggle`, `DeployButton`, `SaveIndicator`,
+   `SiteNameInput`, `AddTab`, `ComponentCard`, `COMPONENT_CATALOG`,
+   `COMPONENT_GROUP_ORDER`, `DataTab`, `AddPageDialog`,
+   `DeletePageConfirm`, `PageRow`, `PagesTab`, `RenamePageDialog`,
+   `FontSelector`, `PaletteSelector`, `SiteTab`. If any is missing,
+   STOP and emit a Deviation Report — Sprint 8 extends Sprint 6 in
+   place; the editor shell must be present.
 
-3. **Sprint 4 sites + site_versions tables exist.** Read
-   `apps/web/lib/sites/repo.ts`. Confirm `getSiteBySlug` and
-   `getLatestWorkingVersion` are exported. Confirm the existing migration
-   under `supabase/migrations/` creates `sites` and `site_versions` with
-   columns `id`, `site_id`, `config jsonb`, `is_working boolean`,
-   `is_deployed boolean`, `version_number`, `created_at`, `updated_at`,
-   `created_by`, `source`, `parent_version_id`. If any of these is
-   missing, Sprint 4 has not landed against this branch — STOP and emit
-   a Deviation Report.
+3. **Editor store has the Sprint-6 surface.** Read
+   `apps/web/lib/editor-state/types.ts` and confirm `EditorState` has
+   `draftConfig`, `currentPageSlug`, `selectedComponentId`,
+   `hoveredComponentId`, `previewMode`, `leftSidebarTab`, `saveState`,
+   `lastSavedAt`, `saveError`, and `EditorActions` has `selectComponent`,
+   `setHoveredComponent`, `setLeftSidebarTab`, `setPreviewMode`,
+   `addPage`, `renamePage`, `deletePage`, `reorderPages`, `setSiteName`,
+   `setPalette`, `setFontFamily`, `markSaving`, `markSaved`, `markError`.
+   If any is missing, STOP and emit a Deviation Report.
 
-4. **Renderer + components exist.** Read
-   `apps/web/components/renderer/Renderer.tsx`. Confirm it exports a
-   default or named `Renderer` accepting `RendererProps` with at minimum
-   `config`, `page` (slug), `mode: "edit" | "preview" | "public"`,
-   `selection?: ComponentId | null`, `onSelect?: (id) => void`, and
-   `onHover?: (id | null) => void`. If `onHover` is absent, that is
-   acceptable — Sprint 6 may select via the existing `onSelect` only and
-   render the hover overlay in pure CSS by detecting `:hover` on the
-   selection wrapper. Note this in your sprint output. If `onSelect` is
-   missing, STOP and emit a Deviation Report.
+4. **`EditModeWrapper` exposes `onContextMenu`.** Read
+   `apps/web/components/renderer/EditModeWrapper.tsx`. Confirm the
+   component accepts an `onContextMenu?: (id: string) => void` prop, that
+   the `onContextMenu` event handler calls `e.preventDefault()` before
+   invoking the callback with the node id, and that the keyboard parity
+   handler (`Shift+F10` / `ContextMenu` key) does the same. If any of
+   that is missing, STOP and emit a Deviation Report — Sprint 8's
+   right-click trigger relies on the wrapper's existing wiring.
 
-5. **Component registry has all 20 entries.** Read
-   `apps/web/components/site-components/registry.ts`. Count distinct
-   keys. If the count is not 20 (Section, Heading, Paragraph, Image,
-   Spacer, Divider, Row, Column, Button, Logo, NavBar, Footer,
-   HeroBanner, PropertyCard, UnitCard, Repeater, InputField, Form,
-   MapEmbed, Gallery), STOP and emit a Deviation Report — Sprint 6's
-   Add tab catalog is keyed off the registry; mismatched entries break
-   the canvas.
+5. **`Renderer` and `ComponentRenderer` plumb `onContextMenu`.** Read
+   `apps/web/components/renderer/Renderer.tsx` and
+   `apps/web/components/renderer/ComponentRenderer.tsx`. Confirm both
+   declare an optional `onContextMenu?: (id: string) => void` prop and
+   forward it to the `EditModeWrapper` only in `mode === "edit"`. If
+   either is missing the prop, STOP and emit a Deviation Report.
 
-6. **Single-branch workflow.** Confirm the current git branch is
-   `master`. Run `git branch --show-current` and verify the output is
-   exactly `master`. If it is not, STOP and emit a Deviation Report —
-   the project workflow per `DECISIONS.md` 2026-04-25 is single-branch
-   on `master`; do NOT create a `sprint/06` branch and do NOT switch
-   branches.
+6. **`ComponentNode` schema does NOT have `htmlId` or `className`
+   fields.** Read `apps/web/lib/site-config/schema.ts` and confirm
+   `componentNodeSchema` does not include either field, and that
+   `PROJECT_SPEC.md` §11's `ComponentNode` definition likewise does
+   not include them. If either has been added since this CLAUDE.md was
+   written, STOP and emit a Deviation Report — the Advanced-tab
+   placeholder in this plan assumes the schema gap; if the schema has
+   been amended, the Advanced tab must ship live controls instead of
+   a placeholder.
 
-Only after all six checks pass may you proceed to write code.
+7. **All 20 `EditPanel.tsx` stubs exist.** For each
+   `T ∈ { Section, Row, Column, Heading, Paragraph, Button, Image, Logo,
+   Spacer, Divider, NavBar, Footer, HeroBanner, PropertyCard, UnitCard,
+   Repeater, InputField, Form, MapEmbed, Gallery }`, confirm
+   `apps/web/components/site-components/${T}/EditPanel.tsx` exists and
+   exports `${T}EditPanel`. If any is missing, STOP and emit a
+   Deviation Report — Sprint 8 fills these in; it does not create them
+   from scratch.
+
+Only after all seven checks pass may you proceed to write code.
 
 ## Spec sections in scope
 
@@ -115,442 +114,642 @@ authoritative source for everything below — when this file and the spec
 disagree, the spec wins; surface the conflict via the Deviation Protocol
 before proceeding.
 
-- `PROJECT_SPEC.md` §6 — `SiteConfig` schema (canonical; you read it,
-  you do NOT modify it).
-- `PROJECT_SPEC.md` §6.4 — Shared style controls (palette + font binding
-  reads from this).
-- `PROJECT_SPEC.md` §8.1 — Editor route shape and the three renderer modes
-  (`edit` / `preview` / `public`).
-- `PROJECT_SPEC.md` §8.2 — Top bar (logo, site name, page selector,
-  preview toggle, deploy).
-- `PROJECT_SPEC.md` §8.3 — Left sidebar (the four tabs: Site, Pages, Add,
-  Data; their content; the "Add page" modal).
-- `PROJECT_SPEC.md` §8.4 — Right sidebar (Sprint 6 ships the shell only
-  — placeholder copy; Sprint 11 fills it).
-- `PROJECT_SPEC.md` §8.5 — Selection model (click to select; clicking the
-  canvas background deselects; `Esc` clears selection).
-- `PROJECT_SPEC.md` §8.6 — Canvas and the renderer in edit mode (selection
-  outline, hover highlight, breadcrumb).
-- `PROJECT_SPEC.md` §8.11 — Preview mode toggle in the top bar (clicking
-  it swaps the canvas renderer's `mode` from `edit` to `preview` and
-  hides the selection outline). Sprint 6 wires this toggle.
-- `PROJECT_SPEC.md` §8.12 — Detail pages (the Pages-tab kind picker, the
-  per-kind slug uniqueness rule, the page-selector "DETAIL" badge).
-- `PROJECT_SPEC.md` §10.1 — `RendererProps` (the canvas calls
-  `<Renderer mode="edit" selection={selectedId} onSelect={...} />`).
-- `PROJECT_SPEC.md` §11 — `SiteConfig` schema in full, including the
-  Sprint 3b detail-pages amendment.
-- `PROJECT_SPEC.md` §12 — `sites` and `site_versions` table DDL — Sprint 6
-  reads these tables and writes the working version's `config` jsonb.
-- `PROJECT_SPEC.md` §15 — Coding standards (binding; copied below).
+- `PROJECT_SPEC.md` §6.1 — Component catalog (informs which components
+  get a Content panel in this sprint vs. later).
+- `PROJECT_SPEC.md` §6.4 — Shared style controls (binding for the Style
+  tab).
+- `PROJECT_SPEC.md` §6.5 — Animation presets (the ten enum values; the
+  Animation tab edits exactly these).
+- `PROJECT_SPEC.md` §8.4 — Left sidebar element edit mode (the five
+  tabs, the back arrow, the bottom-of-panel Delete button).
+- `PROJECT_SPEC.md` §8.5 — Selection model (right-click selects and
+  swaps the left sidebar; left-click on background deselects; `Esc`
+  clears).
+- `PROJECT_SPEC.md` §8.6 — Canvas behavior in edit mode (selection
+  outline already shipped by Sprint 3; this sprint does not change the
+  canvas chrome beyond wiring `onContextMenu`).
+- `PROJECT_SPEC.md` §8.8 — Right sidebar in element edit mode (the
+  right sidebar STAYS as the AI-chat shell; the LEFT sidebar is the one
+  that swaps — this is a deliberate deviation from the brainstorm and
+  is binding).
+- `PROJECT_SPEC.md` §8.12 — Detail pages (Button gains a Link-mode
+  segmented control + Detail-page dropdown when `linkMode === "detail"`;
+  InputField gains a `Default from query parameter` field).
+- `PROJECT_SPEC.md` §10.1 — `RendererProps` (the canvas now passes
+  `onContextMenu` in addition to `onSelect`).
+- `PROJECT_SPEC.md` §11 — `SiteConfig` schema in full (canonical; you
+  read it, you do NOT modify it — schema-lock break would require its
+  own sprint per `SPRINT_SCHEDULE.md` §5).
+- `PROJECT_SPEC.md` §15 — Coding standards (binding; the relevant
+  subset is copied below).
+- Each component's `apps/web/components/site-components/${T}/SPEC.md`
+  for the seven components that get a Content panel in this sprint
+  (Heading, Paragraph, Button, Image, NavBar, Footer, InputField).
+  Their Style-tab carve-outs (Spacer and Divider's primitive notes;
+  HeroBanner's `height` prop; etc.) are binding.
 
 ## File scope
 
 ### Owned (this sprint may create or modify)
 
-- `apps/web/app/[site]/edit/page.tsx` — async server component; awaits
-  `params`, fetches the working version via the existing
-  `getSiteBySlug` + `getLatestWorkingVersion` helpers, and hands the
-  result to the `EditorShell` client component.
-- `apps/web/app/[site]/edit/EditorShell.tsx` — top-level client component;
-  receives the loaded site + working version, hydrates the Zustand store,
-  and composes `<TopBar />`, `<LeftSidebar />`, `<Canvas />`,
-  `<RightSidebar />`.
-- `apps/web/app/[site]/edit/loading.tsx` — Next.js loading UI (a
-  skeleton matching the editor layout: top bar bar, two side rails, a
-  blank canvas area).
-- `apps/web/app/[site]/edit/error.tsx` — Next.js error UI with a "Try
-  again" button (`reset()`) and a "Go back" link to `/setup`.
-- `apps/web/app/[site]/edit/not-found.tsx` — Next.js 404 UI shown when
-  the slug doesn't resolve to a site or the site has no working version.
-- `apps/web/app/api/sites/[siteId]/working-version/route.ts` — the
-  PATCH endpoint that accepts `{ config: SiteConfig }` and updates the
-  working `site_versions` row's `config` jsonb. Server-only,
-  `runtime = "nodejs"`, `dynamic = "force-dynamic"`,
-  `Cache-Control: no-store`.
-- `apps/web/components/editor/topbar/TopBar.tsx` — the top bar container.
-- `apps/web/components/editor/topbar/SiteNameInput.tsx` — inline editable
-  site name (Enter or blur commits; Esc cancels; max 100 chars).
-- `apps/web/components/editor/topbar/PageSelector.tsx` — page dropdown
-  showing the active page's name + a small "DETAIL" badge for
-  detail pages; opens to a list of all pages with the same per-row
-  badge; "+ Add page" entry at the bottom opens `AddPageDialog`.
-- `apps/web/components/editor/topbar/PreviewToggle.tsx` — a segmented
-  control (Edit / Preview) bound to the store's `previewMode`.
-- `apps/web/components/editor/topbar/DeployButton.tsx` — decorative
-  button that opens a Sonner toast on click ("Deploy is coming in a
-  later sprint.").
-- `apps/web/components/editor/topbar/SaveIndicator.tsx` — reads the
-  store's `saveState` and renders one of: "Saved 2s ago" /
-  "Saving…" / "Unsaved changes" / "Save failed — retry".
-- `apps/web/components/editor/sidebar/LeftSidebar.tsx` — the left rail
-  container with the four-tab tab list and the active tab's content
-  panel.
-- `apps/web/components/editor/sidebar/site-tab/SiteTab.tsx` — the Site
-  tab pane.
-- `apps/web/components/editor/sidebar/site-tab/PaletteSelector.tsx` —
-  six radio cards mirroring the Element 1 setup form's palette grid
-  (Ocean, Forest, Sunset, Violet, Monochrome, Rose). The data source
-  for the palette definitions is shared — the file imports the palettes
-  from `apps/web/lib/setup-form/palettes.ts` (Sprint 2 — read-only).
-- `apps/web/components/editor/sidebar/site-tab/FontSelector.tsx` —
-  two dropdowns: Heading font and Body font, each populated from a
-  small curated list of Google-Fonts-friendly names declared inline at
-  the top of this file (e.g. Inter, Manrope, Source Sans 3, Lora,
-  Merriweather, Playfair Display). Selection writes to whichever font
-  field exists in the schema's site-level theme block; if the schema
-  has separate `headingFont` and `bodyFont` fields, both are wired; if
-  the schema only has a single `fontFamily` field, the selector
-  collapses to a single dropdown and a header comment says so. Read
-  the schema first and adapt; do NOT modify the schema.
-- `apps/web/components/editor/sidebar/pages-tab/PagesTab.tsx` — the
-  Pages tab pane: list of pages with rename / delete buttons per row;
-  reorder via up/down arrows (drag-reorder is Sprint 7); an "Add page"
-  button at the bottom that opens `AddPageDialog`.
-- `apps/web/components/editor/sidebar/pages-tab/AddPageDialog.tsx` —
-  shadcn `Dialog`. Fields: Name (text, required, max 100), Slug (text,
-  required, lowercased, slug-validated regex `^[a-z0-9-]+$`, max 60),
-  Page kind (segmented control: Static / Detail; default Static),
-  Detail data source (dropdown shown only when kind = Detail; values
-  `properties`, `units`; required when shown). Submits via the store's
-  `addPage` action. Per-kind slug uniqueness validated client-side
-  against the current pages list; matches the §8.12 rule. The schema's
-  `superRefine` is the ultimate guard — server-side autosave will fail
-  the PATCH and show the SaveIndicator's "Save failed" state if the
-  client check is somehow bypassed.
-- `apps/web/components/editor/sidebar/pages-tab/RenamePageDialog.tsx` —
-  shadcn `Dialog` with Name + Slug fields; same validation rules as
-  `AddPageDialog`. The Home page (slug = `"home"`) cannot have its slug
-  changed — the slug field is disabled with a tooltip
-  "The home page slug is fixed." (Renaming the displayed name is
-  permitted.)
-- `apps/web/components/editor/sidebar/pages-tab/DeletePageConfirm.tsx`
-  — shadcn `AlertDialog` confirming page deletion. The Home page is
-  not deletable — the row's delete button is disabled with a tooltip
-  "The home page cannot be deleted."
-- `apps/web/components/editor/sidebar/pages-tab/PageRow.tsx` — single
-  row in the pages list with name + slug + DETAIL badge if applicable
-  + rename + delete + up/down buttons.
-- `apps/web/components/editor/sidebar/add-tab/AddTab.tsx` — the Add
-  tab pane: a grid of `<ComponentCard />`s grouped by section
-  (Layout, Content, Media, Data, Forms, Navigation). The cards are
-  visually styled and selectable (a click selects the card visually
-  for visual feedback) but **DO NOT** add the component to the canvas
-  — Sprint 7 wires drag-and-drop. A muted helper line at the bottom
-  reads "Drag-and-drop coming in the next update."
-- `apps/web/components/editor/sidebar/add-tab/ComponentCard.tsx` — a
-  single card with an icon (`lucide-react`), the component's display
-  name, and a one-line description. Card receives a
-  `ComponentCatalogEntry` prop.
-- `apps/web/components/editor/sidebar/add-tab/component-catalog.ts` —
-  the canonical list of 20 catalog entries
-  (`{ type: ComponentType; group: ComponentGroup; label: string;
-  icon: LucideIcon; description: string }`). The `type` strings MUST
-  match the keys in `apps/web/components/site-components/registry.ts`
-  exactly. The grouping: Layout = Section, Row, Column, Spacer,
-  Divider; Content = Heading, Paragraph, Button; Media = Image, Logo,
-  Gallery, MapEmbed; Data = Repeater, PropertyCard, UnitCard;
-  Forms = Form, InputField; Navigation = NavBar, Footer; HeroBanner =
-  Layout (a hero is a structural lead block).
-- `apps/web/components/editor/sidebar/data-tab/DataTab.tsx` —
-  placeholder pane: a centered `Database` icon (`lucide-react`) and
-  the copy "Form submissions will appear here once Sprint 10 ships."
-- `apps/web/components/editor/sidebar/RightSidebar.tsx` — placeholder
-  pane: a centered `MessageSquare` icon and the copy "Select a
-  component to edit it, or chat with the AI assistant (coming soon)."
-- `apps/web/components/editor/canvas/Canvas.tsx` — the canvas
-  container; reads the current page's `rootComponent` from the store's
-  `draftConfig`, calls `<Renderer config={draftConfig} page={currentPageSlug}
-  mode={previewMode ? "preview" : "edit"} selection={selectedComponentId}
-  onSelect={selectComponent} onHover={setHoveredComponent} />` (omitting
-  `onHover` if the renderer does not support it — pre-flight check #4).
-  Wraps the renderer in a scrollable area with a maximum width matching
-  a typical desktop canvas (1280px) and a subtle gridded background.
-  Wires a global `keydown` handler: `Esc` clears selection.
-- `apps/web/components/editor/canvas/SelectionBreadcrumb.tsx` —
-  small breadcrumb shown at the bottom of the canvas reading the
-  selection trail from `siteConfig` root → selected node. Reads the
-  store; pure rendering.
-- `apps/web/components/editor/index.ts` — barrel re-export.
-- `apps/web/components/editor/__tests__/` — Vitest tests for every
-  component above that has non-trivial logic. Bare placeholder
-  components (DataTab, RightSidebar, DeployButton) need only a single
-  smoke render test each.
-- `apps/web/lib/editor-state/index.ts` — public re-exports of the store
-  hook, selector helpers, action helpers, and the autosave hook.
-- `apps/web/lib/editor-state/types.ts` — `EditorState`,
-  `EditorActions`, `LeftSidebarTab`, `SaveState` type definitions.
-  Re-exports `SiteConfig`, `Page`, `ComponentId` from
-  `apps/web/lib/site-config/index.ts` for convenience.
-- `apps/web/lib/editor-state/store.ts` — the Zustand store
-  definition. Uses `zustand` and `zustand/middleware` (the `devtools`
-  middleware in dev only — read `process.env.NODE_ENV`). Default
-  `saveState` is `"idle"`; every mutator that touches `draftConfig`
-  flips it to `"dirty"` (centralised through a `mutate(updater)`
-  helper).
-- `apps/web/lib/editor-state/selectors.ts` — derived selectors:
-  `selectCurrentPage`, `selectSelectedComponentNode`,
-  `selectAllPagesForPicker`, `selectPaletteId`, `selectIsHomePage`.
-  Pure functions that take state, return derived values; tested in
-  isolation.
-- `apps/web/lib/editor-state/actions.ts` — page-level mutators:
-  `addPage`, `renamePage`, `deletePage`, `reorderPages`, plus
-  site-level `setSiteName`, `setPalette`, `setHeadingFont`,
-  `setBodyFont`. Each is a pure function `(state, args) =>
-  newDraftConfig`; the store wires them through `mutate()`. Page
-  mutators enforce: the home page cannot be deleted, the home page's
-  slug cannot change, slug must be `^[a-z0-9-]+$`, per-kind slug
-  uniqueness, and `detailDataSource` is required iff `kind ===
-  "detail"`. Failed validation throws a typed `EditorActionError`
-  which the calling component catches and surfaces via Sonner.
-- `apps/web/lib/editor-state/autosave.ts` — `useAutosave(siteId,
-  workingVersionId, options?)` hook. Subscribes to `draftConfig` +
-  `saveState`; when state flips to `"dirty"`, debounces by `1000ms`
-  (configurable via `options.debounceMs`), flips state to `"saving"`,
-  PATCHes `/api/sites/[siteId]/working-version` with the current
-  `draftConfig`. On 204, flips state to `"saved"` and stores
-  `lastSavedAt = Date.now()`. On non-2xx or fetch error, flips state
-  to `"error"`. Coalesces overlapping mutations: if `draftConfig`
-  changes during a save, queue exactly one follow-up save after the
-  in-flight one resolves. Aborts in-flight saves on unmount via
-  `AbortController`.
-- `apps/web/lib/editor-state/__tests__/store.test.ts` — store unit
-  tests (selection, hover, page-tab, preview-mode toggle).
-- `apps/web/lib/editor-state/__tests__/actions.test.ts` — page-action
-  unit tests (add static, add detail, add detail without
-  data-source rejected, slug uniqueness per-kind, home delete
-  rejected, home slug rename rejected, reorder, etc.).
-- `apps/web/lib/editor-state/__tests__/autosave.test.ts` — fake-timers
-  test of the debounce + coalesce + error path.
+**New: edit-panel infrastructure (this is the centerpiece of Sprint 8).**
+
+- `apps/web/components/editor/edit-panels/EditPanelShell.tsx` — the
+  container that wraps the five tabs. Renders a back-arrow button at
+  the top (clicking returns the LeftSidebar to primary mode AND
+  clears the active selection — a single store action,
+  `exitElementEditMode`), the selected component's type as the panel
+  title, the tabs nav, the active tab's pane, and a footer
+  Delete-with-confirm button. Reads
+  `selectedComponentId` + `selectSelectedComponentNode` from the store;
+  if the selection resolves to `null` (selected node was removed
+  mid-flight), the shell calls `exitElementEditMode` and renders nothing
+  for one tick.
+- `apps/web/components/editor/edit-panels/EditPanelTabs.tsx` — the
+  tablist with five buttons, ARIA semantics (`role="tablist"`,
+  `role="tab"`, `aria-selected`), and a controlled `activeTab` prop
+  driven from the parent. Default tab is `"content"`. Tab order:
+  Content, Style, Animation, Visibility, Advanced.
+- `apps/web/components/editor/edit-panels/tabs/ContentTabHost.tsx` —
+  routes by `node.type` to the per-component Content panel from
+  `apps/web/components/site-components/${T}/EditPanel.tsx`. The
+  per-component panel exports a default function that takes
+  `{ node }` and uses store mutators directly. For component types
+  that do not have a Content panel in Sprint 8, this host renders the
+  documented placeholder (see "Sprint-8 Content panel matrix" below).
+- `apps/web/components/editor/edit-panels/tabs/StyleTab.tsx` — the
+  shared §6.4 style-control surface. Composes the sub-controls below.
+  Reads `node.style` and writes it back through `setComponentStyle`.
+  The tab honors per-component carve-outs by reading a small allow-list
+  computed from `node.type`:
+    - Spacer: only Visibility (no §6.4 chrome) — the Style tab renders
+      a one-line note "Spacer is a primitive; use the Content tab to
+      change its height" and nothing else.
+    - Divider: Margin only (per `Divider/SPEC.md`); the rest of the
+      Style tab is hidden, with a one-line note explaining that.
+    - All other 18 components: full §6.4 controls (background, padding,
+      margin, border, borderRadius, shadow, width, height, textColor).
+- `apps/web/components/editor/edit-panels/tabs/AnimationTab.tsx` —
+  edits `node.animation` with two `AnimationPreset` selects (onEnter,
+  onHover) and two non-negative number inputs (duration ms, delay ms).
+  Setting both preset selects to `"none"` and clearing duration/delay
+  writes `animation: undefined` on the node (i.e. removes the field
+  entirely). Otherwise writes the sparse `AnimationConfig` object.
+- `apps/web/components/editor/edit-panels/tabs/VisibilityTab.tsx` —
+  three radio cards (Always / Desktop only / Mobile only) bound to
+  `node.visibility`. Selecting "Always" writes `visibility: undefined`
+  on the node (i.e. removes the field entirely).
+- `apps/web/components/editor/edit-panels/tabs/AdvancedTab.tsx` —
+  documented placeholder ONLY (per the pre-flight check #6 outcome):
+  renders an `Info` icon (`lucide-react`), the heading "Custom CSS
+  class & HTML id", and the body copy "These escape hatches will land
+  once the SiteConfig schema gains `htmlId` and `className` fields on
+  `ComponentNode`. See `DECISIONS.md` for the planned schema
+  amendment." Renders the `data-testid="advanced-tab-placeholder"`
+  attribute so the smoke test can assert visibility. Does NOT mutate
+  the store. Does NOT add any input.
+- `apps/web/components/editor/edit-panels/DeleteComponentButton.tsx`
+  — the bottom-of-panel destructive button. On click, opens a shadcn
+  `AlertDialog` ("Delete this component? This cannot be undone.").
+  On confirm, calls `removeComponent(selectedComponentId)`, then
+  `exitElementEditMode`. Disabled with a tooltip ("The page root
+  cannot be deleted; switch to the Pages tab to delete the page
+  itself.") when the selected node is the current page's
+  `rootComponent` — that case is detected by reading
+  `selectCurrentPage(state).rootComponent.id === selectedComponentId`.
+- `apps/web/components/editor/edit-panels/controls/SpacingInput.tsx`
+  — controlled four-input row (top, right, bottom, left) for
+  `Spacing | undefined`. Numeric inputs accept non-negative integers;
+  empty fields encode "unset" by omitting the key. A "linked" toggle
+  collapses all four inputs to one when active and writes the same
+  value to all four sides on change. Writes `undefined` (clearing the
+  whole `padding` / `margin` block) when all four fields are empty.
+- `apps/web/components/editor/edit-panels/controls/ColorInput.tsx`
+  — controlled native `<input type="color">` paired with a hex text
+  input (kept in sync). Used by `textColor`, by `border.color`, and
+  inside the Background control.
+- `apps/web/components/editor/edit-panels/controls/BackgroundInput.tsx`
+  — segmented control (None / Color / Gradient). When None: writes
+  `background: undefined`. When Color: a single `ColorInput`. When
+  Gradient: two `ColorInput`s (from / to) and a numeric angle (degrees,
+  default 180). Reads / writes `ColorOrGradient | undefined`.
+- `apps/web/components/editor/edit-panels/controls/BorderInput.tsx`
+  — three controls (numeric width, enum select for `BORDER_STYLES`,
+  `ColorInput`). When width is `0` and style is `"none"`, writes
+  `border: undefined`.
+- `apps/web/components/editor/edit-panels/controls/ShadowSelect.tsx`
+  — five-button row (none / sm / md / lg / xl) bound to
+  `ShadowPreset | undefined`. Clicking the active preset clears the
+  field.
+- `apps/web/components/editor/edit-panels/controls/SizeUnitInput.tsx`
+  — text input that accepts any `SizeUnit` string per the schema
+  comment ("any CSS length token"). No regex validation — the schema
+  is intentionally permissive. Writes the empty string back as
+  `undefined`. Used for `width` and `height` on the Style tab and for
+  HeroBanner's `height` prop on its Content panel.
+- `apps/web/components/editor/edit-panels/controls/AnimationPresetSelect.tsx`
+  — a select of the ten `ANIMATION_PRESETS` values (with a leading
+  "(none)" entry that maps to `undefined`).
+- `apps/web/components/editor/edit-panels/controls/NumberInput.tsx`
+  — controlled non-negative integer input with `min` and `step`
+  props. Used for `borderRadius`, animation `duration` and `delay`,
+  Spacing values, NavBar / Footer link counts, etc.
+- `apps/web/components/editor/edit-panels/controls/TextInput.tsx`
+  — controlled text input that commits on every change. Used by
+  Heading text, Paragraph text, Button label, Image alt, etc.
+- `apps/web/components/editor/edit-panels/controls/SelectInput.tsx`
+  — generic controlled select used by Heading level, Image fit,
+  Button variant / size / buttonType, NavBar logoPlacement,
+  InputField inputType, etc.
+- `apps/web/components/editor/edit-panels/controls/SegmentedControl.tsx`
+  — generic segmented control (radio-group styled as buttons). Used
+  by Button's Link mode (Static URL / Detail page) and the Visibility
+  tab's three options.
+- `apps/web/components/editor/edit-panels/controls/SwitchInput.tsx`
+  — controlled boolean switch. Used by Button `fullWidth`, NavBar
+  `sticky`, HeroBanner `overlay`, InputField `required`.
+- `apps/web/components/editor/edit-panels/controls/LinksEditor.tsx`
+  — vertical list editor for `{ label: string; href: string }[]`.
+  Each row has Label + Href text inputs and a remove button; an Add
+  button appends a new row. Used inside NavBar Content panel and
+  inside Footer Content's per-column link list.
+- `apps/web/components/editor/edit-panels/controls/FooterColumnsEditor.tsx`
+  — vertical list editor for
+  `Array<{ title: string; links: Array<{ label: string; href: string }> }>`.
+  Each column has a Title input, a `LinksEditor`, and a remove button;
+  an Add column button appends a new column.
+- `apps/web/components/editor/edit-panels/controls/SelectOptionsEditor.tsx`
+  — vertical list editor for `Array<{ label: string; value: string }>`,
+  used by InputField when `inputType === "select"`. Hidden when the
+  type is anything else.
+- `apps/web/components/editor/edit-panels/controls/DetailPageSelect.tsx`
+  — select of detail pages on the current site. Reads
+  `state.draftConfig.pages.filter(p => p.kind === "detail")` and
+  renders one option per page with `value={page.slug}`. When the
+  list is empty, renders a disabled select with the placeholder
+  "Add a detail page from the Pages tab first." Used inside Button's
+  Content panel when `linkMode === "detail"`.
+- `apps/web/components/editor/edit-panels/index.ts` — barrel
+  re-export of every public component in this directory.
+- `apps/web/components/editor/edit-panels/__tests__/` — Vitest tests
+  for every non-trivial component above.
+
+**Per-component Content panels (filled in for Sprint 8).**
+
+For each of the seven components below, replace the Sprint-5 stub with
+a full Content panel. Each panel takes `{ node: ComponentNode }`,
+parses `node.props` against that component's prop schema, holds local
+form state mirrored to `node.props`, and writes through
+`setComponentProps(node.id, nextProps)` on every change. Validation is
+best-effort (the schema's per-component `safeParse` guards the renderer
+already; the panel just edits the JSON).
+
+- `apps/web/components/site-components/Heading/EditPanel.tsx`
+  — Text (`TextInput`, multi-line allowed via `<textarea>` for now);
+  Level (`SelectInput` with options 1–6).
+- `apps/web/components/site-components/Paragraph/EditPanel.tsx`
+  — Text (`<textarea>`).
+- `apps/web/components/site-components/Button/EditPanel.tsx`
+  — Label, Href (text inputs); Variant
+  (`primary | secondary | outline | ghost | link`); Size
+  (`sm | md | lg`); Full width (`SwitchInput`); Button type
+  (`button | submit | reset`). **Detail-pages amendment (§8.12):**
+  Link mode (`SegmentedControl`: "Static URL" / "Detail page";
+  default "Static URL"). When "Detail page" is selected, Href becomes
+  read-only with the helper "Computed at render time as
+  `/{detailPageSlug}/{row.id}`" and `DetailPageSelect` appears below
+  Link mode. When "Static URL" is selected, the panel writes
+  `linkMode: "static"` and `detailPageSlug: undefined`. When "Detail
+  page" is selected, the panel writes `linkMode: "detail"` and
+  `detailPageSlug: <chosen-slug>`. The schema's `superRefine`
+  ("`detailPageSlug` is required when `linkMode === "detail"`") is the
+  ultimate guard; the panel disables Save when no detail pages exist
+  by guarding the select itself.
+- `apps/web/components/site-components/Image/EditPanel.tsx`
+  — Src, Alt (text inputs); Fit (`SelectInput` with the five
+  `object-fit` values from `Image/SPEC.md`).
+- `apps/web/components/site-components/NavBar/EditPanel.tsx`
+  — Links (`LinksEditor`); Logo placement
+  (`SelectInput`: left / center / right); Sticky (`SwitchInput`);
+  Logo URL (text input, optional — clears `logoSrc` when empty).
+- `apps/web/components/site-components/Footer/EditPanel.tsx`
+  — Columns (`FooterColumnsEditor`); Copyright (text input).
+- `apps/web/components/site-components/InputField/EditPanel.tsx`
+  — Name (text input, required); Label (text input); Input type
+  (`SelectInput`: text / email / tel / number / textarea / select /
+  checkbox); Placeholder (text input); Required (`SwitchInput`);
+  Default value (text input). When type is `"select"`,
+  `SelectOptionsEditor` appears below Default value. **Detail-pages
+  amendment (§8.12):** Default from query parameter (text input;
+  empty writes `undefined`). Help text under the field reads
+  "Reads `?<param>` from the current URL on render." The panel does
+  NOT validate that `defaultValueFromQueryParam` matches an existing
+  query string anywhere — that is a runtime concern.
+
+**Per-component Content panels (placeholder for Sprint 8).**
+
+For each of the thirteen components below, replace the Sprint-5 stub
+with a tagged placeholder. The placeholder renders an `Info` icon, the
+heading "Content fields for this component", and one of the following
+`<p>` lines depending on the component. **No mutators are wired.**
+Each placeholder still preserves `data-component-edit-panel="${T}"` as
+a `<div data-testid="content-placeholder-${T.toLowerCase()}">` so
+existing assertions and the Sprint 8 smoke test can detect them.
+
+- Section: "Section is a structural container; the Style tab handles
+  layout and the Pages tab handles its position."
+- Row: "Edit Row props (gap, alignment, wrap) once the Row Content
+  panel ships." 
+- Column: "Edit Column props (span, gap, alignment) once the Column
+  Content panel ships."
+- Spacer: "Edit the spacer's height once the Spacer Content panel
+  ships."
+- Divider: "Edit the divider's thickness and color once the Divider
+  Content panel ships."
+- Logo: "Edit the logo source and alt text once the Logo Content
+  panel ships."
+- HeroBanner: "Edit the hero's heading, sub-heading, CTA, and
+  background once the HeroBanner Content panel ships."
+- PropertyCard: "Edit the property card's static fields once the
+  PropertyCard Content panel ships."
+- UnitCard: "Edit the unit card's static fields once the UnitCard
+  Content panel ships."
+- Repeater: "Repeater data binding (data source, filters, connected
+  inputs, sort, limit) lands in Sprint 9."
+- Form: "Form configuration (form id, success message) lands in
+  Sprint 10."
+- MapEmbed: "Edit the embedded address once the MapEmbed Content
+  panel ships."
+- Gallery: "Edit the gallery images and grid once the Gallery Content
+  panel ships."
+
+The exact wording is binding for the Sprint 8 smoke test — copy each
+line verbatim into the corresponding `EditPanel.tsx`. Every other tab
+on these components (Style / Animation / Visibility / Advanced) ships
+in full per the matrix in the next section.
+
+**Editor store extensions.**
+
+- `apps/web/lib/editor-state/types.ts` — extend `EditorState` with
+  `leftSidebarMode: "primary" | "element-edit"` (default `"primary"`)
+  and `elementEditTab: "content" | "style" | "animation" | "visibility" | "advanced"`
+  (default `"content"`). Extend `EditorActions` with:
+  `enterElementEditMode(componentId: ComponentId): void`,
+  `exitElementEditMode(): void`,
+  `setElementEditTab(tab: ElementEditTab): void`,
+  `setComponentProps(componentId: ComponentId, props: Record<string, unknown>): void`,
+  `setComponentStyle(componentId: ComponentId, style: StyleConfig): void`,
+  `setComponentAnimation(componentId: ComponentId, animation: AnimationConfig | undefined): void`,
+  `setComponentVisibility(componentId: ComponentId, visibility: "always" | "desktop" | "mobile" | undefined): void`,
+  `removeComponent(componentId: ComponentId): void`.
+  Add a new `EditorActionErrorCode`: `"component_not_found"`,
+  `"page_root_locked"`.
+- `apps/web/lib/editor-state/store.ts` — wire the new state defaults
+  and the new action wrappers. Each component-level mutator delegates
+  to a pure helper in `actions.ts`, flips `saveState` to `"dirty"`,
+  and (for `removeComponent`) clears `selectedComponentId` if the
+  removed node WAS selected. `enterElementEditMode(id)` calls
+  `selectComponent(id)` AND sets `leftSidebarMode = "element-edit"`
+  AND resets `elementEditTab = "content"`. `exitElementEditMode()`
+  sets `leftSidebarMode = "primary"` AND `selectedComponentId = null`
+  AND `elementEditTab = "content"`. `setPreviewMode(true)`
+  additionally exits element edit (preview hides selection chrome).
+  `setCurrentPageSlug(...)` additionally exits element edit (the
+  selected node would be on a different page).
+- `apps/web/lib/editor-state/actions.ts` — add:
+  `applySetComponentProps(config, componentId, props): SiteConfig`,
+  `applySetComponentStyle(config, componentId, style): SiteConfig`,
+  `applySetComponentAnimation(config, componentId, animation): SiteConfig`,
+  `applySetComponentVisibility(config, componentId, visibility): SiteConfig`,
+  `applyRemoveComponent(config, componentId): SiteConfig`. All five
+  are pure functions; all five throw `EditorActionError` with code
+  `"component_not_found"` if the id is not present in any page.
+  `applyRemoveComponent` additionally throws
+  `EditorActionError("page_root_locked", ...)` if the id is the
+  `rootComponent.id` of any page. The tree walker is depth-first and
+  rebuilds only the path from the page's `rootComponent` down to the
+  modified node (immutability via spread; no `immer` dependency).
+- `apps/web/lib/editor-state/selectors.ts` — add
+  `selectIsElementEditMode(state): boolean` (returns
+  `state.leftSidebarMode === "element-edit"`),
+  `selectElementEditTab(state)`, and
+  `selectSelectedComponentParentId(state): ComponentId | null`
+  (used by `DeleteComponentButton`'s page-root guard).
+- `apps/web/lib/editor-state/index.ts` — barrel update to re-export
+  every new symbol.
+- `apps/web/lib/editor-state/__tests__/store.test.ts` — extend with
+  tests for the new state and action wrappers.
+- `apps/web/lib/editor-state/__tests__/actions.test.ts` — extend
+  with tests for each new pure helper (happy path + not-found +
+  page-root-locked + style update + animation clear-to-undefined +
+  visibility clear-to-undefined).
+
+**Editor wiring extensions.**
+
+- `apps/web/components/editor/canvas/Canvas.tsx` — extend the
+  `<Renderer />` call to pass
+  `onContextMenu={(id) => enterElementEditMode(id)}` in addition to
+  the existing `onSelect`. Do NOT change the existing `onClick` /
+  `Esc` / `onSelect` semantics.
+- `apps/web/components/editor/sidebar/LeftSidebar.tsx` — read
+  `leftSidebarMode` from the store. When `"primary"`: render the
+  existing four-tab UI unchanged. When `"element-edit"`: render
+  `<EditPanelShell />` instead. The four-tab tablist is hidden when
+  the sidebar is in element-edit mode.
+- `apps/web/components/editor/__tests__/canvas.test.tsx` — extend
+  with right-click → `enterElementEditMode` test, and a test that
+  switching the current page exits element edit.
+- `apps/web/components/editor/__tests__/left-sidebar.test.tsx` (new
+  file or extension of existing) — test that the sidebar renders the
+  four-tab UI in primary mode and the `EditPanelShell` in
+  element-edit mode.
+- `apps/web/components/editor/index.ts` — barrel update to add
+  every new public export from `edit-panels/`.
+
+**Cross-document.**
+
+- `DECISIONS.md` — append entries for any approved deviation. Also
+  append a planning entry naming this sprint's known schema gap
+  ("Advanced tab placeholder until `htmlId` / `className` ship") so
+  Sprint 15 has a paper trail.
 
 ### Shared (read-only this sprint)
 
-- `PROJECT_SPEC.md` (the authoritative spec — read, do not write).
-- `apps/web/lib/site-config/` (Sprint 3 + 3b — read-only; the schema is
-  the contract, do NOT extend it).
-- `apps/web/lib/setup-form/palettes.ts` (Sprint 2 — read-only; reused
-  by the Site tab's PaletteSelector).
-- `apps/web/lib/setup-form/types.ts` (Sprint 2 — read-only; reused for
-  the `PaletteId` type).
-- `apps/web/lib/sites/repo.ts` (Sprint 4 — read-only; Sprint 6 calls
-  `getSiteBySlug` and `getLatestWorkingVersion` from server components).
-- `apps/web/lib/supabase/` (Sprint 1 — read-only; the autosave
-  endpoint imports the service-role client from here).
-- `apps/web/components/renderer/` (Sprint 3 — read-only; the canvas
-  calls `<Renderer />`).
-- `apps/web/components/site-components/` (Sprints 3 + 5 + 5b — read-only;
-  the Add tab catalog references the registry's keys).
-- `apps/web/components/ui/` (shadcn primitives — read-only; reused for
-  Dialog, AlertDialog, Tabs, Tooltip, etc.).
-- `apps/web/types/database.ts` (Sprint 4 — read-only; the API route
-  uses the generated `Database` type for the Supabase client).
+- `PROJECT_SPEC.md` — the authoritative spec (read, do not write).
+- `apps/web/lib/site-config/` — schema, types, parse, style helpers
+  (the schema is the contract; do NOT extend it).
+- `apps/web/lib/setup-form/palettes.ts` and
+  `apps/web/lib/setup-form/types.ts` — referenced indirectly through
+  the existing Site tab; not touched.
+- `apps/web/lib/sites/repo.ts` — autosave continues to use the
+  Sprint-6 PATCH endpoint; no changes required.
+- `apps/web/lib/supabase/` — autosave continues to use the
+  service-role client through the existing endpoint.
+- `apps/web/components/renderer/` — the renderer is final; if the
+  pre-flight check #5 finds it does not forward `onContextMenu`,
+  STOP and emit a Deviation Report rather than editing the renderer.
+- `apps/web/components/site-components/${T}/index.tsx` — every
+  component's runtime renderer; do NOT touch in this sprint. The
+  Content panel writes back through `node.props`; the renderer
+  consumes `node.props` exactly as Sprint 5/5b shipped.
+- `apps/web/components/site-components/${T}/SPEC.md` — read-only
+  reference for which props each Content panel exposes.
+- `apps/web/app/[site]/edit/page.tsx` and
+  `apps/web/app/[site]/edit/EditorShell.tsx` — Sprint 6 owns these;
+  do NOT touch unless the LeftSidebar wiring genuinely requires a
+  change (it should not — the LeftSidebar is composed from the
+  EditorShell already).
+- `apps/web/app/api/sites/[siteId]/working-version/route.ts` — the
+  PATCH endpoint already validates `siteConfigSchema` end-to-end;
+  Sprint 8's edits flow through it without modification.
 
-### Forbidden (do not touch under any circumstance)
+### Forbidden (this sprint MUST NOT modify)
 
-- `PROJECT_SPEC.md` — read only. Spec amendments are a separate planning
-  workflow, not a sprint task.
-- `DECISIONS.md` — append-only. You may add new entries; you may NOT
-  edit existing entries.
-- `apps/web/lib/site-config/` — Sprint 3 + 3b ownership. The schema is
-  locked. If you discover a schema gap, raise a Deviation.
-- `apps/web/components/renderer/` — Sprint 3 ownership. If the renderer
-  needs a new prop (e.g. an `onHover` it doesn't already have), raise a
-  Deviation; do NOT modify it inline.
-- `apps/web/components/site-components/` — Sprints 3 + 5 + 5b
-  ownership. If a component card in the catalog needs an icon mapping,
-  declare it in the catalog file, not in the component itself.
-- `apps/web/lib/sites/repo.ts` — Sprint 4 ownership. Sprint 6's autosave
-  endpoint calls Supabase directly (via the existing service-role client
-  in `lib/supabase/`), not through `repo.ts`. If a `repo.ts` helper
-  feels needed, raise a Deviation; do NOT modify `repo.ts` inline.
-- `apps/web/components/setup-form/` — Sprint 2 ownership.
-- `apps/web/app/api/generate-initial-site/` — Sprint 4 ownership.
-- `apps/web/app/[site]/preview/` — Sprint 4 ownership.
-- `supabase/migrations/` — no migrations in this sprint. The autosave
-  endpoint UPDATES an existing column on an existing row; no DDL is
-  needed. If you find yourself wanting a migration, raise a Deviation.
-- Any file under `apps/web/components/editor/edit-panels/` — Sprint 8
-  ownership. The Right sidebar in this sprint is a placeholder, not a
-  panel host.
-- Any file under `apps/web/components/editor/canvas/dnd/` — Sprint 7
-  ownership.
-- Any file under `apps/web/components/editor/sidebar/data-tab/` other
-  than the placeholder `DataTab.tsx` — Sprint 10 ownership.
-- Any file under `apps/web/components/editor/ai-chat/` — Sprint 11
-  ownership.
-- The `package.json` `dependencies` block — only the additions explicitly
-  listed in this CLAUDE.md may be added (`zustand`). Adding any other
-  dependency is a Deviation.
-- Any test file outside `apps/web/components/editor/__tests__/` and
-  `apps/web/lib/editor-state/__tests__/`.
+- `PROJECT_SPEC.md`. A spec change is its own sprint.
+- `apps/web/lib/site-config/schema.ts`,
+  `apps/web/lib/site-config/parse.ts`, and
+  `apps/web/lib/site-config/style.ts`. Schema-lock break would require
+  its own sprint per `SPRINT_SCHEDULE.md` §5.
+- `apps/web/components/site-components/${T}/index.tsx` for any `T`
+  (the runtime renderers are Sprint 5 / 5b territory). Touching one of
+  these is a Deviation regardless of how minor the change appears.
+- `apps/web/components/site-components/${T}/SPEC.md` for any `T`. The
+  Content-panel descriptions in this CLAUDE.md exactly mirror the
+  existing SPEC.md tables; if they drift, the SPEC.md is the source
+  of truth and Sprint 8 emits a Deviation rather than editing it.
+- `apps/web/components/site-components/registry.ts` and
+  `apps/web/components/site-components/__tests__/registry.test.ts`.
+- `apps/web/components/renderer/` — see "Shared" above.
+- `supabase/migrations/`, `supabase/seed.sql`. No DB changes this
+  sprint.
+- `apps/web/app/api/**` — no API route changes this sprint.
+- The Sprint-3 dev fixtures at `apps/web/app/dev/components/` and
+  `apps/web/app/dev/preview/`.
+- Any other sprint's owned files that are not explicitly enumerated
+  in the "Owned" list above.
+
+### Sprint-8 Content panel matrix (binding)
+
+| Component      | Content tab in Sprint 8           | Style | Animation | Visibility | Advanced  |
+| -------------- | --------------------------------- | ----- | --------- | ---------- | --------- |
+| Section        | Placeholder                       | Full  | Full      | Full       | Placeholder |
+| Row            | Placeholder                       | Full  | Full      | Full       | Placeholder |
+| Column         | Placeholder                       | Full  | Full      | Full       | Placeholder |
+| Heading        | **Live (text + level)**           | Full  | Full      | Full       | Placeholder |
+| Paragraph      | **Live (text)**                   | Full  | Full      | Full       | Placeholder |
+| Button         | **Live (+ §8.12 Link mode)**      | Full  | Full      | Full       | Placeholder |
+| Image          | **Live (src + alt + fit)**        | Full  | Full      | Full       | Placeholder |
+| Logo           | Placeholder                       | Full  | Full      | Full       | Placeholder |
+| Spacer         | Placeholder                       | None  | Full      | Full       | Placeholder |
+| Divider        | Placeholder                       | Margin only | Full | Full       | Placeholder |
+| NavBar         | **Live (links + placement + sticky + logoSrc)** | Full | Full | Full | Placeholder |
+| Footer         | **Live (columns + copyright)**    | Full  | Full      | Full       | Placeholder |
+| HeroBanner     | Placeholder                       | Full  | Full      | Full       | Placeholder |
+| PropertyCard   | Placeholder                       | Full  | Full      | Full       | Placeholder |
+| UnitCard       | Placeholder                       | Full  | Full      | Full       | Placeholder |
+| Repeater       | Placeholder (Sprint 9)            | Full  | Full      | Full       | Placeholder |
+| InputField     | **Live (+ §8.12 query-param)**    | Full  | Full      | Full       | Placeholder |
+| Form           | Placeholder (Sprint 10)           | Full  | Full      | Full       | Placeholder |
+| MapEmbed       | Placeholder                       | Full  | Full      | Full       | Placeholder |
+| Gallery        | Placeholder                       | Full  | Full      | Full       | Placeholder |
+
+"Full" means every §6.4 control listed in the corresponding
+`SPEC.md`. "None" / "Margin only" reflect the Spacer / Divider
+primitives carve-out from §6.4.
+
+## Coding standards (binding subset of `PROJECT_SPEC.md` §15)
+
+- TypeScript strict; `noUncheckedIndexedAccess`, `noImplicitAny` on.
+  No `any`. If you reach for it, use `unknown` and narrow.
+- One component per file. File name = export name. PascalCase for
+  components; camelCase for hooks (`useThing`); kebab-case for
+  filenames in non-component modules.
+- Server components by default; `"use client"` on line 1 only when
+  needed. Every file in
+  `apps/web/components/editor/edit-panels/` and every component-level
+  EditPanel is a client component (they read the Zustand store and
+  fire mutators). Add `"use client"` on line 1 of every such file.
+- No prop drilling deeper than two levels. Hoist to the store.
+- Shared components from `apps/web/components/ui/` are reusable; do
+  NOT introduce a second design system. Use shadcn primitives
+  (`Dialog`, `AlertDialog`, `Select`, `RadioGroup`, `Switch`,
+  `Input`, `Textarea`, `Label`, `Tooltip`) where they exist. If a
+  needed primitive is missing, run
+  `pnpm dlx shadcn@latest add <name>` and treat the new file as
+  Sprint-8-owned (`apps/web/components/ui/${name}.tsx`).
+- No commented-out code. No `console.log`. No `.skip` / `.only` in
+  tests. No `@ts-ignore`. No `as any`.
+- Tests live next to the file under `__tests__/${name}.test.tsx`.
+  Use Vitest + Testing Library; reset the editor store between cases
+  via `__resetEditorStoreForTests()`.
+- All paths, commands, and identifiers go in backticks in any prose.
 
 ## Definition of Done
 
-Treat each item as a hard requirement. The sprint is not done until ALL
-boxes are checked AND every quality gate in the "Definition of done
-gating" block at the bottom passes with zero warnings.
+- [ ] **Right-click swaps the LeftSidebar to Element Edit and selects
+  the right-clicked component.** Right-clicking any component on the
+  canvas (or pressing `Shift+F10` / `ContextMenu` on a focused
+  component) calls `enterElementEditMode(id)`. The store's
+  `selectedComponentId` becomes `id`, `leftSidebarMode` becomes
+  `"element-edit"`, and `elementEditTab` resets to `"content"`. The
+  LeftSidebar replaces its four-tab UI with `<EditPanelShell />`.
+  Right-clicking a different component while already in element-edit
+  mode replaces the selection without exiting the mode.
 
-- [ ] **Pre-flight check passed.** All six checks above succeeded; the
-  Sprint Completion Report records each as ✅ in its body.
+- [ ] **Five-tab Element Edit panel renders for every selected
+  component.** The shell shows the component's type as the panel
+  title, a back-arrow button, the five-tab tablist (Content / Style /
+  Animation / Visibility / Advanced) with `role="tablist"` and
+  ARIA-correct `aria-selected`, and the active tab's pane. Default
+  tab is Content. Switching tabs writes `elementEditTab` to the store
+  (and survives a renderer remount via the store).
 
-- [ ] **Editor route loads a real site.** Navigating to
-  `/{slug}/edit` with a valid slug renders the editor shell and the
-  canvas displays the working version's home page through the shared
-  `<Renderer mode="edit">`. Navigating to a missing slug renders the
-  Next.js 404 page (`not-found.tsx`). Navigating to a slug whose site
-  has no `is_working` version also renders the 404 page (the same
-  page; no separate copy needed for this sprint).
+- [ ] **Back-arrow exits element-edit mode and clears the selection.**
+  Clicking the back arrow calls `exitElementEditMode`. The
+  LeftSidebar reverts to its four-tab UI on the previously-active
+  primary tab; `selectedComponentId` becomes `null`; the canvas
+  selection outline disappears. Switching the page or toggling
+  Preview mode also exits element-edit mode.
 
-- [ ] **Top bar renders and is fully wired.** The TopBar shows: a
-  static "Orion's Belt" wordmark on the far left; an inline-editable
-  site name input bound to `draftConfig.name` (Enter or blur commits;
-  Esc reverts); the page selector dropdown showing the active page
-  with a small "DETAIL" badge if the active page has `kind ===
-  "detail"`, opening to a list of all pages with the same per-row
-  badge and a footer "+ Add page" entry that opens `AddPageDialog`;
-  the preview toggle bound to the store's `previewMode`; the
-  SaveIndicator showing one of "Saved 2s ago" / "Saving…" /
-  "Unsaved changes" / "Save failed — retry"; the decorative Deploy
-  button.
+- [ ] **Style tab applies §6.4 controls per the Sprint-8 matrix and
+  flows through `setComponentStyle`.** For every component except
+  Spacer (no Style controls) and Divider (Margin only), the Style
+  tab exposes Background, Padding, Margin, Border, Border radius,
+  Shadow, Width, Height, Text color. Edits commit on every change;
+  the canvas re-renders the affected node within the same React
+  commit as the store update. Setting all four sides of Padding /
+  Margin to empty writes the field as `undefined`. Choosing the
+  active Shadow preset clears the field. Setting Width / Height to
+  empty clears the field.
 
-- [ ] **Left sidebar four-tab structure works.** The LeftSidebar
-  renders four tab triggers (Site, Pages, Add, Data); clicking a
-  trigger swaps the panel content and writes the active tab to the
-  store (`leftSidebarTab`); the active tab persists across re-renders
-  (it lives in the store, not in `useState`). Default tab is
-  `pages` — the user lands looking at the page list.
+- [ ] **Animation tab edits `node.animation`.** The two preset selects
+  list the ten `ANIMATION_PRESETS` (with a leading "(none)" entry
+  that maps to `undefined`). Duration and Delay accept non-negative
+  integers in milliseconds. Setting both presets to `(none)` and
+  clearing duration/delay writes `animation: undefined` on the node.
 
-- [ ] **Site tab edits palette and fonts.** The Site tab renders six
-  palette cards (using the same definitions as Sprint 2's setup form,
-  imported from `apps/web/lib/setup-form/palettes.ts`); clicking a card
-  fires `setPalette(paletteId)`, which updates `draftConfig` and flips
-  `saveState` to `"dirty"`. The currently selected palette is shown
-  with a 2px accent border. The font selectors (Heading + Body if the
-  schema supports both, or single Font if not) populate from the
-  inline curated list and update the schema's font fields when changed.
-  Changes are reflected in the canvas immediately (the renderer reads
-  the same `draftConfig`).
+- [ ] **Visibility tab edits `node.visibility`.** Three radio cards
+  (Always / Desktop only / Mobile only). Selecting "Always" writes
+  `visibility: undefined` on the node.
 
-- [ ] **Pages tab supports add (static + detail), rename, delete, and
-  reorder.**
-  - Add: clicking "Add page" opens `AddPageDialog`. Filling the form
-    with kind = Static creates a static page (no `detailDataSource`).
-    Filling the form with kind = Detail requires choosing a
-    `detailDataSource` (`properties` or `units`) before Submit is
-    enabled. On submit, a new page is appended to `draftConfig.pages`
-    with a brand-new empty `Section` as `rootComponent` and the page
-    list updates.
-  - Rename: clicking the rename button on a page row opens
-    `RenamePageDialog`. Editing name + slug commits to the store on
-    submit. The home page's slug field is disabled (tooltip
-    "The home page slug is fixed.").
-  - Delete: clicking the delete button on a non-home page row opens
-    `DeletePageConfirm`. Confirming removes the page from
-    `draftConfig.pages` and, if the deleted page was the current
-    page, switches the current page to home. The home page's delete
-    button is disabled (tooltip "The home page cannot be deleted.").
-  - Reorder: each non-home page row has up/down arrow buttons that
-    move it within `draftConfig.pages`; the home page is locked at
-    index 0 and cannot be moved.
-  - Per-kind slug uniqueness: attempting to add or rename to a slug
-    that conflicts with another page **of the same kind** is blocked
-    with an inline error in the dialog. Adding a detail page with
-    `slug: "units"` when a static page with `slug: "units"` already
-    exists is **allowed** (the U2 same-slug coexistence pattern from
-    §8.12).
+- [ ] **Advanced tab is a documented placeholder.** Renders the `Info`
+  icon, the heading "Custom CSS class & HTML id", and the body copy
+  exactly as written in the Owned-paths section. Renders
+  `data-testid="advanced-tab-placeholder"`. Mutates nothing.
 
-- [ ] **Add tab shows all 20 component cards (non-draggable).** The Add
-  tab renders one `ComponentCard` per entry in
-  `component-catalog.ts`, grouped by `group` field (Layout, Content,
-  Media, Data, Forms, Navigation), each section labeled with a small
-  uppercase header. The card count is exactly 20 (asserted in a test).
-  Cards are clickable for visual feedback only — clicking a card sets
-  a transient `selectedAddCard` value in component-local state but does
-  NOT mutate `draftConfig`. The footer line "Drag-and-drop coming in
-  the next update." is visible.
+- [ ] **Content panels are live for the seven named components.**
+  Heading, Paragraph, Button, Image, NavBar, Footer, and InputField
+  expose every prop documented in their respective `SPEC.md`. Edits
+  commit on every change through `setComponentProps`. The canvas
+  reflects the change within the same React commit. Each panel's
+  helper text and labels match the verbatim wording in the
+  Owned-paths section.
 
-- [ ] **Data tab + Right sidebar are placeholder shells.** The Data tab
-  renders the `Database` icon and the placeholder copy. The Right
-  sidebar renders the `MessageSquare` icon and the placeholder copy.
-  Neither pane has interactive elements.
+- [ ] **Button's Content panel implements §8.12 Link mode and Detail
+  page.** Selecting "Static URL" writes `linkMode: "static"` and
+  `detailPageSlug: undefined`; the Href input is editable. Selecting
+  "Detail page" writes `linkMode: "detail"` and a chosen
+  `detailPageSlug`; the Href input becomes read-only with the helper
+  "Computed at render time as `/{detailPageSlug}/{row.id}`." The
+  detail-page select reads
+  `state.draftConfig.pages.filter(p => p.kind === "detail")` and is
+  disabled with the placeholder copy when the list is empty.
 
-- [ ] **Canvas wires selection + hover + Esc clears.** Clicking a
-  component in the canvas sets `selectedComponentId` to that node's
-  id and the renderer renders the selection outline (per Sprint 3's
-  edit-mode behavior). Clicking the canvas background (not on any
-  component) clears `selectedComponentId`. Pressing `Esc` while the
-  canvas is focused clears `selectedComponentId`. Hovering a component
-  highlights its outline (via the `onHover` callback if the renderer
-  supports it; otherwise via pure CSS). The breadcrumb at the bottom of
-  the canvas shows the selection trail (root → ... → selected); when
-  nothing is selected, the breadcrumb is hidden.
+- [ ] **InputField's Content panel implements the §8.12
+  `defaultValueFromQueryParam` field.** A text input under Default
+  value, with helper text "Reads `?<param>` from the current URL on
+  render." Empty writes `undefined`.
 
-- [ ] **Preview toggle swaps renderer mode.** Clicking the PreviewToggle
-  flips `previewMode`. When `previewMode === true`, the canvas calls
-  `<Renderer mode="preview" />` (no selection outlines, no hover
-  highlights, animations enabled per Sprint 3 behavior); when
-  `previewMode === false`, the canvas reverts to `mode="edit"`.
+- [ ] **Content panels are placeholders for the other thirteen
+  components, with the verbatim copy specified above.** Each
+  placeholder exposes
+  `data-testid="content-placeholder-${T.toLowerCase()}"` for tests.
 
-- [ ] **Page selector switches the canvas page.** Selecting a different
-  page in the PageSelector writes `currentPageSlug` to the store and the
-  canvas re-renders with the new page's `rootComponent`.
-  `selectedComponentId` is cleared on page change.
+- [ ] **Delete-component button removes the selected node and exits
+  element-edit mode.** Clicking the bottom-of-panel Delete button
+  opens a shadcn `AlertDialog` ("Delete this component? This cannot
+  be undone."). Confirming calls `removeComponent(id)`, then
+  `exitElementEditMode`. The page's tree no longer contains the
+  removed node; the autosave PATCH fires within the standard
+  debounce window. The button is disabled with a tooltip when the
+  selected node is the current page's `rootComponent`.
 
-- [ ] **Zustand store is the single source of truth.** All editor state
-  (current page, selection, hover, sidebar tab, preview mode, draft
-  config, save state, last saved timestamp) lives in the store. No
-  editor component holds editor state in `useState` other than transient
-  UI state (form-input drafts inside dialogs, dialog open/closed
-  bindings local to a single dialog). The store is the only consumer of
-  `zustand` — the dependency is added in this sprint.
+- [ ] **Component-level mutators flip `saveState` to `"dirty"` and
+  trigger autosave.** Each of `setComponentProps`,
+  `setComponentStyle`, `setComponentAnimation`,
+  `setComponentVisibility`, and `removeComponent` writes a new
+  `draftConfig` and flips `saveState` to `"dirty"`. The existing
+  Sprint-6 autosave hook PATCHes
+  `/api/sites/[siteId]/working-version` after the standard debounce
+  with the new config; on 204, `SaveIndicator` reports "Saved Xs
+  ago". Concurrent mutations during an in-flight save coalesce per
+  the Sprint-6 contract.
 
-- [ ] **Autosave debounces, coalesces, and surfaces failures.** A
-  mutation to `draftConfig` flips `saveState` to `"dirty"`; after
-  1000ms of quiet, the autosave hook PATCHes
-  `/api/sites/{siteId}/working-version` with the current `draftConfig`
-  body. On 204, the SaveIndicator displays "Saved Xs ago" with a
-  ticking time. On non-2xx, the SaveIndicator displays "Save failed —
-  retry" with a button that re-attempts the PATCH. Concurrent
-  mutations during an in-flight save coalesce into exactly one
-  follow-up save. The hook aborts in-flight saves on unmount via
-  `AbortController`.
+- [ ] **Coding standards (§15) honored.** No `any`. No
+  `@ts-ignore`. No `.skip` or `.only` in tests. No commented-out
+  code. No `console.log`. Server-only files start with
+  `import "server-only";`. Client components start with
+  `"use client";` on line 1. New shadcn primitives (if any) live
+  under `apps/web/components/ui/` and are added through
+  `pnpm dlx shadcn@latest add`.
 
-- [ ] **PATCH endpoint validates and persists.** `PATCH
-  /api/sites/[siteId]/working-version` parses the request body with
-  Zod (`{ config: siteConfigSchema }`), uses the service-role
-  Supabase client, and updates the row matching `site_id = :siteId
-  AND is_working = true`, setting `config = :newConfig` and
-  `updated_at = NOW()`. Returns 204 on success. Returns 400 with a
-  category-keyed JSON body `{ category: "validation_error", message,
-  details }` on Zod failure. Returns 404 if no working row exists.
-  Returns 500 with `{ category: "server_error", message }` on
-  Supabase failure (no stack traces, no service-role key in any
-  response body, ever).
-
-- [ ] **Coding standards (§15) honored.** No `any`. No `@ts-ignore`. No
-  `.skip` or `.only` in tests. No commented-out code. No `console.log`
-  in committed files (use the existing logger if one exists; otherwise
-  no logging in this sprint). Server-only files start with
-  `import "server-only";`. Client components start with `"use client";`
-  on line 1.
-
-- [ ] **Tests added.** ≥ 18 new Vitest tests across the editor-state
-  store, the editor-state actions, the autosave hook (with fake
-  timers), the PATCH endpoint (with a mocked Supabase client), the
-  AddPageDialog, the RenamePageDialog, the PageSelector (DETAIL
-  badge), the PaletteSelector, the FontSelector, and the Canvas
-  selection / hover / Esc behavior. No `.skip`, no `.only`.
+- [ ] **Tests added.** ≥ 25 new Vitest tests across:
+  - editor-state actions: `applySetComponentProps` happy path +
+    not-found + nested-tree round-trip; `applySetComponentStyle`
+    happy path + clear-to-undefined; `applySetComponentAnimation`
+    clear-to-undefined; `applySetComponentVisibility`
+    clear-to-undefined; `applyRemoveComponent` happy path +
+    not-found + page-root-locked.
+  - editor-state store: `enterElementEditMode` /
+    `exitElementEditMode` / `setElementEditTab` semantics;
+    page-switch and preview-toggle exit element-edit mode;
+    `removeComponent` clears `selectedComponentId` if it was
+    selected.
+  - canvas: right-click on a component fires
+    `enterElementEditMode` with the correct id; right-clicking a
+    different component while in element-edit replaces the
+    selection without exiting.
+  - left sidebar: renders the four-tab UI in primary mode; renders
+    `<EditPanelShell />` in element-edit mode.
+  - StyleTab: writes `setComponentStyle` on Background / Padding /
+    Border / Shadow change; honors the Spacer "no chrome" carve-out;
+    honors the Divider "Margin only" carve-out.
+  - AnimationTab: setting both presets to "(none)" writes
+    `animation: undefined`.
+  - VisibilityTab: selecting "Always" writes `visibility: undefined`.
+  - AdvancedTab: renders the placeholder testid and does not write.
+  - Heading EditPanel: text + level edits commit through the store.
+  - Paragraph EditPanel: text edits commit through the store.
+  - Button EditPanel: switching to Detail mode disables the Href
+    input and writes `linkMode: "detail"`; switching back to Static
+    clears `detailPageSlug`.
+  - Image EditPanel: src / alt / fit edits commit through the store.
+  - NavBar EditPanel: adding and removing a link writes the new
+    array.
+  - Footer EditPanel: adding and removing a column writes the new
+    array.
+  - InputField EditPanel: setting `defaultValueFromQueryParam`
+    writes the prop; clearing it writes `undefined`.
+  - DeleteComponentButton: confirming removes the node and exits
+    element-edit mode; disabled state tooltip text matches the
+    spec.
 
 - [ ] **All quality gates pass.**
   - `pnpm test` — zero failures, zero skipped.
-  - `pnpm build` — zero TypeScript errors.
+  - `pnpm build` — zero TypeScript errors, zero warnings.
   - `pnpm biome check` — zero warnings.
   - Manual smoke test (below) — every step PASS.
 
 - [ ] **No new files outside the Owned scope.** `git status` shows
-  changed files only inside the Owned list above. The only new
-  dependency added is `zustand` (and, if absent already,
-  `zustand`'s peer types).
+  changed files only inside the Owned list above, plus any
+  shadcn primitive added via `pnpm dlx shadcn@latest add` (each one
+  noted in the Sprint Completion Report under External Actions
+  Required as "ran shadcn add for ${name}").
+
+- [ ] **No new dependencies added without an approved Deviation.**
+  Adding a shadcn primitive does NOT require a Deviation — that is
+  expected and pre-authorized. Adding any other npm package
+  requires the Deviation Protocol.
 
 - [ ] **No deviations were silently absorbed.** Every deviation that
   occurred during the sprint was reported and approved per the
@@ -560,33 +759,196 @@ gating" block at the bottom passes with zero warnings.
 - [ ] **Sprint Completion Report emitted verbatim** in the format at
   the bottom of this file, with a populated External Actions Required
   block (Vercel: none; Supabase: none — no migrations; Anthropic:
-  none — no AI calls in this sprint; Local: install `zustand` via
-  `pnpm install`; Other: none unless approved deviations dictate
-  otherwise).
+  none — no AI calls in this sprint; Local: list any shadcn primitives
+  added; Other: none unless approved deviations dictate otherwise).
 
-## Coding standards (binding — copied from PROJECT_SPEC.md §15)
+## Manual smoke test (numbered, click-by-click)
 
-- TypeScript strict mode is on (`strict`, `noUncheckedIndexedAccess`,
-  `noImplicitAny`). No `any`, no `@ts-ignore`, no `as unknown as` casts
-  except where unavoidable (and only with a one-line comment naming
-  the reason).
-- Runtime validation at trust boundaries uses Zod; never trust
-  unvalidated `unknown`.
-- Server-only modules (`lib/sites/`, the API route) start with
-  `import "server-only";`.
-- Client components start with `"use client";` as the first line.
-- Use `lucide-react` for icons. No alternative icon libraries.
-- Use `sonner` for toasts. No alternative toast libraries.
-- Use shadcn `Dialog` / `AlertDialog` / `Tabs` / `Tooltip` for the
-  obvious patterns; do NOT roll new primitives.
-- Use Tailwind utility classes for styling. No new CSS files. No
-  inline `style={...}` except for dynamic values that cannot be
-  expressed as Tailwind classes (gridded canvas backgrounds, etc.).
-- Tests use Vitest. No `.skip`, no `.only`, no `xdescribe`. Each test
-  has a clear name describing the behavior under test.
-- File naming: PascalCase for components and component files, camelCase
-  for non-component modules, kebab-case for routes (Next.js convention).
-- Comments explain *why*, not *what*. Lean on naming for *what*.
+This script runs against a clean `pnpm dev` after the sprint's automated
+gates pass. The seeded Aurora demo site is the default target.
+
+1. Run `pnpm install` to pick up any new shadcn primitives.
+2. Run `pnpm seed` if the hosted Supabase data is not loaded for this
+   workstation (re-uses the Sprint-1b/2a seeded Aurora rows).
+3. Run `pnpm dev` and open `http://localhost:3000/`.
+4. Click **Open Setup**, fill the form with placeholder data, click
+   **Ready to Preview & Edit?**, and wait for the iframe preview to
+   resolve. (Sprint 4 path; this primes a working version.)
+5. Click **Open in Editor** in the Element-1 footer. Verify the URL
+   becomes `/{site-slug}/edit` and the editor chrome (top bar, left
+   sidebar with four tabs, canvas, right sidebar) is visible.
+6. **Right-click the HeroBanner heading on the canvas.** Verify the
+   left sidebar replaces its four-tab UI with the Element Edit panel,
+   the title shows "Heading", and the active tab is Content.
+7. In the Content tab, change the Heading text from its current
+   value to `Welcome to Aurora`. Verify the canvas updates within
+   one second AND the SaveIndicator in the top bar transitions
+   `Unsaved changes → Saving… → Saved 1s ago` over the next few
+   seconds.
+8. Click the **Style** tab. Change Padding (linked) to `24`. Verify
+   the canvas reflects the new padding within one second.
+9. Click **Animation**. Set onEnter to `fadeInUp`, duration to `300`.
+   Verify the change saves (SaveIndicator goes through the
+   dirty → saving → saved cycle).
+10. Click **Visibility**. Select **Desktop only**. Verify the change
+    saves and the canvas continues to render the heading (Visibility
+    is honored at deploy time only — no client-side hide in the
+    editor).
+11. Click **Advanced**. Verify the placeholder copy ("Custom CSS
+    class & HTML id …") renders and no inputs are present.
+12. Click the **back arrow** at the top of the panel. Verify the
+    left sidebar reverts to its four-tab UI on the previously-active
+    primary tab and the canvas selection outline disappears.
+13. **Right-click a Button anywhere in the canvas** (or temporarily
+    add one via the Pages-tab → Add page flow if no Button exists on
+    the home page). In the Button Content panel, switch Link mode
+    to **Detail page**. Verify the Href input becomes read-only, the
+    Detail-page select appears, and (because the demo site does not
+    have a detail page yet) the select is disabled with the helper
+    "Add a detail page from the Pages tab first."
+14. Click the back arrow. Switch to the Pages tab. Click **Add
+    page**. Set kind to **Detail**, data source to **units**, slug
+    to `unit`. Submit.
+15. Right-click the same Button as in step 13. Switch Link mode to
+    **Detail page**. Verify the Detail-page select now lists "Unit
+    Detail" (the page name), choose it, and verify the panel writes
+    `linkMode: "detail"` and `detailPageSlug: "unit"` (visible by
+    refreshing or by inspecting the working-version row in the
+    Supabase dashboard). The canvas Button's `data-link-mode` and
+    `data-detail-page-slug` attributes update accordingly per the
+    Sprint-5b Button renderer.
+16. Right-click an InputField (the demo seeded form has one; if not,
+    add a Form via Pages-tab template flow — Sprint 10 work — OR
+    open `/dev/components` and right-click the seeded
+    `cmp_input_query` InputField in the canvas-rendered fixture).
+    In its Content panel, set Default from query parameter to
+    `propertyId`. Verify the change saves and the InputField's
+    runtime hydration (visible at the same dev preview) reads
+    `?propertyId=…` on next page load.
+17. Right-click any leaf component. Click **Delete component** at
+    the bottom of the panel. Confirm the AlertDialog. Verify the
+    component disappears from the canvas, the panel exits to
+    primary mode, and the SaveIndicator goes through the
+    dirty → saving → saved cycle.
+18. Right-click the page's outermost Section (its `rootComponent`).
+    Verify the **Delete component** button is disabled with the
+    tooltip "The page root cannot be deleted; switch to the Pages
+    tab to delete the page itself."
+19. Toggle Preview mode in the top bar. Verify the LeftSidebar
+    automatically exits element-edit (if it was in element-edit) and
+    the canvas removes the selection outline.
+20. Reload the editor URL. Verify every change made above
+    persisted: the heading text, the padding, the animation preset,
+    the Button's Detail-mode link, the InputField's query-param
+    default, and the deleted component is still gone.
+
+Every step must PASS before the sprint is declared done. A single
+FAIL is a Deviation, not a "we'll fix it next sprint" item.
+
+## Known risks and failure modes
+
+- **Edit-panel re-render thrash on every keystroke.** Each keystroke
+  in a text input writes a new `draftConfig` reference. The renderer
+  is memoized at the `ComponentRenderer` level, so only the affected
+  subtree re-renders, but the LeftSidebar itself reads `draftConfig`
+  for the detail-page select and the page-root guard. Mitigation:
+  the LeftSidebar's `EditPanelShell` selects only what it needs
+  (`selectedComponentId`, `leftSidebarMode`,
+  `selectSelectedComponentNode`) — do NOT subscribe the whole
+  `draftConfig` reference inside the Shell or any tab. Use Zustand's
+  selector form (`useEditorStore((s) => s.selectedComponentId)`) and
+  shallow-equal comparators where helpful.
+- **Component-level mutator races with autosave.** A mutation that
+  fires while `saveState === "saving"` flips state back to
+  `"dirty"`; the autosave hook coalesces into one follow-up save.
+  This is identical to Sprint-6 behavior; do NOT add a second
+  debouncer in the edit panel. If you see double-PATCHes in the
+  Network tab, that is a Deviation — escalate.
+- **Pre-Sprint-3b configs in the store.** A working version saved
+  before the Sprint-3b schema-lock break does not have `kind` on
+  any page. `parseSiteConfig` injects `kind: "static"` on read; the
+  Pages tab and `DetailPageSelect` rely on that. If a working
+  version is read raw (without `parseSiteConfig`) anywhere in the
+  edit-panel code, the Detail-page select will appear empty when it
+  should not. Always use the parsed config.
+- **shadcn primitives may be missing.** If the editor uses any
+  shadcn primitive that is not yet in `apps/web/components/ui/`
+  (e.g., `Select`, `RadioGroup`, `Switch`, `Tooltip`,
+  `AlertDialog`), run `pnpm dlx shadcn@latest add ${name}` and treat
+  the new file as Sprint-8 owned. Note each one in the Sprint
+  Completion Report's External Actions Required block. Do NOT roll
+  your own; use the canonical primitive.
+- **`onContextMenu` swallowed by inner elements.** If a child element
+  inside a component (e.g., a NavBar `<a>`) prevents-default on
+  right-click before `EditModeWrapper` sees it, the swap will not
+  fire. Mitigation: `EditModeWrapper` already uses
+  `onContextMenu={handleContextMenu}` which is captured at the
+  wrapper level; React's bubbling delivers it after the inner
+  default. If a specific component's renderer prevents bubbling,
+  that is a Sprint-5 bug, not Sprint-8 — emit a Deviation.
+- **Detail-page select with zero detail pages.** The select is
+  intentionally disabled with the placeholder "Add a detail page
+  from the Pages tab first." Do NOT auto-create a detail page; the
+  user must do that explicitly.
+- **Schema mismatch on advanced fields.** If pre-flight check #6
+  finds `htmlId` / `className` already on `componentNodeSchema`,
+  the Advanced placeholder is wrong. Emit a Deviation Report
+  rather than silently shipping live controls.
+- **Right-click on the page-root component.** The page-root delete
+  guard relies on
+  `selectCurrentPage(state).rootComponent.id === selectedComponentId`.
+  If a page somehow has no `rootComponent` (impossible per schema,
+  but defend defensively), treat the panel as if no node is
+  selected and exit element-edit mode.
+
+## Notes and hints (non-binding context)
+
+- **Tab default and keyboard nav.** Initial tab is Content. Left and
+  Right arrow keys cycle the tablist; the active tab gets focus.
+- **Where to put local form state.** Each component-specific Content
+  panel can hold local `useState` for in-flight text edits if
+  necessary (e.g., to debounce by 200ms before committing), but
+  prefer immediate `setComponentProps` writes. The autosave debounce
+  protects the network; per-keystroke local debouncing only helps if
+  Vitest tests measure render counts (they do not in Sprint 8).
+- **Schema-aware fallback in panels.** Use each component's existing
+  prop schema (e.g., `buttonPropsSchema` is module-private inside
+  `Button/index.tsx`). Since you cannot import it (Forbidden file),
+  re-derive the panel's local validators using `z.object(...)` to
+  match the SPEC.md table — the runtime renderer's `safeParse` is the
+  ultimate guard regardless.
+- **Background gradient angle.** Default to 180 degrees per
+  `styleConfigToCss`'s fallback. The Background control surfaces
+  the angle as a numeric input with default 180.
+- **Spacing "linked" toggle.** When linked, all four sides share one
+  value; the linked control writes the same value to all four sides
+  on every change. Toggling linked off does not zero anything.
+- **Selection trail across tab switches.** Switching tabs MUST NOT
+  change the selection. Switching the active tab is purely a UI
+  concern in the store — `selectedComponentId` stays put.
+- **Esc inside the edit panel.** The Sprint-6 Canvas Esc handler
+  bails when focus is in an input / textarea / select. That logic
+  applies inside the edit panel for free — Esc inside a
+  panel input does NOT clear selection. Esc on the canvas
+  (background-focused) still clears.
+- **Delete confirm copy.** "Delete this component? This cannot be
+  undone." (sentence case; period). Confirm button reads "Delete";
+  cancel reads "Cancel". Use shadcn `AlertDialog` defaults.
+- **Detail-page select rendering.** Render
+  `<option value={page.slug}>{page.name}</option>` per detail page,
+  sorted by `name` ascending. Two detail pages with the same name
+  is permitted by the schema; surface the slug in parentheses to
+  disambiguate when names collide.
+- **Test fixture pattern.** Re-use `__resetEditorStoreForTests` from
+  `apps/web/lib/editor-state/store.ts` and `hydrate` a minimal
+  config in `beforeEach`. Every action test imports
+  `applyXxxxx` directly from `actions.ts`, never the store.
+- **Renderer memoization.** `ComponentRenderer` is memoized on
+  `node` reference equality. The action helpers preserve referential
+  equality for unchanged subtrees by structural sharing (only the
+  changed subtree gets a new object). Verify by running a render-count
+  test on a deep fixture — not required for the sprint, but a useful
+  sanity check during development.
 
 ## Deviation Protocol (mandatory — do not modify)
 
@@ -602,34 +964,31 @@ catch yourself thinking "I'll just do it slightly differently."
 
 ### Deviation Report (emit verbatim)
 
-```
-🛑 DEVIATION DETECTED
+```🛑 DEVIATION DETECTEDSprint: Sprint 8 — Element Edit Mode (manual)
+Failed DoD item: [The exact bullet from Definition of Done that this blocks]What's not working (1–2 sentences, plain English):
+[Describe the problem like you're talking to a non-engineer.]Why it's not working (1–2 sentences, technical):
+[Brief technical reason.]Proposed alternative (1–2 sentences, plain English):
+[Describe the replacement like you're talking to a non-engineer.]Trade-offs:
 
-Sprint: [Sprint number and name]
-Failed DoD item: [The exact bullet from Definition of Done that this blocks]
-
-What's not working (1–2 sentences, plain English):
-[Describe the problem like you're talking to a non-engineer.]
-
-Why it's not working (1–2 sentences, technical):
-[Brief technical reason.]
-
-Proposed alternative (1–2 sentences, plain English):
-[Describe the replacement like you're talking to a non-engineer.]
-
-Trade-offs:
-- Gain: [What we get]
-- Lose: [What we give up]
-- Risk:  [What might break]
-
+Gain: [What we get]
+Lose: [What we give up]
+Risk:  [What might break]
 Estimated impact on the rest of the sprint:
-[Will this affect later DoD items? Other sprints? Be honest.]
-
-Awaiting approval to proceed. Reply "Approved" to continue, or describe a
+[Will this affect later DoD items? Other sprints? Be honest.]Awaiting approval to proceed. Reply "Approved" to continue, or describe a
 different direction.
-```
 
 After emitting the report, STOP. Do not write code. Do not edit files. Wait.
+
+### Approval handling
+
+- "Approved" → implement the proposed alternative as written.
+- "Approved with changes: [...]" → implement with the user's modifications.
+- "Rejected — [direction]" → discard the proposal; follow the new direction.
+- A clarifying question → answer it; do not start work yet.
+- Anything else → ask "Is that an approval to proceed?" Do not assume.
+
+After any approved deviation, append an entry to `/DECISIONS.md` with date,
+sprint, what was changed, and the user's approval message verbatim.
 
 ## Definition of "done" gating
 
@@ -638,286 +997,106 @@ A sprint is not done until all of the following pass with no warnings:
 - `pnpm test`
 - `pnpm build`
 - `pnpm biome check`
-- Manual smoke test from the sprint plan (see "Manual smoke test" below).
+- The manual smoke test above.
 
-If any check fails, treat it as a Deviation. Do not commit. Do not
-declare the sprint complete.
-
-## Manual smoke test (numbered, click-by-click)
-
-Prerequisites: `apps/web/.env.local` is populated with
-`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-`SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_PROJECT_REF`, and
-`ANTHROPIC_API_KEY` (the last one is required because the smoke test
-walks through Element 1 to create a site to edit). The hosted Supabase
-project is linked. At least one site has been generated through Element
-1 (or you can re-run step 1 to generate one fresh).
-
-1. Run `pnpm dev` from the repo root. Wait for the "Ready" line.
-2. Open `http://localhost:3000/setup`. Fill the setup form with
-   Company Name `Aurora Property Group`, palette `Ocean`. Click
-   **Save**. Wait for the PreviewPanel to transition to "generated".
-   Note the slug shown in the fake browser URL field (e.g.
-   `aurora-property-group-x7k2pq`).
-3. Open `http://localhost:3000/{slug}/edit` directly in a new tab
-   (replacing `{slug}` with the slug from step 2). Confirm the editor
-   shell renders: TopBar across the top, LeftSidebar on the left
-   (Pages tab visible by default), Canvas in the center showing the
-   home page with selection wrappers, RightSidebar on the right with
-   the placeholder copy.
-4. In the TopBar, confirm the site name input shows "Aurora Property
-   Group". Click into it, type ` Demo` at the end, press Enter.
-   Confirm the SaveIndicator briefly shows "Saving…" and within ~1.5s
-   shows "Saved 1s ago".
-5. Open Supabase Studio (or a SQL prompt). Run
-   `select config->>'name' as name, updated_at from site_versions
-   where site_id = '<the new id>' and is_working = true;`. Confirm
-   the name reads "Aurora Property Group Demo" and `updated_at` is
-   within the last few seconds.
-6. Click the PageSelector. Confirm the dropdown opens and shows the
-   home page with NO "DETAIL" badge. Click "+ Add page" at the bottom.
-7. In the AddPageDialog, leave kind = Static. Type Name `Properties`,
-   Slug `properties`. Click Submit. Confirm the dialog closes, the
-   PageSelector shows "Properties" as the active page, and the Canvas
-   renders an empty page (an empty Section is the rootComponent).
-8. Click the PageSelector → "+ Add page". In the dialog, change kind
-   to **Detail**. Confirm a "Detail data source" dropdown appears.
-   Select `units`. Type Name `Unit Detail Template`, Slug `units`.
-   Confirm the dialog allows the slug `units` even though no static
-   page with that slug exists (the per-kind uniqueness rule). Click
-   Submit. Confirm the new page is added with the "DETAIL" badge in
-   the page selector and the canvas now shows it.
-9. Click the PageSelector → "+ Add page" again. In the dialog, leave
-   kind = Static. Type Name `Units`, Slug `units`. Click Submit.
-   Confirm the dialog accepts the slug `units` (the U2 same-slug
-   coexistence rule with the existing detail page).
-10. Click the PageSelector → "+ Add page" once more. In the dialog,
-    leave kind = Static. Type Name `Properties Duplicate`, Slug
-    `properties`. Confirm the dialog blocks Submit with an inline
-    error reading "Another static page already uses this slug." Close
-    the dialog without submitting.
-11. Switch back to the home page in the PageSelector. In the
-    LeftSidebar, click the **Site** tab. Confirm the six palette
-    cards render with Ocean selected. Click `Forest`. Confirm the
-    canvas re-themes within ~0.2s (text colors and accent change) and
-    SaveIndicator briefly shows "Saving…" then "Saved Xs ago".
-12. Click the **Pages** tab. Find the home page row; confirm its
-    delete button is disabled and its slug field (when rename dialog
-    is opened) is also disabled with the expected tooltip.
-13. Click the rename button on the `Properties` page row. Change Name
-    to `Our Properties`. Click Save. Confirm the PageSelector now
-    shows `Our Properties`.
-14. Click the delete button on the `Properties Duplicate` page row…
-    wait, you didn't add it because step 10 blocked. OK — click the
-    delete button on `Unit Detail Template` instead. Confirm the
-    AlertDialog opens; confirm; confirm the page disappears from the
-    page list and the Canvas reverts to the home page.
-15. Click the **Add** tab. Confirm the section headers render in this
-    order: Layout, Content, Media, Data, Forms, Navigation. Confirm
-    every component group has its expected cards. Confirm the total
-    card count is 20. Click any card; confirm a visual selection
-    indicator appears on the card; confirm the canvas does NOT
-    change (no component was added).
-16. Click the **Data** tab. Confirm the placeholder copy renders.
-17. In the canvas, click any component (e.g. the home page's
-    Heading). Confirm a selection outline appears around it and the
-    breadcrumb at the bottom of the canvas reads
-    "Section / Heading" or similar. Hover a sibling component;
-    confirm a hover highlight appears. Press `Esc`; confirm the
-    selection outline disappears and the breadcrumb hides.
-18. In the TopBar, click the PreviewToggle to switch to Preview mode.
-    Confirm the selection outlines and hover highlights vanish; the
-    canvas now looks like the deployed site would. Click the toggle
-    again to return to Edit mode.
-19. Click the Deploy button. Confirm a Sonner toast appears with the
-    text "Deploy is coming in a later sprint." Confirm clicking the
-    button does not navigate or mutate state.
-20. Open `http://localhost:3000/no-such-site/edit`. Confirm the
-    Next.js 404 page renders.
-21. Stop the dev server (`Ctrl+C`). Run `pnpm test`. Confirm zero
-    failures, zero skipped, ≥ 18 new tests added.
-22. Run `pnpm build`. Confirm zero TypeScript errors and the build
-    completes.
-23. Run `pnpm biome check`. Confirm zero warnings.
-
-Every step above must PASS before declaring the sprint complete. A
-FAIL on any step is a Deviation.
+If any check fails, treat it as a Deviation. Do not commit. Do not declare
+the sprint complete.
 
 ## Useful local commands
 
-- `pnpm dev` — local dev server (port 3000)
-- `pnpm test` — Vitest in watch mode (use `pnpm test --run` for CI mode)
-- `pnpm test --run` — Vitest single-pass
-- `pnpm test --run -- editor-state` — run only the editor-state tests
-- `pnpm build` — Next.js production build
-- `pnpm biome check` — lint + format check
-- `pnpm biome check --write` — auto-fix
-- `pnpm db:types` — regenerate Supabase types (NOT needed this sprint
-  — no schema changes — but listed in case of a Deviation that adds a
-  migration)
+- `pnpm dev` — local dev server (against the hosted Supabase project).
+- `pnpm test` — Vitest.
+- `pnpm test:e2e` — Playwright (only the demo flow; not required for
+  Sprint 8).
+- `pnpm seed` — `supabase db reset --linked`; reloads the hosted
+  Aurora seed.
+- `pnpm db:push` — apply pending migrations against the hosted
+  Supabase project.
+- `pnpm db:types` — regenerate `apps/web/types/database.ts` after
+  any schema change. Sprint 8 should not need this.
 
-## Notes & hints (non-binding)
+## Sprint Completion Report (emit verbatim when finished)✅ SPRINT 8 COMPLETEPre-flight check:
 
-- **Zustand v4 vs v5.** As of this sprint's planning, both are widely
-  used. v5 has a slightly cleaner API for slices. Pin to whichever is
-  current and stable; do NOT mix versions. If the install pulls in v5
-  and a peer dep complains, that is a Deviation, not a "let's downgrade
-  silently".
-- **Server / client split for the editor route.** The route's `page.tsx`
-  is async server, awaits `params`, calls `getSiteBySlug` and
-  `getLatestWorkingVersion`, then renders `<EditorShell />` (a client
-  component) with the result as a prop. The store hydrates from those
-  props on first render via a `useEffect` with a stable dependency
-  array (the `workingVersionId`). Do NOT call `getLatestWorkingVersion`
-  from the client.
-- **Page-selector "DETAIL" badge.** A small `Badge` from shadcn
-  (`variant="secondary"`) with the text `DETAIL` works. Keep it under
-  the page name in the dropdown row, not next to the dropdown trigger
-  — only the active page in the trigger gets the badge inline (because
-  space is tight there).
-- **Renderer onHover.** The Sprint 3 renderer's existing `RenderContext`
-  may not expose an `onHover` callback. If absent, pure CSS handles
-  hover (the selection wrapper has `:hover { outline: ... }`). Do NOT
-  modify the renderer to add a callback — that is a Deviation.
-- **Autosave debounce + coalesce.** The simplest correct implementation:
-  one `useEffect` watching `[draftConfig, saveState]`; when state is
-  `"dirty"` and not already saving, set a 1000ms timer; on timer fire,
-  flip to `"saving"` and PATCH; on response, flip to `"saved"` /
-  `"error"`. Keep a ref to the latest `draftConfig` so the in-flight
-  save sees the snapshot it intended to send. If a new mutation lands
-  while saving, set a flag and re-trigger the effect after the response.
-- **Avoid storing computed values.** The selected component node is a
-  derived value — compute it via `selectSelectedComponentNode(state)`,
-  do NOT store the node itself. Same for the current page's
-  `rootComponent`. The single source of truth is the `draftConfig`
-  tree plus the `selectedComponentId` and `currentPageSlug` ids.
-- **Esc handler.** Attach the global `keydown` listener inside
-  `EditorShell` (or `Canvas`) via `useEffect` with proper cleanup. Use
-  `event.key === "Escape"`. Bail out if the active element is an
-  `<input>` or `<textarea>` (don't hijack Esc inside the AddPageDialog).
-- **AddPageDialog form lib.** Use `react-hook-form` + Zod (already in
-  the repo for the setup form). Do NOT introduce a second forms lib.
-- **Saving copy time format.** "Saved Xs ago" — use a simple
-  `setInterval(1000)` driven from a `useTime` hook local to
-  `SaveIndicator`. After 60s, switch to "Saved Xm ago".
-- **Catalog icons.** Reasonable defaults: Section → `LayoutPanelTop`,
-  Row → `Rows3`, Column → `Columns3`, Spacer → `Space`, Divider →
-  `Minus`, Heading → `Heading1`, Paragraph → `Pilcrow`, Button →
-  `RectangleHorizontal`, Image → `Image`, Logo → `BadgePlus`, Gallery
-  → `Images`, MapEmbed → `MapPin`, Repeater → `Repeat`, PropertyCard
-  → `Building2`, UnitCard → `DoorOpen`, Form → `ClipboardList`,
-  InputField → `TextCursorInput`, NavBar → `Menu`, Footer → `Square`,
-  HeroBanner → `LayoutTemplate`. None of these is binding — pick what
-  reads well; document choices inline.
-
-## Sprint Completion Report (emit verbatim when finished)
-
-```
-✅ SPRINT 6 COMPLETE
-
-Pre-flight check:
-- [x] PROJECT_SPEC.md §8.12 present and correct
-- [x] apps/web/lib/site-config/schema.ts has Page.kind / detailDataSource / superRefine
-- [x] sites + site_versions tables exist; lib/sites/repo.ts has getSiteBySlug + getLatestWorkingVersion
-- [x] components/renderer/Renderer.tsx exports Renderer with onSelect (and onHover or pure-CSS fallback)
-- [x] components/site-components/registry.ts has 20 entries
-- [x] git branch is master
-
+ git branch is master
+ Sprint 6 is merged (editor barrel exposes the expected exports)
+ Editor store has the Sprint-6 surface (state + actions)
+ EditModeWrapper exposes onContextMenu (and Shift+F10 / ContextMenu key)
+ Renderer + ComponentRenderer plumb onContextMenu in mode="edit"
+ componentNodeSchema does NOT have htmlId / className (Advanced is a placeholder)
+ All 20 EditPanel.tsx stubs exist
 Definition of Done:
-- [x] Editor route loads a real site
-- [x] Top bar renders and is fully wired
-- [x] Left sidebar four-tab structure works
-- [x] Site tab edits palette and fonts
-- [x] Pages tab supports add (static + detail), rename, delete, reorder
-- [x] Add tab shows all 20 component cards (non-draggable)
-- [x] Data tab + Right sidebar are placeholder shells
-- [x] Canvas wires selection + hover + Esc clears
-- [x] Preview toggle swaps renderer mode
-- [x] Page selector switches the canvas page
-- [x] Zustand store is the single source of truth
-- [x] Autosave debounces, coalesces, and surfaces failures
-- [x] PATCH endpoint validates and persists
-- [x] Coding standards honored
-- [x] Tests added (count: N)
-- [x] All quality gates pass
-- [x] No new files outside the Owned scope
-- [x] No deviations were silently absorbed
-- [x] Sprint Completion Report emitted verbatim
 
+ Right-click swaps the LeftSidebar to Element Edit and selects the right-clicked component
+ Five-tab Element Edit panel renders for every selected component
+ Back-arrow exits element-edit mode and clears the selection
+ Style tab applies §6.4 controls per the Sprint-8 matrix and flows through setComponentStyle
+ Animation tab edits node.animation
+ Visibility tab edits node.visibility
+ Advanced tab is a documented placeholder
+ Content panels are live for the seven named components
+ Button's Content panel implements §8.12 Link mode and Detail page
+ InputField's Content panel implements the §8.12 defaultValueFromQueryParam field
+ Content panels are placeholders for the other thirteen components, with verbatim copy
+ Delete-component button removes the selected node and exits element-edit mode
+ Component-level mutators flip saveState to "dirty" and trigger autosave
+ Coding standards (§15) honored
+ Tests added (count: N)
+ All quality gates pass
+ No new files outside the Owned scope
+ No new dependencies added without an approved Deviation
+ No deviations were silently absorbed
+ Sprint Completion Report emitted verbatim
 Files created:
-- apps/web/app/[site]/edit/page.tsx (X lines)
-- apps/web/app/[site]/edit/EditorShell.tsx (X lines)
-- apps/web/app/[site]/edit/loading.tsx (X lines)
-- apps/web/app/[site]/edit/error.tsx (X lines)
-- apps/web/app/[site]/edit/not-found.tsx (X lines)
-- apps/web/app/api/sites/[siteId]/working-version/route.ts (X lines)
-- apps/web/components/editor/topbar/TopBar.tsx (X lines)
-- apps/web/components/editor/topbar/SiteNameInput.tsx (X lines)
-- apps/web/components/editor/topbar/PageSelector.tsx (X lines)
-- apps/web/components/editor/topbar/PreviewToggle.tsx (X lines)
-- apps/web/components/editor/topbar/DeployButton.tsx (X lines)
-- apps/web/components/editor/topbar/SaveIndicator.tsx (X lines)
-- apps/web/components/editor/sidebar/LeftSidebar.tsx (X lines)
-- apps/web/components/editor/sidebar/site-tab/SiteTab.tsx (X lines)
-- apps/web/components/editor/sidebar/site-tab/PaletteSelector.tsx (X lines)
-- apps/web/components/editor/sidebar/site-tab/FontSelector.tsx (X lines)
-- apps/web/components/editor/sidebar/pages-tab/PagesTab.tsx (X lines)
-- apps/web/components/editor/sidebar/pages-tab/AddPageDialog.tsx (X lines)
-- apps/web/components/editor/sidebar/pages-tab/RenamePageDialog.tsx (X lines)
-- apps/web/components/editor/sidebar/pages-tab/DeletePageConfirm.tsx (X lines)
-- apps/web/components/editor/sidebar/pages-tab/PageRow.tsx (X lines)
-- apps/web/components/editor/sidebar/add-tab/AddTab.tsx (X lines)
-- apps/web/components/editor/sidebar/add-tab/ComponentCard.tsx (X lines)
-- apps/web/components/editor/sidebar/add-tab/component-catalog.ts (X lines)
-- apps/web/components/editor/sidebar/data-tab/DataTab.tsx (X lines)
-- apps/web/components/editor/sidebar/RightSidebar.tsx (X lines)
-- apps/web/components/editor/canvas/Canvas.tsx (X lines)
-- apps/web/components/editor/canvas/SelectionBreadcrumb.tsx (X lines)
-- apps/web/components/editor/index.ts (X lines)
-- apps/web/lib/editor-state/index.ts (X lines)
-- apps/web/lib/editor-state/types.ts (X lines)
-- apps/web/lib/editor-state/store.ts (X lines)
-- apps/web/lib/editor-state/selectors.ts (X lines)
-- apps/web/lib/editor-state/actions.ts (X lines)
-- apps/web/lib/editor-state/autosave.ts (X lines)
-- (test files under both __tests__ directories)
 
+apps/web/components/editor/edit-panels/EditPanelShell.tsx (X lines)
+apps/web/components/editor/edit-panels/EditPanelTabs.tsx (X lines)
+apps/web/components/editor/edit-panels/DeleteComponentButton.tsx (X lines)
+apps/web/components/editor/edit-panels/tabs/ContentTabHost.tsx (X lines)
+apps/web/components/editor/edit-panels/tabs/StyleTab.tsx (X lines)
+apps/web/components/editor/edit-panels/tabs/AnimationTab.tsx (X lines)
+apps/web/components/editor/edit-panels/tabs/VisibilityTab.tsx (X lines)
+apps/web/components/editor/edit-panels/tabs/AdvancedTab.tsx (X lines)
+apps/web/components/editor/edit-panels/controls/{SpacingInput,ColorInput,BackgroundInput,BorderInput,ShadowSelect,SizeUnitInput,AnimationPresetSelect,NumberInput,TextInput,SelectInput,SegmentedControl,SwitchInput,LinksEditor,FooterColumnsEditor,SelectOptionsEditor,DetailPageSelect}.tsx (X lines each)
+apps/web/components/editor/edit-panels/index.ts (X lines)
+apps/web/components/editor/edit-panels/tests/*.test.tsx (X test files)
 Files modified:
-- package.json (+1 dep: zustand)
-- pnpm-lock.yaml (regenerated)
 
+apps/web/lib/editor-state/types.ts (+A −B)
+apps/web/lib/editor-state/actions.ts (+A −B)
+apps/web/lib/editor-state/store.ts (+A −B)
+apps/web/lib/editor-state/selectors.ts (+A −B)
+apps/web/lib/editor-state/index.ts (+A −B)
+apps/web/lib/editor-state/tests/store.test.ts (+A −B)
+apps/web/lib/editor-state/tests/actions.test.ts (+A −B)
+apps/web/components/editor/canvas/Canvas.tsx (+A −B)
+apps/web/components/editor/sidebar/LeftSidebar.tsx (+A −B)
+apps/web/components/editor/tests/canvas.test.tsx (+A −B)
+apps/web/components/editor/index.ts (+A −B)
+apps/web/components/site-components/Heading/EditPanel.tsx (+A −B)
+apps/web/components/site-components/Paragraph/EditPanel.tsx (+A −B)
+apps/web/components/site-components/Button/EditPanel.tsx (+A −B)
+apps/web/components/site-components/Image/EditPanel.tsx (+A −B)
+apps/web/components/site-components/NavBar/EditPanel.tsx (+A −B)
+apps/web/components/site-components/Footer/EditPanel.tsx (+A −B)
+apps/web/components/site-components/InputField/EditPanel.tsx (+A −B)
+apps/web/components/site-components/{Section,Row,Column,Logo,Spacer,Divider,HeroBanner,PropertyCard,UnitCard,Repeater,Form,MapEmbed,Gallery}/EditPanel.tsx (+A −B each, placeholder)
 Tests added: N (all passing)
-Test command output (last 5 lines):
-[paste]
+Test command output: [paste last 5 lines of pnpm test]
+Build output: [paste the "Compiled successfully" line]
+Biome output: [paste the "No fixes applied." line]Deviations approved during sprint: [list with date + DECISIONS.md anchor, or "None"]Manual smoke test result: [PASS / FAIL with details]External Actions Required (the user does these before declaring the sprint shipped):
 
-Build output (the "Compiled successfully" line and adjacent context):
-[paste]
-
-Biome output:
-[paste]
-
-Deviations approved during sprint: [list with one-line summaries, or "None"]
-
-Manual smoke test result: PASS (steps 1–23 all green) [or FAIL with the
-specific step that failed and the exact failure mode]
-
-External Actions Required:
-- Vercel: none.
-- Supabase: none. No new migrations. The autosave endpoint UPDATEs an
-  existing column on an existing row.
-- Anthropic: none. No AI calls in this sprint.
-- Local: run `pnpm install` once to pull in the new `zustand` dependency
-  (already done by Claude Code as part of the sprint, but mentioned in
-  case the user wants to re-verify on a clean clone).
-- Other: none.
-
+Vercel: none.
+Supabase: none. No new migrations. No DB schema changes.
+Anthropic: none. No AI calls in this sprint.
+Local: pnpm install (if any shadcn primitives were added).
+Other: none unless approved deviations dictate otherwise.
 Recommended next steps:
-- Sprint 8 (Element edit mode — manual). Sprint 8 fills the right
-  sidebar's "Element Edit" mode (Content / Style / Animation / Visibility
-  / Advanced tabs) when a component is right-clicked. The Canvas already
-  surfaces selection — Sprint 8 wires the contextmenu handler to swap
-  the LeftSidebar from Site/Pages/Add/Data into Element Edit mode and
-  populate the Style controls per PROJECT_SPEC.md §6.4. Sprint 7
-  (Drag-and-drop) follows Sprint 8 per the recommended sequential order
-  in SPRINT_SCHEDULE.md.
-```
+
+Sprint 7 (Drag-and-drop). Sprint 7 wires dnd-kit so users can drag
+Add-tab cards onto the canvas and reorder existing components. Sprint 7
+consumes the same Zustand store this sprint extended; the new
+setComponentProps and tree-walk helpers in actions.ts are
+reusable for "move under a different parent". Sprint 7 also adds
+resize handles to Section / Row / Column / Image / Spacer / Cards;
+those handles call setComponentStyle for width / height and
+setComponentProps for Column.span.

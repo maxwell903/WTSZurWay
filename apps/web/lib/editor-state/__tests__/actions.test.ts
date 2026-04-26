@@ -1,10 +1,15 @@
-import type { SiteConfig } from "@/lib/site-config";
+import type { ComponentNode, SiteConfig } from "@/lib/site-config";
 import { describe, expect, it } from "vitest";
 import {
   applyAddPage,
   applyDeletePage,
+  applyRemoveComponent,
   applyRenamePage,
   applyReorderPages,
+  applySetComponentAnimation,
+  applySetComponentProps,
+  applySetComponentStyle,
+  applySetComponentVisibility,
   applySetFontFamily,
   applySetPalette,
   applySetSiteName,
@@ -228,5 +233,197 @@ describe("site-level mutators", () => {
   it("setFontFamily updates brand.fontFamily", () => {
     const next = applySetFontFamily(makeFixtureConfig(), "Lora");
     expect(next.brand.fontFamily).toBe("Lora");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 8 -- component-level mutators
+// ---------------------------------------------------------------------------
+
+function makeNestedFixtureConfig(): SiteConfig {
+  return {
+    meta: { siteName: "Test Site", siteSlug: "test-site" },
+    brand: { palette: "ocean", fontFamily: "Inter" },
+    global: {
+      navBar: { links: [], logoPlacement: "left", sticky: false },
+      footer: { columns: [], copyright: "" },
+    },
+    pages: [
+      {
+        id: "p_home",
+        slug: "home",
+        name: "Home",
+        kind: "static",
+        rootComponent: {
+          id: "cmp_root",
+          type: "Section",
+          props: {},
+          style: {},
+          children: [
+            {
+              id: "cmp_row",
+              type: "Row",
+              props: {},
+              style: {},
+              children: [
+                {
+                  id: "cmp_col",
+                  type: "Column",
+                  props: {},
+                  style: {},
+                  children: [
+                    {
+                      id: "cmp_h1",
+                      type: "Heading",
+                      props: { text: "Hello", level: 1 },
+                      style: {},
+                      animation: { onEnter: "fadeIn", duration: 200 },
+                      visibility: "always",
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ],
+    forms: [],
+  };
+}
+
+function findById(node: ComponentNode | undefined, id: string): ComponentNode | null {
+  if (!node) return null;
+  if (node.id === id) return node;
+  for (const child of node.children ?? []) {
+    const found = findById(child, id);
+    if (found) return found;
+  }
+  return null;
+}
+
+describe("applySetComponentProps", () => {
+  it("replaces props on the targeted node and preserves the rest", () => {
+    const cfg = makeNestedFixtureConfig();
+    const next = applySetComponentProps(cfg, "cmp_h1", { text: "Welcome", level: 2 });
+    const updated = findById(next.pages[0]?.rootComponent, "cmp_h1");
+    expect(updated?.props).toEqual({ text: "Welcome", level: 2 });
+    expect(updated?.style).toEqual({});
+    expect(updated?.animation).toEqual({ onEnter: "fadeIn", duration: 200 });
+  });
+
+  it("walks deeply nested trees and rebuilds only the changed path", () => {
+    const cfg = makeNestedFixtureConfig();
+    const next = applySetComponentProps(cfg, "cmp_h1", { text: "X" });
+    const cfgPage = cfg.pages[0];
+    const nextPage = next.pages[0];
+    if (!cfgPage || !nextPage) throw new Error("missing page");
+    expect(next).not.toBe(cfg);
+    expect(nextPage).not.toBe(cfgPage);
+    // The page-root identity changed because the path went through it.
+    expect(nextPage.rootComponent).not.toBe(cfgPage.rootComponent);
+    // The root's props/style/type are untouched object refs.
+    expect(nextPage.rootComponent.props).toBe(cfgPage.rootComponent.props);
+  });
+
+  it("throws component_not_found for an unknown id", () => {
+    expect(() => applySetComponentProps(makeNestedFixtureConfig(), "missing", {})).toThrow(
+      EditorActionError,
+    );
+    expect(() => applySetComponentProps(makeNestedFixtureConfig(), "missing", {})).toThrow(
+      /not found/,
+    );
+  });
+});
+
+describe("applySetComponentStyle", () => {
+  it("replaces the style block on the targeted node", () => {
+    const cfg = makeNestedFixtureConfig();
+    const next = applySetComponentStyle(cfg, "cmp_h1", { textColor: "#ff0000" });
+    const updated = findById(next.pages[0]?.rootComponent, "cmp_h1");
+    expect(updated?.style).toEqual({ textColor: "#ff0000" });
+  });
+
+  it("clearing all style fields writes an empty object (style is non-optional)", () => {
+    const cfg = makeNestedFixtureConfig();
+    const next = applySetComponentStyle(cfg, "cmp_h1", {});
+    const updated = findById(next.pages[0]?.rootComponent, "cmp_h1");
+    expect(updated?.style).toEqual({});
+  });
+
+  it("throws component_not_found for an unknown id", () => {
+    expect(() => applySetComponentStyle(makeNestedFixtureConfig(), "missing", {})).toThrow(
+      EditorActionError,
+    );
+  });
+});
+
+describe("applySetComponentAnimation", () => {
+  it("writes a sparse AnimationConfig", () => {
+    const cfg = makeNestedFixtureConfig();
+    const next = applySetComponentAnimation(cfg, "cmp_h1", {
+      onEnter: "fadeInUp",
+      duration: 300,
+    });
+    const updated = findById(next.pages[0]?.rootComponent, "cmp_h1");
+    expect(updated?.animation).toEqual({ onEnter: "fadeInUp", duration: 300 });
+  });
+
+  it("clears the field entirely when passed undefined", () => {
+    const cfg = makeNestedFixtureConfig();
+    const next = applySetComponentAnimation(cfg, "cmp_h1", undefined);
+    const updated = findById(next.pages[0]?.rootComponent, "cmp_h1");
+    expect(updated).toBeDefined();
+    expect("animation" in (updated as object)).toBe(false);
+  });
+});
+
+describe("applySetComponentVisibility", () => {
+  it("writes a visibility value", () => {
+    const cfg = makeNestedFixtureConfig();
+    const next = applySetComponentVisibility(cfg, "cmp_h1", "desktop");
+    const updated = findById(next.pages[0]?.rootComponent, "cmp_h1");
+    expect(updated?.visibility).toBe("desktop");
+  });
+
+  it("clears the field entirely when passed undefined", () => {
+    const cfg = makeNestedFixtureConfig();
+    const next = applySetComponentVisibility(cfg, "cmp_h1", undefined);
+    const updated = findById(next.pages[0]?.rootComponent, "cmp_h1");
+    expect(updated).toBeDefined();
+    expect("visibility" in (updated as object)).toBe(false);
+  });
+});
+
+describe("applyRemoveComponent", () => {
+  it("removes a leaf node from its parent's children array", () => {
+    const cfg = makeNestedFixtureConfig();
+    const next = applyRemoveComponent(cfg, "cmp_h1");
+    const col = findById(next.pages[0]?.rootComponent, "cmp_col");
+    expect(col?.children).toEqual([]);
+    // The removed id is gone from the whole tree.
+    expect(findById(next.pages[0]?.rootComponent, "cmp_h1")).toBeNull();
+  });
+
+  it("removes an interior node and its descendants in one shot", () => {
+    const cfg = makeNestedFixtureConfig();
+    const next = applyRemoveComponent(cfg, "cmp_row");
+    const root = next.pages[0]?.rootComponent;
+    expect(root).toBeDefined();
+    expect(root?.children).toEqual([]);
+    expect(findById(root, "cmp_h1")).toBeNull();
+  });
+
+  it("throws page_root_locked when the id is a page's rootComponent", () => {
+    expect(() => applyRemoveComponent(makeNestedFixtureConfig(), "cmp_root")).toThrow(
+      /page root cannot be deleted/,
+    );
+  });
+
+  it("throws component_not_found for an unknown id", () => {
+    expect(() => applyRemoveComponent(makeNestedFixtureConfig(), "missing")).toThrow(
+      EditorActionError,
+    );
+    expect(() => applyRemoveComponent(makeNestedFixtureConfig(), "missing")).toThrow(/not found/);
   });
 });

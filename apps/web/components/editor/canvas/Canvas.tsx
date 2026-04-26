@@ -11,6 +11,7 @@ export function Canvas() {
   const previewMode = useEditorStore((s) => s.previewMode);
   const selectedComponentId = useEditorStore((s) => s.selectedComponentId);
   const selectComponent = useEditorStore((s) => s.selectComponent);
+  const enterElementEditMode = useEditorStore((s) => s.enterElementEditMode);
 
   // Esc clears the selection. Skip when focus is in an input/textarea so
   // dialog forms (AddPageDialog, RenamePageDialog, SiteNameInput) can use Esc
@@ -66,6 +67,7 @@ export function Canvas() {
           mode={previewMode ? "preview" : "edit"}
           selection={selectedComponentId ? [selectedComponentId] : undefined}
           onSelect={(id) => selectComponent(id)}
+          onContextMenu={(id) => enterElementEditMode(id)}
         />
       </div>
       {!previewMode ? <SelectionBreadcrumb /> : null}
