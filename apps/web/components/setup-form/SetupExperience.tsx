@@ -44,7 +44,7 @@ export function SetupExperience() {
         versionId?: string;
         previewUrl?: string;
       } | null;
-      if (!ok || !ok.previewUrl || !ok.slug) {
+      if (!ok || !ok.previewUrl || !ok.slug || !ok.siteId || !ok.versionId) {
         setPanelState({
           kind: "error",
           error: {
@@ -58,6 +58,8 @@ export function SetupExperience() {
         kind: "generated",
         previewUrl: ok.previewUrl,
         siteSlug: ok.slug,
+        siteId: ok.siteId,
+        versionId: ok.versionId,
       });
     } catch (e) {
       setPanelState({

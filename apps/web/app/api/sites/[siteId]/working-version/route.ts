@@ -24,6 +24,36 @@ type ErrorBody = {
   details?: unknown;
 };
 
+export async function GET(_request: Request, context: RouteContext): Promise<Response> {
+  const { siteId } = await context.params;
+
+  const supabase = createServiceSupabaseClient();
+  const { data, error } = await supabase
+    .from("site_versions")
+    .select("id, config")
+    .eq("site_id", siteId)
+    .eq("is_working", true)
+    .maybeSingle();
+
+  if (error) {
+    return jsonError(500, { category: "server_error", message: error.message });
+  }
+  if (!data) {
+    return jsonError(404, {
+      category: "not_found",
+      message: "No working version found for this site.",
+    });
+  }
+
+  return new Response(JSON.stringify({ versionId: data.id, config: data.config }), {
+    status: 200,
+    headers: {
+      "content-type": "application/json",
+      "cache-control": "no-store",
+    },
+  });
+}
+
 export async function PATCH(request: Request, context: RouteContext): Promise<Response> {
   const { siteId } = await context.params;
 

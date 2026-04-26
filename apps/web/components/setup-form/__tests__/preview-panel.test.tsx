@@ -5,8 +5,39 @@ import { PreviewPanel } from "../PreviewPanel";
 // jsdom does not implement navigator.clipboard or matchMedia. The clipboard
 // stub is required by the Copy details button test; the matchMedia stub is
 // required because the generating state mounts <LoadingNarration> which
-// queries prefers-reduced-motion in a useEffect.
+// queries prefers-reduced-motion in a useEffect. The fetch stub is required
+// because the generated state now mounts <AdjustmentChat>, which hydrates
+// via GET /api/sites/[siteId]/working-version on mount.
+const fetchMock = vi.fn(
+  async () =>
+    new Response(JSON.stringify({ versionId: "v1", config: VALID_CONFIG }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }),
+);
+
+const VALID_CONFIG = {
+  meta: { siteName: "Aurora", siteSlug: "aurora-cincy" },
+  brand: { palette: "ocean", fontFamily: "Inter" },
+  global: {
+    navBar: { links: [], logoPlacement: "left", sticky: false },
+    footer: { columns: [], copyright: "" },
+  },
+  pages: [
+    {
+      id: "p_home",
+      slug: "home",
+      name: "Home",
+      kind: "static",
+      rootComponent: { id: "cmp_root", type: "Section", props: {}, style: {}, children: [] },
+    },
+  ],
+  forms: [],
+};
+
 beforeEach(() => {
+  fetchMock.mockClear();
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
   Object.assign(navigator, {
     clipboard: { writeText: vi.fn(async () => undefined) },
   });
@@ -51,24 +82,29 @@ describe("<PreviewPanel>", () => {
     expect(screen.getByTestId("preview-panel-pill")).toHaveTextContent("Pending");
   });
 
-  it("generated state renders the iframe and flips the pill to Live with the URL", () => {
+  it("generated state renders the iframe (with cache-buster), the pill, the URL, and mounts AdjustmentChat", () => {
     render(
       <PreviewPanel
         state={{
           kind: "generated",
           previewUrl: "/aurora-cincy/preview?v=v1",
           siteSlug: "aurora-cincy",
+          siteId: "s1",
+          versionId: "v1",
         }}
       />,
     );
     const iframe = screen.getByTestId("preview-panel-iframe") as HTMLIFrameElement;
     expect(iframe).toBeInTheDocument();
-    expect(iframe.getAttribute("src")).toBe("/aurora-cincy/preview?v=v1");
+    // Sprint 12 cache-buster: the existing ?v=v1 is preserved verbatim and
+    // the &t=N query param is appended starting at 0.
+    expect(iframe.getAttribute("src")).toBe("/aurora-cincy/preview?v=v1&t=0");
     expect(iframe.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin");
     expect(screen.getByTestId("preview-panel-pill")).toHaveTextContent("Live");
     expect(screen.getByTestId("preview-panel-url")).toHaveTextContent(
       "https://www.aurora-cincy.com",
     );
+    expect(screen.getByTestId("adjustment-chat")).toBeInTheDocument();
   });
 
   it("error state shows the auth_error copy and a Copy details button (no Retry)", () => {

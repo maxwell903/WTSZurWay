@@ -94,17 +94,55 @@ describe("<SetupExperience>", () => {
     expect(screen.getByTestId("preview-panel")).toHaveAttribute("data-panel-state", "empty");
   });
 
-  it("on submit success: transitions empty -> generating -> generated", async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        siteId: "s1",
-        slug: "aurora-property-group",
-        versionId: "v1",
-        previewUrl: "/aurora-property-group/preview?v=v1",
-      }),
-    } as Response);
+  it("on submit success: transitions empty -> generating -> generated and mounts AdjustmentChat", async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/generate-initial-site") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            siteId: "s1",
+            slug: "aurora-property-group",
+            versionId: "v1",
+            previewUrl: "/aurora-property-group/preview?v=v1",
+          }),
+        } as Response;
+      }
+      if (url === "/api/sites/s1/working-version") {
+        return new Response(
+          JSON.stringify({
+            versionId: "v1",
+            config: {
+              meta: { siteName: "Aurora", siteSlug: "aurora-property-group" },
+              brand: { palette: "ocean", fontFamily: "Inter" },
+              global: {
+                navBar: { links: [], logoPlacement: "left", sticky: false },
+                footer: { columns: [], copyright: "" },
+              },
+              pages: [
+                {
+                  id: "p_home",
+                  slug: "home",
+                  name: "Home",
+                  kind: "static",
+                  rootComponent: {
+                    id: "cmp_root",
+                    type: "Section",
+                    props: {},
+                    style: {},
+                    children: [],
+                  },
+                },
+              ],
+              forms: [],
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      throw new Error(`Unexpected fetch URL ${url}`);
+    });
 
     render(<SetupExperience />);
     await fillRequiredFields();
@@ -120,11 +158,16 @@ describe("<SetupExperience>", () => {
       expect(screen.getByTestId("preview-panel")).toHaveAttribute("data-panel-state", "generated");
     });
     const iframe = screen.getByTestId("preview-panel-iframe") as HTMLIFrameElement;
-    expect(iframe.getAttribute("src")).toBe("/aurora-property-group/preview?v=v1");
+    // Cache-buster appended; existing ?v=v1 is preserved verbatim.
+    expect(iframe.getAttribute("src")).toBe("/aurora-property-group/preview?v=v1&t=0");
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/generate-initial-site",
       expect.objectContaining({ method: "POST" }),
     );
+    // The Sprint 12 chat is mounted as a child of the generated panel.
+    const generatedPanel = screen.getByTestId("preview-panel");
+    expect(generatedPanel).toHaveAttribute("data-panel-state", "generated");
+    expect(generatedPanel.querySelector("[data-testid='adjustment-chat']")).not.toBeNull();
   });
 
   it("on submit failure: transitions to the error state with the returned AiError", async () => {

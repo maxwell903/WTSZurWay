@@ -8,7 +8,7 @@ vi.mock("@/lib/supabase", () => ({
   createServiceSupabaseClient: () => ({ from: fromMock }),
 }));
 
-import { PATCH } from "../route";
+import { GET, PATCH } from "../route";
 
 const VALID_CONFIG = {
   meta: { siteName: "Aurora", siteSlug: "aurora" },
@@ -49,6 +49,21 @@ function chainableUpdate(returns: MaybeSingleResult) {
   const eq1 = vi.fn(() => ({ eq: eq2 }));
   const update = vi.fn(() => ({ eq: eq1 }));
   return { update, eq1, eq2, select, maybeSingle };
+}
+
+function chainableSelect(returns: MaybeSingleResult) {
+  // .from(t).select(c).eq(c, v).eq(c, v).maybeSingle()
+  const maybeSingle = vi.fn(async () => returns);
+  const eq2 = vi.fn(() => ({ maybeSingle }));
+  const eq1 = vi.fn(() => ({ eq: eq2 }));
+  const select = vi.fn(() => ({ eq: eq1 }));
+  return { select, eq1, eq2, maybeSingle };
+}
+
+function makeGetRequest(): Request {
+  return new Request("http://localhost/api/sites/abc/working-version", {
+    method: "GET",
+  });
 }
 
 describe("PATCH /api/sites/[siteId]/working-version", () => {
@@ -105,5 +120,56 @@ describe("PATCH /api/sites/[siteId]/working-version", () => {
     const body = await res.json();
     expect(body.category).toBe("server_error");
     expect(body.message).toBe("boom");
+  });
+});
+
+describe("GET /api/sites/[siteId]/working-version", () => {
+  beforeEach(() => {
+    fromMock.mockReset();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns 200 with { versionId, config } on success and reads siteId from the route context", async () => {
+    const chain = chainableSelect({
+      data: { id: "v_working_1", config: VALID_CONFIG },
+      error: null,
+    });
+    fromMock.mockReturnValue({ select: chain.select });
+
+    const res = await GET(makeGetRequest(), ctx("site-42"));
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ versionId: "v_working_1", config: VALID_CONFIG });
+    expect(fromMock).toHaveBeenCalledWith("site_versions");
+    expect(chain.select).toHaveBeenCalledWith("id, config");
+    expect(chain.eq1).toHaveBeenCalledWith("site_id", "site-42");
+    expect(chain.eq2).toHaveBeenCalledWith("is_working", true);
+  });
+
+  it("returns 404 with category=not_found when no working version row exists", async () => {
+    const chain = chainableSelect({ data: null, error: null });
+    fromMock.mockReturnValue({ select: chain.select });
+
+    const res = await GET(makeGetRequest(), ctx("missing-site"));
+
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.category).toBe("not_found");
+    expect(typeof body.message).toBe("string");
+  });
+
+  it("returns 500 with category=server_error when supabase errors on select", async () => {
+    const chain = chainableSelect({ data: null, error: { message: "kaboom" } });
+    fromMock.mockReturnValue({ select: chain.select });
+
+    const res = await GET(makeGetRequest(), ctx("abc"));
+
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.category).toBe("server_error");
+    expect(body.message).toBe("kaboom");
   });
 });

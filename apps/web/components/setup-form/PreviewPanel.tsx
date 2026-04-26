@@ -7,19 +7,32 @@
 //
 // Empty state: file icon + the §7.3 hint copy.
 // Generating state: the LoadingNarration with the seven §9.5 messages.
-// Generated state: an iframe pointing at /{slug}/preview?v={versionId}.
+// Generated state: an iframe pointing at /{slug}/preview?v={versionId}
+// plus the Sprint 12 <AdjustmentChat> mounted directly under the iframe
+// in the same card. A generation-token counter remounts the iframe on
+// every successful adjustment so the new working-version config is
+// re-fetched without relying on browser cache invalidation.
 // Error state: §9.6 user-facing copy keyed on error.kind, plus a Retry
 // button (when retryable) and a Copy details button (always).
 
-import type { AiError, AiErrorKind } from "@/lib/ai/errors";
+import type { AiError } from "@/lib/ai/errors";
 import { formatErrorReport } from "@/lib/ai/errors";
 import { Copy, File as FileIcon, RotateCcw } from "lucide-react";
+import { useState } from "react";
+import { AdjustmentChat } from "./AdjustmentChat";
 import { LoadingNarration } from "./LoadingNarration";
+import { ERROR_COPY, RETRYABLE_KINDS } from "./error-copy";
 
 export type PanelState =
   | { kind: "empty" }
   | { kind: "generating" }
-  | { kind: "generated"; previewUrl: string; siteSlug: string }
+  | {
+      kind: "generated";
+      previewUrl: string;
+      siteSlug: string;
+      siteId: string;
+      versionId: string;
+    }
   | { kind: "error"; error: AiError };
 
 export type PreviewPanelProps = {
@@ -70,12 +83,19 @@ export function PreviewPanel({ state, onRetry }: PreviewPanelProps) {
         </span>
       </header>
 
-      <div className="relative aspect-video w-full">
-        {state.kind === "empty" && <EmptyState />}
-        {state.kind === "generating" && <GeneratingState />}
-        {state.kind === "generated" && <GeneratedState previewUrl={state.previewUrl} />}
-        {state.kind === "error" && <ErrorState error={state.error} onRetry={onRetry} />}
-      </div>
+      {state.kind === "generated" ? (
+        <GeneratedView
+          siteId={state.siteId}
+          versionId={state.versionId}
+          previewUrl={state.previewUrl}
+        />
+      ) : (
+        <div className="relative aspect-video w-full">
+          {state.kind === "empty" && <EmptyState />}
+          {state.kind === "generating" && <GeneratingState />}
+          {state.kind === "error" && <ErrorState error={state.error} onRetry={onRetry} />}
+        </div>
+      )}
     </section>
   );
 }
@@ -106,35 +126,44 @@ function GeneratingState() {
   );
 }
 
-function GeneratedState({ previewUrl }: { previewUrl: string }) {
+// GeneratedView owns the local generation-token counter that drives both
+// the iframe cache-buster (`&t=N`) and the iframe's `key` (forces a real
+// React unmount/remount even if the server route ignores `t`). The chat
+// shares the same parent so its onConfigUpdated callback can bump the
+// token without prop drilling through unrelated levels.
+function GeneratedView({
+  siteId,
+  versionId,
+  previewUrl,
+}: {
+  siteId: string;
+  versionId: string;
+  previewUrl: string;
+}) {
+  const [token, setToken] = useState(0);
+  const separator = previewUrl.includes("?") ? "&" : "?";
+  const src = `${previewUrl}${separator}t=${token}`;
+  const bumpToken = () => setToken((t) => t + 1);
+
   return (
-    <iframe
-      data-testid="preview-panel-iframe"
-      title="Generated site preview"
-      src={previewUrl}
-      sandbox="allow-scripts allow-same-origin"
-      loading="eager"
-      className="absolute inset-0 h-full w-full border-0 bg-white"
-    />
+    <>
+      <div className="relative aspect-video w-full">
+        <iframe
+          key={token}
+          data-testid="preview-panel-iframe"
+          title="Generated site preview"
+          src={src}
+          sandbox="allow-scripts allow-same-origin"
+          loading="eager"
+          className="absolute inset-0 h-full w-full border-0 bg-white"
+        />
+      </div>
+      <div className="border-t border-zinc-800 p-3">
+        <AdjustmentChat siteId={siteId} versionId={versionId} onConfigUpdated={bumpToken} />
+      </div>
+    </>
   );
 }
-
-const ERROR_COPY: Record<AiErrorKind, string> = {
-  network_error: "We couldn't reach our AI service. Check your connection and try again.",
-  timeout: "The AI took too long to respond. Try a shorter or more specific prompt.",
-  model_clarification: "The AI needs more information to continue.",
-  invalid_output: "The AI returned something we couldn't parse. Try rephrasing your request.",
-  operation_invalid:
-    "One of the AI's suggested changes wouldn't work on this page. The change was discarded.",
-  over_quota: "Service unavailable, please try again later.",
-  auth_error: "Service unavailable, please try again later.",
-};
-
-const RETRYABLE_KINDS: ReadonlySet<AiErrorKind> = new Set([
-  "network_error",
-  "timeout",
-  "over_quota",
-]);
 
 function ErrorState({ error, onRetry }: { error: AiError; onRetry?: () => void }) {
   const copy = ERROR_COPY[error.kind];

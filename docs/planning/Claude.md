@@ -1,915 +1,363 @@
-# CLAUDE.md — Sprint 9b: Detail pages runtime + row context generalization
+# CLAUDE.md — Sprint 12: Element 1 Adjustment Chat
+
+> Drop this file at the repo root in place of (or alongside) the master
+> `CLAUDE.md` for the duration of Sprint 12. Restore the master afterwards.
+> The repo root must also contain `PROJECT_SPEC.md` and `DECISIONS.md`.
+
+---
 
 ## Mission
 
-Sprint 9b is the third and final piece of the detail-pages story
-(`PROJECT_SPEC.md` §8.12 + the per-`kind` slug rule in §11). The
-preceding pieces are already in place:
+Build the Element 1 "Request adjustments" chat (`PROJECT_SPEC.md` §2.2 item 6
+and §7.5). After a successful initial generation, the user sees a freshly
+rendered preview iframe in the `PreviewPanel`. Sprint 12 mounts a chat
+control directly under that iframe so the user can keep refining the site —
+in plain English, with optional image attachments — before they ever click
+**Open in Editor**. Each successful adjustment writes a new working-version
+config to Supabase and re-renders the iframe. The chat reuses Sprint 11's
+`/api/ai-edit` endpoint verbatim; no model logic is duplicated.
 
-- **Sprint 3b** amended the schema so `Page.kind` is `"static" | "detail"`
-  (default `"static"`), `Page.detailDataSource` is required iff
-  `kind === "detail"`, and slug uniqueness is per-`kind` (the U2
-  routing pattern: `/{site}/units` static + `/{site}/units/{id}`
-  detail can share the slug `units`).
-- **Sprint 5b** added `Button.linkMode: "static" | "detail"` and
-  `Button.detailPageSlug?: string` (with a `superRefine` enforcing
-  the cross-field rule), and switched `InputField` to a
-  `"use client"` component that hydrates from
-  `window.location.search` via `defaultValueFromQueryParam`.
-- **Sprint 9** shipped `apps/web/lib/row-context/` (a
-  `RowContextProvider` accepting `kind: "repeater" | "detail"` + a
-  `useRow()` hook) AND `apps/web/lib/token-resolver/` (the pure
-  `resolveTokens(value, row)` function with the `money` / `number` /
-  `date` / `lower` / `upper` formatters), plus a resolver hook in
-  `ComponentRenderer.tsx` that walks every component's string props
-  when a row is in scope and short-circuits whole-token strings to
-  the underlying typed value (per the 2026-04-26 DECISIONS.md
-  entry).
-- **Sprint 13** shipped the public catch-all at
-  `apps/web/app/[site]/[[...slug]]/page.tsx` (the directory uses
-  the **optional** catch-all `[[...slug]]` form per the 2026-04-26
-  DECISIONS.md entry — Sprint 9b's plan paths are corrected from
-  `[...slug]` to `[[...slug]]` accordingly), with a load-bearing
-  `// === SPRINT 9B INSERTS DETAIL BRANCH HERE ===` comment
-  immediately above the final `notFound()` and a sibling
-  `resolve.ts` containing `resolveStaticPage`.
-
-Sprint 9b adds the runtime that makes detail pages actually render:
-
-1. **Detail-page resolver.**
-   `apps/web/app/[site]/[[...slug]]/resolve.ts` gains a new exported
-   helper:
-
-```ts
-   export type DetailMatch = { page: Page; rowId: number };
-   export function resolveDetailPage(
-     config: SiteConfig,
-     slug: string[] | undefined,
-   ): DetailMatch | null;
-```
-
-   The helper fires only when `slug` is exactly two segments, the
-   second segment parses as a positive integer (regex
-   `/^[1-9]\d*$/` — leading zeros, signs, decimals, and `0` are all
-   rejected to keep the route URL space deterministic), AND a page
-   exists with `kind === "detail"` whose `slug` equals the first
-   segment. The single-segment case (`["units"]`), the
-   multi-segment case (`["foo", "bar", "baz"]`), and the
-   non-numeric trailing-segment case (`["units", "abc"]`) all
-   return `null`. `resolveStaticPage` is unchanged.
-
-2. **Detail branch in the catch-all.**
-   `apps/web/app/[site]/[[...slug]]/page.tsx` is extended IN PLACE.
-   The load-bearing comment line
-   `// === SPRINT 9B INSERTS DETAIL BRANCH HERE ===` is REPLACED
-   (the comment line itself goes away — its single purpose was to
-   mark this insertion point) by a block that calls
-   `resolveDetailPage`, fetches the row via `lib/rm-api/getUnitById`
-   when `page.detailDataSource === "units"` or
-   `lib/rm-api/getPropertyById` when `page.detailDataSource ===
-   "properties"`, and renders the matched page wrapped in row
-   context. If `resolveDetailPage` returns `null`, the static
-   branch's behavior of falling through to `notFound()` is
-   preserved. If the page resolves but the fetched row is `null`
-   (unknown id), the branch ALSO falls through to `notFound()` —
-   per `PROJECT_SPEC.md` §8.12 ("If the row is not found, the
-   handler renders a 404."). The existing static branch above the
-   insertion point is untouched. The final `notFound()` line is
-   untouched.
-
-3. **`Renderer` gains opt-in detail mode.**
-   `apps/web/components/renderer/Renderer.tsx` accepts two new
-   optional props:
-
-```ts
-   pageKind?: "static" | "detail";  // default "static"
-   row?: unknown;                    // default undefined
-```
-
-   When `pageKind === "detail"`, the page lookup filters
-   `pages.find((p) => p.slug === page && p.kind === "detail")` so
-   the U2 same-slug coexistence resolves correctly. When `row` is
-   provided AND `pageKind === "detail"`, the renderer wraps ONLY
-   the matched page's `rootComponent` (not the global NavBar /
-   Footer) in `<RowContextProvider row={row} kind="detail">`.
-   NavBar and Footer stay outside the row scope so their `href`
-   strings are not accidentally resolved against the in-scope row.
-   Existing callers pass neither prop and continue to behave
-   exactly as before; test snapshots, fixture pages, and the
-   editor's `mode="edit"` path are unaffected.
-
-4. **Button consumes row context for detail links.**
-   `apps/web/components/site-components/Button/index.tsx` becomes
-   a `"use client"` component (mirroring the Sprint 5b InputField
-   switch). It calls `useRow()` and, when `data.linkMode ===
-   "detail"`, `data.detailPageSlug !== undefined`, the row context
-   `kind !== null`, the row is non-null, AND `row.id` is a
-   `number | string`, the rendered `<a>`'s href is computed at
-   render time as `/${data.detailPageSlug}/${row.id}`. In every
-   other case the existing `data.href` passes through verbatim
-   (the existing token-string and static-href behaviors are
-   preserved), the existing `data-link-mode` and
-   `data-detail-page-slug` data attributes continue to render, and
-   Sprint 5b's silent-fallback semantics still hold for invalid
-   prop combinations. Ownership of `Button/index.tsx` transfers
-   from Sprint 5 to Sprint 9b for this hand-off, mirroring the
-   Sprint 2c BrandSection precedent.
-
-5. **Test coverage for detail-page row context.**
-   New unit tests prove (a) `resolveDetailPage` returns the right
-   `{ page, rowId }` for a U2 config and `null` for every
-   non-detail-shaped slug; (b) the Button computes the
-   `/units/{id}` href when wrapped in `<RowContextProvider row={{
-   id: 42, ... }} kind="detail">`; (c) the Button leaves `href`
-   untouched when `linkMode === "static"`, when no row is in scope,
-   or when `row.id` is missing or non-scalar; (d) the Renderer's
-   new `pageKind` filter resolves the static and detail variants
-   of a U2 config independently; (e) descendants of the
-   `RowContextProvider` resolve `{{ row.* }}` tokens through the
-   existing ComponentRenderer hook (token resolution on a detail
-   page is the same code path as token resolution inside a
-   Repeater iteration — Sprint 9b adds a regression test that
-   confirms this without rewriting the Sprint 9 hook); and (f) the
-   pre-existing Sprint 13 resolver tests in
-   `apps/web/app/[site]/[[...slug]]/__tests__/page.test.tsx` stay
-   green verbatim.
-
-The work does **not** touch `lib/rm-api/`, `lib/site-config/schema.ts`,
-the renderer's `ComponentRenderer.tsx` source (the resolver hook
-already handles every per-prop case), the `RowContextProvider` /
-`useRow` source files, the `token-resolver` source files, the deploy
-endpoint, the AI endpoints, the editor, the setup form, or the
-Supabase migrations. It extends exactly three production files
-(`Button/index.tsx`, `Renderer.tsx`, `[[...slug]]/page.tsx`), one
-helper file (`resolve.ts`), one component SPEC.md
-(`Button/SPEC.md`), and the matching test files.
+This sprint does **not** add a separate "Accept / Discard" review step.
+`PROJECT_SPEC.md` §2.2 / §7.5 describe Element 1's adjustment loop as
+auto-apply: prompt → ops → PATCH → reload. Element 2's review-first flow
+(Sprint 11) stays untouched. If you find yourself adding Accept / Discard,
+that is a deviation — emit a Deviation Report.
 
 ## Spec sections in scope
 
-- `PROJECT_SPEC.md` §8.12 — Detail pages: U2 routing, row context,
-  Repeater→detail-page linking via `Button.linkMode = "detail"`,
-  cross-page filter parameters, and the explicit out-of-scope list
-  (no nested dynamic segments, no non-numeric ids, only `properties`
-  and `units` are detail-eligible).
-- `PROJECT_SPEC.md` §11 — Page validation rules: per-`kind` slug
-  uniqueness, `detailDataSource` required iff `kind === "detail"`,
-  `kind` defaults to `"static"`. Sprint 9b reads this contract; it
-  does not modify it.
-- `PROJECT_SPEC.md` §10 / §10.3 — The shared renderer; in `public`
-  mode the public route is RSC, the row fetch is server-side, and
-  the row context provider crosses the RSC→client boundary as a
-  serialized prop.
-- `PROJECT_SPEC.md` §17 — Out of scope: no per-customer subdomains,
-  no auth beyond a placeholder. The detail-page route is reachable
-  via the same service-role client the catch-all already uses; no
-  new auth gates.
-- `PROJECT_SPEC.md` §13.2 — Demo flow. Sprint 9b does not change
-  the demo script; it makes the detail-page links inside the
-  generated Aurora site clickable end-to-end so Sprint 15's E2E can
-  assert "click a UnitCard's CTA → unit detail page renders with
-  that unit's data."
+- `PROJECT_SPEC.md` §2.2 — Element 1 → Element 2 handoff (item 6 is the
+  adjustment chat behavior).
+- `PROJECT_SPEC.md` §7.3 — `PreviewPanel` layout (you extend the
+  generated-state region, do not touch the empty / generating / error
+  states beyond layout reflow).
+- `PROJECT_SPEC.md` §7.5 — Adjustment chat behavior (the canonical
+  description of the loop).
+- `PROJECT_SPEC.md` §9.4 — Operations vocabulary (read-only — you
+  *consume* `applyOperations` from `lib/site-config/ops.ts`; you do
+  not modify it).
+- `PROJECT_SPEC.md` §9.6 — AI error envelope (`AiError` shape and the
+  user-facing copy table — reuse Sprint 4's `PreviewPanel` table verbatim).
+- `PROJECT_SPEC.md` §9.7 — Image attachments (max 4 per message,
+  ≤ 5 MB each, image MIME types only).
+- `PROJECT_SPEC.md` §11 — `SiteConfig` schema (read-only — you parse
+  via `safeParseSiteConfig`; you never extend it).
+- `PROJECT_SPEC.md` §15 — Coding standards (binding — see §"Coding
+  standards" below).
 
-Quote each section as you build the corresponding piece. Do not
-paraphrase the §8.12 rules — the renderer behavior is gated on the
-exact contract.
+## Authorized scope expansion (read carefully)
 
-## Pre-flight check (MANDATORY — emit before reading or writing any non-spec file)
+`SPRINT_SCHEDULE.md`'s short owned-list for Sprint 12 is
+`AdjustmentChat.tsx` + `PreviewPanel.tsx` integration. The Sprint
+Architect expanded that list during planning to also include:
 
-Before reading or modifying any file other than the items listed in
-"Spec sections in scope" above, run these fifteen checks. If any
-fails, STOP and emit a Deviation Report per the protocol embedded
-later in this file. Do not attempt to work around a failed check.
+1. A `GET` handler added to the existing
+   `apps/web/app/api/sites/[siteId]/working-version/route.ts` (Sprint 6
+   territory). Without a JSON GET, the client cannot load the current
+   `SiteConfig` to apply operations to. The DECISIONS.md 2026-04-25
+   Sprint 6 entry deliberately removed `lib/sites/repo.ts`; Sprint 12
+   re-uses the inlined Supabase pattern from that decision.
+2. `apps/web/components/setup-form/SetupExperience.tsx` (Sprint 4
+   territory) — the four-line addition that carries `siteId` and
+   `versionId` from the `/api/generate-initial-site` response into
+   `PanelState`.
+3. A small `PanelState` shape extension in `PreviewPanel.tsx` (already
+   in this sprint's listed owned set).
 
-1. **Single-branch workflow.** Run `git branch --show-current` and
-   verify the output is exactly `master`. If it is not, STOP and
-   emit a Deviation Report — do NOT create a `sprint/9b` branch
-   and do NOT switch branches. Per `DECISIONS.md` 2026-04-25 the
-   project uses a single `master` branch on a single repo;
-   worktrees are not in use.
+These are pre-approved, additive, and behavior-preserving for existing
+callers. The expansion is logged as a Sprint 12 entry in `DECISIONS.md`
+that you (Claude Code) MUST append at the end of the sprint — see the
+DoD. If you discover during execution that any of these three additions
+cannot be made surgically (e.g. the GET would need a different path,
+the existing PATCH tests break), STOP and emit a Deviation Report.
 
-2. **Predecessor sprints merged.** Run `git log --oneline -n 50`
-   and confirm commits referencing Sprints 0, 1, 2, 3, 3b, 5, 5b,
-   4, 6, 7, 8, 9, 11, 13 are present. The recommended execution
-   order in `docs/planning/SPRINT_SCHEDULE.md` §3 places Sprint 9b
-   AFTER Sprint 13. If Sprint 13 is not merged, STOP — Sprint 9b
-   cannot extend a route file that does not yet exist.
-
-3. **Catch-all route present (with the optional brackets).**
-   Run `ls apps/web/app/[site]/[[...slug]]/` and confirm the
-   directory contains at least `page.tsx`, `resolve.ts`, and
-   `__tests__/page.test.tsx`. The directory is `[[...slug]]`
-   (TWO opening brackets, TWO closing brackets) per the
-   2026-04-26 DECISIONS.md "Catch-all directory uses optional
-   brackets" entry. If the directory is `[...slug]` instead, STOP
-   — that means Sprint 13 did not land in its final form and
-   Sprint 9b's plan path needs reconciliation. Do NOT create a
-   second `[...slug]` directory in parallel; raise a Deviation.
-
-4. **Insertion-point comment present.** Run
-   `grep -n "SPRINT 9B INSERTS DETAIL BRANCH HERE" apps/web/app/[site]/[[...slug]]/page.tsx`
-   and confirm exactly one match, immediately above the final
-   `notFound()` line, in the form
-   `// === SPRINT 9B INSERTS DETAIL BRANCH HERE ===`. If the
-   comment is missing, has been moved, or has been re-worded,
-   STOP — Sprint 13's contract has been broken; raise a
-   Deviation. The replacement block goes EXACTLY where this
-   comment is; nothing above it (the `staticPage` lookup, the
-   config parse, the site / version load) is touched.
-
-5. **`resolveStaticPage` exported and untouched.** Open
-   `apps/web/app/[site]/[[...slug]]/resolve.ts` and confirm it
-   exports `resolveStaticPage(config: SiteConfig, slug: string[] |
-   undefined): Page | null`. Sprint 9b ADDS `resolveDetailPage` to
-   this same file; it does NOT modify `resolveStaticPage`'s body
-   or signature.
-
-6. **Row context module exports the right names.** Open
-   `apps/web/lib/row-context/index.ts` and confirm it re-exports
-   `RowContext`, `RowContextProvider`, `RowProvided`, and `useRow`.
-   Open `apps/web/lib/row-context/RowContext.tsx` and confirm
-   `RowContextProvider` accepts `kind: "repeater" | "detail"` and
-   the `RowProvided` type is the discriminated union
-   `{ row: unknown; kind: "repeater" | "detail" } | { row: null;
-   kind: null }`. Both shapes are required as written; if either
-   diverges, STOP.
-
-7. **Token resolver public surface intact.** Open
-   `apps/web/lib/token-resolver/index.ts` and confirm it exports
-   `resolveTokens` (the `(value: string, row: unknown | null) =>
-   string` function) and `FORMATTERS`. Open
-   `apps/web/lib/token-resolver/resolve.ts` and confirm the
-   contract: when `row === null || row === undefined` the input
-   is returned verbatim; unknown `{{ row.path }}` paths emit the
-   token verbatim; the `money` / `number` / `date` / `lower` /
-   `upper` formatters all exist. Sprint 9b consumes this surface
-   read-only.
-
-8. **`useRow()` returns the right discriminated shape.** Open
-   `apps/web/lib/row-context/useRow.ts` (or whatever file
-   `useRow` is exported from) and confirm the function returns
-   the same `RowProvided` union shape exported from `RowContext.tsx`.
-   The Button code in step 4 of Mission depends on `kind === null`
-   and `row !== null` being checkable independently.
-
-9. **`ComponentRenderer.tsx` resolver hook present.** Open
-   `apps/web/components/renderer/ComponentRenderer.tsx` and
-   confirm it imports `useRow` from `@/lib/row-context`, that it
-   has the `WHOLE_TOKEN_RE` regex, the `resolveStringProp` /
-   `resolveValue` / `resolveProps` helpers, and the
-   `useMemo<ComponentNode>(() => kind === null ? node : { ...node,
-   props: resolveProps(node.props, row) }, ...)` block. Sprint 9b
-   does NOT touch this file — the per-component prop resolution is
-   already general enough to handle detail-page row context the
-   moment a `RowContextProvider kind="detail"` wraps the rendered
-   tree. If any of these landmarks are missing, STOP.
-
-10. **`Renderer.tsx` exists and exports `Renderer`.** Open
-    `apps/web/components/renderer/Renderer.tsx` and confirm the
-    file exports a default or named `Renderer` component that
-    takes `config: SiteConfig`, `page: string`, and `mode: "edit" |
-    "preview" | "public"`. Note where the page lookup happens
-    (`config.pages.find(...)`) and where the page's
-    `rootComponent` is rendered relative to the global NavBar /
-    Footer chrome — Sprint 9b's additive props (`pageKind`, `row`)
-    interleave with that exact location.
-
-11. **`lib/rm-api` exposes `getUnitById` and `getPropertyById`.**
-    Open `apps/web/lib/rm-api/index.ts` and confirm it re-exports
-    `getUnitById` from `./units` and `getPropertyById` from
-    `./properties`. Both functions take a `number` id and return
-    `Unit | null` / `Property | null` respectively (per
-    `apps/web/lib/rm-api/__tests__/units.test.ts` and
-    `apps/web/lib/rm-api/__tests__/properties.test.ts` — confirm
-    by reading the test files, not by running them, since the
-    integration tests skip without env vars in CI).
-
-12. **`Button/index.tsx` matches the Sprint 5b shape.** Open
-    `apps/web/components/site-components/Button/index.tsx` and
-    confirm:
-    - It does NOT have a `"use client"` directive at the top
-      (Sprint 9b adds it).
-    - The `buttonPropsSchema` includes `linkMode` (default
-      `"static"`) and `detailPageSlug` (optional), joined by a
-      `superRefine` that errors when `linkMode === "detail"` and
-      `detailPageSlug === undefined`.
-    - The module-level `BUTTON_FALLBACK = buttonPropsSchema.parse({})`
-      exists.
-    - The render emits `data-link-mode="detail"` and
-      `data-detail-page-slug` data attributes only when
-      `data.linkMode === "detail"` and `data.detailPageSlug !==
-      undefined`.
-    If anything diverges, STOP — Sprint 9b's wiring depends on the
-    Sprint 5b contract.
-
-13. **`InputField/index.tsx` is already a client component.**
-    Open `apps/web/components/site-components/InputField/index.tsx`
-    and confirm the first non-comment line is `"use client";` and
-    that the `useEffect` reading `window.location.search` is
-    wired to `data.defaultValueFromQueryParam`. Sprint 9b makes
-    NO changes to this file — Sprint 5b's wiring is sufficient.
-    If the directive is missing, STOP and raise a Deviation.
-
-14. **`Repeater/index.tsx` continues to use `RowContextProvider`.**
-    Open `apps/web/components/site-components/Repeater/index.tsx`
-    and confirm it imports `RowContextProvider` from
-    `@/lib/row-context` and wraps each row's template render in
-    `<RowContextProvider key={...} row={row} kind="repeater">`.
-    Sprint 9b's detail-page wrap uses the IDENTICAL component;
-    confirm the import is still there so any future regression
-    in the row-context surface affects both call sites equally.
-
-15. **Schema enforces detail-page validation.** Open
-    `apps/web/lib/site-config/schema.ts` and confirm `pageSchema`
-    defaults `kind` to `"static"`, `siteConfigSchema`'s
-    cross-page `superRefine` enforces per-`kind` slug uniqueness,
-    and a per-page `superRefine` rejects `kind === "detail"`
-    without `detailDataSource`. Sprint 9b relies on the catch-all
-    receiving validated configs (the deploy gate re-validates
-    before snapshotting), so a detail page in the deployed config
-    is guaranteed to carry a `detailDataSource`.
-
-After all fifteen checks pass, list each as `[x]` in your first
-response and then proceed.
-
-## Authorized hand-offs from earlier sprints
-
-The following are planned hand-offs and are NOT Deviations. They
-are honored by this sprint and listed in the Sprint Completion
-Report under "Authorized hand-offs honored":
-
-- `apps/web/components/site-components/Button/index.tsx` — Sprint 5
-  shipped this as a server component; Sprint 5b extended its
-  schema and data attributes; **Sprint 9b adds a `"use client"`
-  directive and a `useRow()` call to compute the detail href**.
-  The file's exported name (`Button`), its prop schema, its
-  render output (the `<a>` / `<button>` discriminator on
-  `data.href`), and the Sprint 5b data attributes are all
-  preserved. The `BUTTON_FALLBACK`, `VARIANT_STYLES`, and
-  `SIZE_STYLES` literals are unchanged.
-
-- `apps/web/components/renderer/Renderer.tsx` — Sprint 3 owns the
-  file; Sprint 9b adds two optional props (`pageKind`, `row`)
-  with defaults that preserve every existing call site. Mirror
-  the additive pattern Sprint 9 used when adding the resolver
-  hook to `ComponentRenderer.tsx`.
-
-- `apps/web/app/[site]/[[...slug]]/page.tsx` — Sprint 13 owns the
-  file; the load-bearing
-  `// === SPRINT 9B INSERTS DETAIL BRANCH HERE ===` comment is
-  the agreed insertion point. Replace exactly that line with the
-  new branch. Everything above it (the
-  `loadSiteAndDeployedVersion` call, the `parseSiteConfig` call,
-  the `staticPage` lookup, the static-render return) is
-  untouched.
-
-- `apps/web/app/[site]/[[...slug]]/resolve.ts` — Sprint 13 owns
-  the file; Sprint 9b APPENDS `resolveDetailPage` and exports it.
-  `resolveStaticPage` is untouched.
-
-- `apps/web/app/[site]/[[...slug]]/__tests__/page.test.tsx` —
-  Sprint 13 owns the file; Sprint 9b APPENDS new `describe` blocks
-  for `resolveDetailPage` and the U2 routing cases. Every existing
-  Sprint 13 test passes verbatim.
-
-No other earlier-sprint files are modified. If you find yourself
-wanting to edit any other file, that is a Deviation.
+Anything *beyond* those three additions is out of scope. New API routes,
+new lib/ modules, new shared components, new dependencies → Deviation.
 
 ## Definition of Done
 
-- [ ] **`resolveDetailPage` exported.**
-      `apps/web/app/[site]/[[...slug]]/resolve.ts` exports
-      `resolveDetailPage(config: SiteConfig, slug: string[] |
-      undefined): { page: Page; rowId: number } | null` with the
-      exact signature above. The function:
-      1. Returns `null` when `slug` is `undefined` or has length
-         other than 2.
-      2. Returns `null` when `slug[1]` does NOT match the regex
-         `/^[1-9]\d*$/` (i.e., a positive integer with no leading
-         zeros, no signs, no decimals — `"0"`, `"01"`, `"-1"`,
-         `"1.5"`, `"abc"` all return `null`).
-      3. Otherwise looks up
-         `config.pages.find((p) => p.kind === "detail" && p.slug
-         === slug[0])` and returns `{ page, rowId: Number(slug[1])
-         }` when found, `null` when not.
-      The function is pure (no async, no side effects) and is
-      exported alongside `resolveStaticPage`. The existing
-      `resolveStaticPage` body is untouched.
+- [ ] **DoD-1.** A new client component
+      `apps/web/components/setup-form/AdjustmentChat.tsx` exists. It is
+      a `"use client"` component. Default-exported as a named export
+      `AdjustmentChat`. Props: `{ siteId: string; versionId: string;
+      onConfigUpdated: () => void }`. When mounted it renders: a
+      transcript area, a textarea input, an image-attach button, and a
+      Send button. Empty-state copy under the transcript (when
+      transcript is empty) reads exactly: *"Want to adjust something?
+      Ask the AI."*
+- [ ] **DoD-2.** `apps/web/components/setup-form/PreviewPanel.tsx`'s
+      exported `PanelState` discriminated-union extends the
+      `"generated"` variant with two new required string fields:
+      `siteId` and `versionId`. The existing
+      `previewUrl` and `siteSlug` fields are preserved. Importers must
+      not break — only `SetupExperience` produces this state today and
+      it is updated in lockstep.
+- [ ] **DoD-3.** When `state.kind === "generated"`, `PreviewPanel`
+      renders `<AdjustmentChat siteId={state.siteId}
+      versionId={state.versionId} onConfigUpdated={...} />` directly
+      below the iframe inside the same fake-browser-chrome card. The
+      empty / generating / error states are visually unchanged.
+- [ ] **DoD-4.** `PreviewPanel`'s iframe gains a generation-token
+      cache-buster: its `src` becomes
+      `` `${state.previewUrl}${state.previewUrl.includes("?") ? "&" : "?"}t=${token}` ``,
+      where `token` is an integer that starts at `0` on mount of the
+      generated state and is incremented by `onConfigUpdated`. The
+      iframe is wrapped in `key={token}` so React fully remounts it on
+      every increment. The existing `?v={versionId}` query string in
+      `previewUrl` is preserved verbatim — the cache-buster appends, it
+      never replaces.
+- [ ] **DoD-5.**
+      `apps/web/components/setup-form/SetupExperience.tsx`'s `submit`
+      function captures `siteId` and `versionId` from the
+      `/api/generate-initial-site` response and writes them into the
+      new `PanelState["generated"]` shape. The `extractError` helper
+      and the `lastPayload` retry path are unchanged.
+- [ ] **DoD-6.** A new `GET` handler is added to
+      `apps/web/app/api/sites/[siteId]/working-version/route.ts`. On
+      success it returns `200` with body
+      `{ versionId: string, config: SiteConfig }`. On no-matching-row
+      it returns `404` with the existing `ErrorBody` envelope
+      (`{ category: "not_found", message }`). On Supabase error it
+      returns `500` with `{ category: "server_error", message }`. The
+      handler uses `createServiceSupabaseClient()`, declares
+      `runtime = "nodejs"`, and respects `dynamic = "force-dynamic"`
+      (already declared at module scope — do not duplicate).
+- [ ] **DoD-7.** `AdjustmentChat` hydrates its local `SiteConfig` state
+      via the new `GET` on mount. While hydrating, the input and Send
+      button are disabled with an `aria-busy="true"` indicator. If the
+      GET fails, the chat surface displays the §9.6 copy keyed on the
+      error category (`server_error` → "Service unavailable, please
+      try again later." / `not_found` → "Couldn't load your site
+      preview. Try refreshing the page.") and stays disabled.
+      Hydration errors do **not** crash `PreviewPanel`.
+- [ ] **DoD-8.** On Send: `AdjustmentChat` POSTs to `/api/ai-edit`
+      with the body `{ siteId, currentVersionId: versionId, prompt,
+      attachments }`. `selection` and `history` are intentionally
+      omitted (Element 1's chat is whole-site and stateless across
+      turns per `PROJECT_SPEC.md` §7.5). The Send button is disabled
+      while the request is in flight. The user message is appended to
+      the transcript immediately (optimistic).
+- [ ] **DoD-9.** On a `kind: "ok"` response: `AdjustmentChat` applies
+      the returned `Operation[]` to its local `SiteConfig` via
+      `applyOperations` from `@/lib/site-config/ops`, then PATCHes the
+      resulting full `SiteConfig` to
+      `/api/sites/[siteId]/working-version`. On `204` (success) it
+      replaces its local config with the new one, calls
+      `props.onConfigUpdated()`, and appends an assistant message
+      containing the response's `summary` to the transcript. There is
+      **no** Accept / Discard step — the operation is auto-applied per
+      §7.5.
+- [ ] **DoD-10.** On a `kind: "clarify"` response: `AdjustmentChat`
+      appends an assistant message containing the `question` verbatim.
+      No `applyOperations` call. No PATCH. No `onConfigUpdated` call.
+      Local config is not touched. The user can immediately reply with
+      another prompt.
+- [ ] **DoD-11.** On any error response (`{ error: AiError }` or
+      `applyOperations` throws `OperationInvalidError` or the PATCH
+      returns non-204): `AdjustmentChat` appends an assistant error
+      message using exactly the same `ERROR_COPY` table that
+      `PreviewPanel` uses today. Network failures map to
+      `network_error`. PATCH non-204 maps to `auth_error` (matches
+      `PreviewPanel`'s server-error treatment). `applyOperations`
+      throwing maps to `operation_invalid`. Errors do **not** mutate
+      the local config or call `onConfigUpdated`.
+- [ ] **DoD-12.** Image attachments. Clicking the attach button opens
+      a native file picker (`<input type="file" accept="image/*"
+      multiple>`). Files are validated client-side: ≤ 4 per message
+      (rejection copy: "You can attach up to 4 images per message."),
+      ≤ 5 MB each ("Each image must be 5 MB or smaller."), MIME type
+      starts with `image/` ("Only image files are supported."). Valid
+      files are uploaded to the Supabase Storage `ai-attachments`
+      bucket with a randomized prefix; the resulting public URLs are
+      attached to the next Send. Pending attachments render as small
+      thumbnail chips above the input with a remove (×) button each.
+      The chips clear after a successful Send.
+- [ ] **DoD-13.** Concurrency. The Send button is disabled while any
+      request (`/api/ai-edit` POST, `/api/sites/[siteId]/working-
+      version` PATCH, attachment upload) is in flight, AND while
+      hydration is pending. There is no in-memory queue — the user
+      waits for one round-trip to finish before issuing the next.
+- [ ] **DoD-14.** The chat is fully unmounted (returns `null`) when
+      `state.kind` is anything other than `"generated"`. It performs
+      no network requests in any other state. `PreviewPanel` does not
+      render `<AdjustmentChat>` outside the generated state.
+- [ ] **DoD-15.** A unit test file
+      `apps/web/components/setup-form/__tests__/adjustment-chat.test.tsx`
+      exists. It uses `vi.fn()` mocks for `fetch` (covering both the
+      GET and the POSTs) and asserts: (a) hydrate call hits GET on
+      mount; (b) Send while not hydrated is impossible; (c) ok
+      response triggers PATCH and `onConfigUpdated`; (d) clarify does
+      not trigger PATCH; (e) error response shows the right copy and
+      does not trigger PATCH; (f) attachments enforce ≤ 4 / ≤ 5 MB /
+      image MIME; (g) 5th attachment is rejected with the expected
+      copy; (h) an `OperationInvalidError` thrown during apply yields
+      `operation_invalid` copy; (i) PATCH 500 yields `auth_error`
+      copy. Storage upload is mocked.
+- [ ] **DoD-16.** The existing
+      `apps/web/components/setup-form/__tests__/preview-panel.test.tsx`
+      "generated state" assertion is updated to provide the new
+      `siteId` / `versionId` fields and asserts the `<AdjustmentChat>`
+      is rendered (`getByTestId("adjustment-chat")`). The empty /
+      generating / error / Copy-details / Retry tests are otherwise
+      unchanged.
+- [ ] **DoD-17.** The existing
+      `apps/web/components/setup-form/__tests__/setup-experience.test.tsx`
+      success-path test asserts the `data-panel-state="generated"`
+      element also has a child with `data-testid="adjustment-chat"`.
+      `siteId` / `versionId` are part of the mocked response.
+- [ ] **DoD-18.** A new GET test block in
+      `apps/web/app/api/sites/[siteId]/working-version/__tests__/route.test.ts`
+      asserts: (a) 200 with body shape `{ versionId, config }` on
+      success; (b) 404 with `category: "not_found"` when no working
+      row; (c) 500 with `category: "server_error"` on Supabase error;
+      (d) the `siteId` is read from the route context. The existing
+      PATCH tests are unchanged.
+- [ ] **DoD-19.** No new dependencies. No new top-level files outside
+      the owned-paths list above.
+- [ ] **DoD-20.** No `any`. No `// @ts-expect-error`. No skipped
+      tests. No commented-out code.
+- [ ] **DoD-21.** `pnpm test` passes with zero failures and zero
+      skipped tests.
+- [ ] **DoD-22.** `pnpm build` succeeds with zero TypeScript errors.
+- [ ] **DoD-23.** `pnpm biome check` passes with zero warnings.
+- [ ] **DoD-24.** Manual smoke test (numbered list at the end of this
+      file) passes on a fresh `pnpm dev`.
+- [ ] **DoD-25.** A Sprint 12 execution-record entry is appended to
+      the END of `DECISIONS.md` (do not edit any earlier entry). The
+      entry: (a) records the three pre-approved scope expansions
+      listed above; (b) records any Deviations approved during
+      execution; (c) lists the Sprint Completion Report's "External
+      actions required" verbatim if any.
 
-- [ ] **Detail branch landed in the catch-all.**
-      `apps/web/app/[site]/[[...slug]]/page.tsx` is extended
-      in place. The line currently reading
-      `  // === SPRINT 9B INSERTS DETAIL BRANCH HERE ===`
-      is REPLACED (the comment goes away) with a block that:
-      1. Calls `resolveDetailPage(config, params.slug)`.
-      2. If the match is non-null, calls
-         `getUnitById(match.rowId)` when `match.page.detailDataSource
-         === "units"` or `getPropertyById(match.rowId)` when
-         `match.page.detailDataSource === "properties"`. The two
-         imports are added to the top of the file alongside the
-         existing supabase / renderer / parseSiteConfig imports.
-      3. If the row is `null`, falls through to the existing
-         `notFound()` line below (do NOT inline a new
-         `notFound()` — let the existing one handle it).
-      4. If the row is non-null, returns
-         `<Renderer config={config} page={match.page.slug}
-         pageKind="detail" row={row} mode="public" />`.
-      The trailing `notFound()` line (and its position relative
-      to the static branch) is unchanged. The static branch above
-      the insertion point is unchanged. `generateMetadata` does
-      NOT need a detail-page branch in this sprint — its
-      fall-through behavior of using `config.meta.siteName` is
-      acceptable for the demo; a detail-aware metadata branch is
-      a Sprint 15 polish item.
+## Files you may create or modify
 
-- [ ] **`Renderer` accepts `pageKind` and `row`.**
-      `apps/web/components/renderer/Renderer.tsx` accepts the two
-      new optional props with the defaults documented in Mission
-      §3. The page lookup uses `(p) => p.slug === page && p.kind
-      === (pageKind ?? "static")`. When `pageKind === "detail"`
-      AND `row !== undefined`, the rendered page-rootComponent
-      tree is wrapped in `<RowContextProvider row={row}
-      kind="detail">…</RowContextProvider>`; when `pageKind ===
-      "static"` (the default) the wrap is NOT applied and the
-      tree renders exactly as it did before this sprint. Global
-      NavBar / Footer rendering is unaffected by either prop.
+- `apps/web/components/setup-form/AdjustmentChat.tsx` (NEW)
+- `apps/web/components/setup-form/__tests__/adjustment-chat.test.tsx` (NEW)
+- `apps/web/components/setup-form/PreviewPanel.tsx` (MODIFY — extend
+  `PanelState["generated"]`, render `<AdjustmentChat>`, wire iframe
+  cache-buster)
+- `apps/web/components/setup-form/__tests__/preview-panel.test.tsx`
+  (MODIFY — update generated-state assertion only)
+- `apps/web/components/setup-form/SetupExperience.tsx` (MODIFY —
+  capture `siteId` and `versionId` into `PanelState`)
+- `apps/web/components/setup-form/__tests__/setup-experience.test.tsx`
+  (MODIFY — assert AdjustmentChat is mounted in the generated state)
+- `apps/web/app/api/sites/[siteId]/working-version/route.ts` (MODIFY —
+  add `GET` handler alongside existing `PATCH`)
+- `apps/web/app/api/sites/[siteId]/working-version/__tests__/route.test.ts`
+  (MODIFY — add GET test block; do not touch PATCH tests)
+- `DECISIONS.md` (APPEND ONLY — Sprint 12 execution-record entry at
+  the END of the file)
 
-- [ ] **Button computes the detail href.**
-      `apps/web/components/site-components/Button/index.tsx`:
-      1. Adds `"use client";` as the first non-blank line of the
-         file (above the existing comment block).
-      2. Imports `useRow` from `@/lib/row-context`.
-      3. Calls `const { row, kind } = useRow();` inside the
-         `Button` function body, after `parsed` / `data` are
-         derived.
-      4. Computes `let href = data.href;` and, when (i)
-         `data.linkMode === "detail"`, (ii) `data.detailPageSlug
-         !== undefined`, (iii) `kind !== null`, (iv) `row !== null
-         && typeof row === "object"`, AND (v)
-         `(row as { id?: unknown }).id` is `typeof "number" |
-         "string"`, sets
-         `href = "/" + data.detailPageSlug + "/" + (row as {id:
-         number | string}).id`.
-      5. Renders the `<a>` branch when this computed `href` is
-         defined (existing behavior — `<a>` is chosen iff `href`
-         is set), and falls back to the `<button>` branch
-         otherwise.
-      6. Continues to emit `data-link-mode="detail"` and
-         `data-detail-page-slug` data attributes under the
-         existing condition (`data.linkMode === "detail"` AND
-         `data.detailPageSlug !== undefined`); the data attrs
-         are independent of whether row context is in scope.
-      The Sprint 5b silent-fallback semantics (invalid prop
-      combinations cause `parsed.success === false`, falling back
-      to `BUTTON_FALLBACK`) are preserved verbatim — the new
-      logic only fires on the success branch.
+If a path you need to touch is not in this list, STOP and emit a
+Deviation Report. Surgical, behavior-preserving inherited test fixes
+under CLAUDE.md §15.9 are allowed without a Deviation but MUST be
+listed in the Sprint 12 DECISIONS.md entry.
 
-- [ ] **Button SPEC reflects the detail-href behavior.**
-      `apps/web/components/site-components/Button/SPEC.md`'s
-      "Data binding" section is updated to state that when a
-      Button is inside a row context (Repeater iteration or
-      detail page) AND `linkMode === "detail"` with a valid
-      `detailPageSlug`, the rendered href is computed as
-      `/{detailPageSlug}/{row.id}` at render time. The existing
-      note about `{{ row.* }}` tokens being stored verbatim by
-      Sprint 5b is preserved; Sprint 9b's wiring complements it,
-      it does not replace it. No other section of `SPEC.md` is
-      modified.
-
-- [ ] **Resolver tests green + new detail cases.**
-      `apps/web/app/[site]/[[...slug]]/__tests__/page.test.tsx`
-      keeps every existing Sprint 13 test passing verbatim and
-      adds a new `describe("resolveDetailPage", () => { … })`
-      block with at least these six cases:
-      1. Two-segment slug whose first segment matches a detail
-         page → returns `{ page, rowId }` with the right page id
-         and a numeric `rowId`.
-      2. Two-segment slug whose first segment matches a STATIC
-         page (and no sibling detail page exists) → returns
-         `null`.
-      3. U2 case: two-segment slug `["units", "42"]` against a
-         config with a static `units` page AND a detail `units`
-         page (`detailDataSource: "units"`) → returns the DETAIL
-         page, `rowId === 42`. The static page is ignored.
-      4. Single-segment slug `["units"]` against the same U2
-         config → returns `null` (the detail branch does not
-         fire on the bare slug; `resolveStaticPage` handles
-         that — covered by the existing Sprint 13 test).
-      5. Three-segment slug `["units", "42", "extra"]` → returns
-         `null`.
-      6. Non-numeric trailing segment `["units", "abc"]` → returns
-         `null`. Edge-case sub-cases: `["units", "0"]`,
-         `["units", "01"]`, `["units", "-1"]`,
-         `["units", "1.5"]`, `["units", " 1 "]` all return `null`.
-
-- [ ] **Button tests cover the detail-href computation.**
-      `apps/web/components/site-components/Button/__tests__/Button.test.tsx`
-      adds a new `describe("Button (detail href under row context)",
-      () => { … })` block with at least these six cases (each
-      rendered inside a `<RowContextProvider>` wrapper):
-      1. `linkMode: "detail"`, `detailPageSlug: "units"`, row =
-         `{ id: 42 }`, `kind: "repeater"` → rendered `<a>` has
-         `href === "/units/42"`.
-      2. Same as (1) but `kind: "detail"` → same href result.
-      3. `linkMode: "static"`, `href: "/about"`, row = `{ id: 42 }`
-         → href stays `/about` (static-mode is not affected by
-         row context).
-      4. `linkMode: "detail"`, `detailPageSlug: "units"`, row =
-         `null` (no provider) → href stays `data.href`'s pre-row
-         value (or undefined → `<button>` branch). The
-         `data-link-mode="detail"` data attr still renders.
-      5. `linkMode: "detail"`, `detailPageSlug: "units"`, row =
-         `{ name: "Apt 101" }` (id missing) → href stays the
-         pre-row value; no `/units/undefined` artifact.
-      6. `linkMode: "detail"`, `detailPageSlug: "units"`, row =
-         `{ id: { nested: 1 } }` (non-scalar id) → href stays
-         the pre-row value.
-      Pre-existing Sprint 5 / Sprint 5b Button tests continue to
-      pass verbatim.
-
-- [ ] **Renderer test covers the U2 disambiguation.**
-      Add or extend a renderer test (in
-      `apps/web/components/renderer/__tests__/Renderer.test.tsx`
-      if a test already covers `Renderer`'s page lookup, or in a
-      new sibling test file otherwise) that asserts:
-      1. With a U2 config (a static `units` page and a detail
-         `units` page), `<Renderer page="units" mode="public" />`
-         renders the static page's tree.
-      2. The same call with `pageKind="detail" row={{ id: 42, … }}`
-         renders the detail page's tree, wrapped in row context
-         (a descendant `{{ row.* }}` token resolves).
-      If `Renderer.test.tsx` is in another sprint's domain and
-      adding to it constitutes a deviation, prefer a new test
-      file alongside the renderer at
-      `apps/web/components/renderer/__tests__/Renderer.detail.test.tsx`
-      and document the choice in the Sprint Completion Report.
-
-- [ ] **End-to-end smoke test passes** (see "Manual smoke test"
-      below).
-
-- [ ] **All new code has unit tests (Vitest).**
-- [ ] `pnpm test` passes with zero failures and zero new skipped
-      tests (the pre-existing skip count for the integration
-      tests that gate on env vars is unchanged).
-- [ ] `pnpm build` succeeds with zero TypeScript errors and zero
-      warnings.
-- [ ] `pnpm lint` (Biome) passes with zero warnings.
-- [ ] No new files outside the "may create or modify" list.
-- [ ] No new dependencies added without an approved Deviation.
-- [ ] `DECISIONS.md` updated if any deviation was approved during
-      this sprint, AND a single execution-record entry is
-      appended for Sprint 9b that lists the files actually
-      modified, the new tests added, the pre-flight check result,
-      and any retroactive cross-sprint test fixes (per CLAUDE.md
-      §15.9) that proved necessary.
-
-## File scope
-
-### You may create or modify
-
-- `apps/web/app/[site]/[[...slug]]/page.tsx` — extend in place at
-  the load-bearing comment site only.
-- `apps/web/app/[site]/[[...slug]]/resolve.ts` — append
-  `resolveDetailPage`; do not modify `resolveStaticPage`.
-- `apps/web/app/[site]/[[...slug]]/__tests__/page.test.tsx` —
-  append the `resolveDetailPage` describe block.
-- `apps/web/components/renderer/Renderer.tsx` — add the two
-  optional props and the conditional row-context wrap.
-- `apps/web/components/site-components/Button/index.tsx` — add
-  the `"use client"` directive, the `useRow` import, and the
-  detail-href computation.
-- `apps/web/components/site-components/Button/SPEC.md` — update
-  the Data binding section.
-- `apps/web/components/site-components/Button/__tests__/Button.test.tsx`
-  — append the detail-href describe block.
-- `apps/web/components/renderer/__tests__/Renderer.detail.test.tsx`
-  (NEW; only if extending the existing `Renderer.test.tsx` would
-  cross sprint domains — see the DoD note).
-- `DECISIONS.md` — append exactly one Sprint 9b execution-record
-  entry at the END of the file (do not edit any earlier entry).
-
-### You may read but NOT modify
+## Files you MUST NOT modify
 
 - `PROJECT_SPEC.md` — authoritative spec; raise concerns via the
   Deviation Protocol, never edit.
-- `CLAUDE.md` (root) — master coding standards + Deviation
-  Protocol.
-- `apps/web/lib/site-config/schema.ts` — Sprint 3/3b domain.
-- `apps/web/lib/site-config/index.ts` — Sprint 3 domain (re-exports).
-- `apps/web/types/site-config.ts` — Sprint 3 domain.
-- `apps/web/lib/row-context/RowContext.tsx` — Sprint 9 domain.
-- `apps/web/lib/row-context/useRow.ts` — Sprint 9 domain.
-- `apps/web/lib/row-context/index.ts` — Sprint 9 domain.
-- `apps/web/lib/token-resolver/**` — Sprint 9 domain.
-- `apps/web/lib/rm-api/**` — Sprint 1 domain.
-- `apps/web/lib/supabase/**` — Sprint 0/1 domain.
-- `apps/web/components/renderer/ComponentRenderer.tsx` — Sprint 3/9
-  domain. Sprint 9b does NOT touch the resolver hook; the
-  existing per-prop walker already handles detail-page row
-  context once a `<RowContextProvider kind="detail">` wraps the
-  tree.
-- `apps/web/components/site-components/Repeater/**` — Sprint 9
-  domain (the row-context wrap pattern Sprint 9b mirrors lives
-  here).
-- `apps/web/components/site-components/InputField/**` — Sprint 5/5b
-  domain. Sprint 9b makes NO changes; the Sprint 5b client wiring
-  is sufficient for the smoke test.
-- `apps/web/app/api/sites/[siteId]/deploy/**` — Sprint 13 domain.
-
-### You MUST NOT modify
-
-- `PROJECT_SPEC.md` — the spec is authoritative.
-- `DECISIONS.md` — APPEND-ONLY; never edit earlier entries.
 - The repo-root `CLAUDE.md`.
-- `apps/web/lib/rm-api/**`, `apps/web/lib/site-config/**`,
-  `apps/web/lib/ai/**`, `apps/web/lib/editor-state/**`,
-  `apps/web/lib/row-context/**` (source files; tests live in
-  `__tests__/`),  `apps/web/lib/token-resolver/**`,
-  `apps/web/lib/supabase/**`.
-- `apps/web/components/renderer/ComponentRenderer.tsx`.
-- `apps/web/components/site-components/**` EXCEPT the four Button
-  files listed above. Specifically: `InputField/**` is OFF
-  LIMITS for this sprint.
-- `apps/web/components/setup-form/**`,
-  `apps/web/components/editor/**`, `apps/web/components/rmx-shell/**`.
-- `apps/web/app/[site]/edit/**`, `apps/web/app/[site]/preview/**`,
-  `apps/web/app/(rmx)/**`, `apps/web/app/dev/**`,
-  `apps/web/app/setup/**`, `apps/web/app/api/**` (every API route
-  is owned by the sprint that authored it).
-- `supabase/migrations/**` — Sprint 9b introduces NO new
-  migrations.
-- `apps/web/package.json`, `next.config.*`, `tsconfig*.json`,
-  `vitest.config.*`, `biome.json`, `apps/web/.env.local`,
-  `.env.example`, `pnpm-lock.yaml` — Sprint 9b introduces NO new
-  dependencies and NO new env vars.
+- `apps/web/app/api/ai-edit/**` — Sprint 11 territory. Reuse via
+  `fetch("/api/ai-edit", ...)` only.
+- `apps/web/lib/ai/**` — Sprint 4 / 11 territory.
+- `apps/web/lib/site-config/**` — Sprint 3 / 3b territory. You import
+  `applyOperations`, `safeParseSiteConfig`, and types; you do not edit.
+- `apps/web/lib/editor-state/**` — Sprint 6 / 11 territory. The
+  `useAiEditChat` patterns are reference reading only — do NOT import
+  from `apps/web/components/editor/ai-chat/**` into the setup-form
+  tree. If you find a useful helper there that you want, copy the
+  minimum logic (with attribution comment) into the setup-form module.
+- `apps/web/components/editor/**` — entire editor tree.
+- `apps/web/components/site-components/**` — site-component tree.
+- `apps/web/app/[site]/preview/**` — Sprint 4 territory. The
+  cache-buster query param works because `/preview/page.tsx` reads
+  `v` from the URL and ignores all other params; do not modify it to
+  read your `t` param.
+- `apps/web/app/api/generate-initial-site/**` — Sprint 4 territory.
+- `apps/web/app/[site]/edit/**` — Sprint 6 territory.
+- All other `apps/web/app/api/**` routes (each is owned by its sprint).
+- `supabase/migrations/**` — no schema change is needed for Sprint 12.
+- Any `lib/**` module not explicitly listed as importable above.
 
-If you find yourself wanting to add a file outside this list, that
-is a Deviation. Raise the report; do not just add the file.
+## Coding standards (binding — copied from `PROJECT_SPEC.md` §15)
 
-## Manual smoke test (numbered, click-by-click)
+### TypeScript
 
-Run against the linked hosted Supabase project (per the 2026-04-25
-DECISIONS.md "hosted Supabase" decision). Requires the seeded
-Aurora Property Group fixture (`pnpm seed`) and a working version
-that has been deployed at least once (Sprint 13's smoke test
-covers this — re-run it if `site_versions` for the Aurora site
-has no `is_deployed = true` row).
-
-If the working SiteConfig for Aurora does not already include a
-detail page for `units`, you can either (a) use the editor's
-Pages tab "Add page" modal to add one (Static / Detail picker;
-data source `units`; slug `units`) and re-deploy, OR (b) follow
-the dev fixture path: open
-`http://localhost:3000/dev/components` and confirm the U2 detail
-page in the Sprint 5b dev fixture is rendered (Sprint 5b's
-`p_units_static` + `p_units_detail` coexistence).
-
-The smoke-test sequence below uses the Aurora Property Group
-fixture and assumes a deployed site where at least one detail
-page exists.
-
-1. Run `pnpm dev` and confirm the dev server starts on
-   `http://localhost:3000` with no startup errors in the console.
-
-2. Run `pnpm seed` if not run since the last `pnpm db:reset`.
-   Confirm the Aurora seed loads (rm-api integration tests
-   in step 19 implicitly cover this).
-
-3. Open `http://localhost:3000/setup`. Click into the existing
-   Aurora site to open the editor at `/{site}/edit`.
-
-4. In the Pages tab, confirm there is at least one detail page
-   for the `units` data source. If the page selector visually
-   distinguishes detail pages (per the Sprint 6 Pages-tab
-   amendment), the badge / DETAIL marker confirms which page is
-   the detail variant. If no detail page exists yet, add one via
-   the "Add page" modal (Page kind: Detail; Detail data source:
-   units; slug: `units`), drop a Heading and a Paragraph that
-   reference `{{ row.unitName }}` and `{{ row.currentMarketRent
-   | money }}` into its rootComponent, and let autosave settle.
-
-5. Click Deploy. Click Confirm in the modal. Wait for the toast.
-
-6. Open a new browser tab. Navigate to
-   `http://localhost:3000/{siteSlug}/units` (the bare units URL).
-   Confirm the static units listing renders — Sprint 13's static
-   branch behavior is unchanged.
-
-7. Navigate to `http://localhost:3000/{siteSlug}/units/<some
-   seeded unit id>` — pick a real unit id from the Aurora seed
-   (id 101 is the canonical "Apt 101" per
-   `apps/web/lib/rm-api/__tests__/units.test.ts`). Confirm:
-   - The detail page renders (NavBar + the detail page's
-     rootComponent + Footer).
-   - Tokens like `{{ row.unitName }}` render as the unit's name
-     ("Apt 101").
-   - Tokens like `{{ row.currentMarketRent | money }}` render
-     formatted (e.g. `$1,200`).
-   - There is no editor chrome (no selection outlines, no
-     handles, no sidebars).
-
-8. Navigate to
-   `http://localhost:3000/{siteSlug}/units/999999` (a unit id
-   that does not exist in the seed). Confirm Next renders the
-   framework 404 page.
-
-9. Navigate to
-   `http://localhost:3000/{siteSlug}/units/abc`. Confirm 404 —
-   the non-numeric trailing segment is rejected by
-   `resolveDetailPage`.
-
-10. Navigate to `http://localhost:3000/{siteSlug}/units/0`,
-    `http://localhost:3000/{siteSlug}/units/01`, and
-    `http://localhost:3000/{siteSlug}/units/-1`. Confirm each
-    returns 404 (the regex rejects all three).
-
-11. Navigate to
-    `http://localhost:3000/{siteSlug}/units/42/extra-segment`.
-    Confirm 404 — the three-segment shape is not a detail-page
-    shape.
-
-12. Back on the listing page (`/{siteSlug}/units`), find a
-    UnitCard with a CTA that links to its detail page (the
-    canonical pattern: a UnitCard inside a Repeater of `units`
-    with a Button child whose `linkMode === "detail"` and
-    `detailPageSlug === "units"`). Confirm the rendered `<a>`'s
-    `href` attribute is exactly `/units/{thatUnitsId}` — inspect
-    the DOM via DevTools. Click the CTA. Confirm the browser
-    navigates to the detail page for that exact unit and the
-    page renders that unit's data.
-
-13. From the detail page, confirm the global NavBar links and
-    Footer copyright text do NOT contain row-derived strings —
-    if you authored a NavBar link with `{{ row.x }}` it should
-    pass through verbatim because Sprint 9b's row-context wrap
-    is scoped to the rootComponent only. (If you have not
-    authored such a NavBar token, this step is a documentation
-    confirmation rather than a runtime check.)
-
-14. Test the cross-page filter integration: on a page that
-    contains an `<InputField>` with
-    `defaultValueFromQueryParam: "propertyId"`, navigate to
-    `http://localhost:3000/{siteSlug}/{thatPageSlug}?propertyId=4`.
-    Confirm the input is pre-filled with `4` on mount. (This
-    confirms Sprint 5b's wiring is still intact end-to-end on a
-    deployed page; Sprint 9b makes no code changes here.)
-
-15. Run the full quality gate suite from the repo root:
-```
-    pnpm test
-    pnpm build
-    pnpm lint
-```
-    Confirm all three pass. The `pnpm test` output should show
-    the new Sprint 9b tests passing AND the pre-existing skip
-    count unchanged from before this sprint.
-
-16. Run the targeted test for the resolver and the Button:
-```
-    pnpm test apps/web/app/\[site\]/\[\[...slug\]\]/__tests__/page.test.tsx
-    pnpm test apps/web/components/site-components/Button/__tests__/Button.test.tsx
-```
-    Both files report all tests passing, and the new
-    detail-branch / detail-href cases appear in the output.
-
-If any step fails, treat the failure as a Deviation per the
-protocol below — do not commit a partial sprint.
-
-## User Actions Required
-
-None. Sprint 9b introduces no new dependencies, no new env vars,
-no new Supabase migrations, and no Vercel-specific changes. The
-existing hosted Supabase project, the Sprint 13 Vercel project (if
-already created), and the existing `.env.local` are sufficient.
-
-## Coding standards (binding — copied verbatim from `PROJECT_SPEC.md` §15)
-
-### 15.1 TypeScript
-
-- `strict: true`, `noUncheckedIndexedAccess: true`,
-  `noImplicitAny: true`.
+- `strict: true`, `noUncheckedIndexedAccess: true`, `noImplicitAny: true`
+  are already on. Honor them.
 - No `any`. If you reach for it, use `unknown` and narrow.
 - Prefer types over interfaces unless extending.
-- Branded types for IDs: `type SiteId = string & { __brand: "SiteId" }`.
+- Branded types for IDs are not introduced for chat-local state — use
+  the existing `SiteId` / `VersionId` brands if and only if the
+  surrounding code already does.
 
-### 15.2 React
+### React
 
 - Server components by default. `"use client"` only where needed.
-  The catch-all page is RSC. The Renderer is `"use client"`
-  (inherited from `ComponentRenderer`). The Button BECOMES
-  `"use client"` in this sprint because it calls `useRow()`.
-  `RowContextProvider` is `"use client"` (Sprint 9). The
-  RSC→client boundary at the Renderer call sends the `row` prop
-  as a JSON-serialized payload.
+  `AdjustmentChat` is a client component (it owns local state and uses
+  `fetch` from the browser).
 - One component per file. File name = export name.
-- Use `cn(...)` helper from shadcn for class merging.
-- No prop drilling deeper than 2 levels — lift to Zustand. (Sprint
-  9b adds NO Zustand usage; the row prop flows directly from the
-  RSC catch-all to the Renderer to the RowContextProvider.)
+- Use the `cn(...)` helper from `@/lib/utils` for class merging.
+- No prop drilling deeper than 2 levels.
+- All interactive elements have an accessible name (`aria-label`,
+  visible label, or `<label htmlFor>`).
 
-### 15.3 Naming
+### Naming
 
-- Files: `kebab-case.ts(x)`. (Sprint 9b follows the existing
-  PascalCase / mixed-case filenames already in the affected
-  directories — `Button/index.tsx`, `Renderer.tsx`,
-  `[[...slug]]/page.tsx`, `[[...slug]]/resolve.ts` — to match
-  precedent.)
+- Files: `kebab-case.ts(x)` for non-component files;
+  `PascalCase.tsx` for React components per the existing
+  `setup-form/` convention (e.g. `PreviewPanel.tsx`).
 - Components: `PascalCase`.
 - Hooks: `useThing`.
 - API routes: `kebab-case`.
-- Database tables: `snake_case`.
-- DB columns: `snake_case`.
-- TypeScript fields: `camelCase` (translate at the boundary).
 
-### 15.4 Commits
+### Testing
 
-- Conventional commits: `feat:`, `fix:`, `chore:`, `refactor:`,
-  `docs:`, `test:`.
-- One concern per commit. If a commit message has "and" in it,
-  split it.
-- Suggested commit sequence for this sprint: (1) `feat: add
-  resolveDetailPage helper`, (2) `feat: add pageKind/row props
-  to Renderer`, (3) `feat: button computes detail href under row
-  context`, (4) `feat: detail branch in catch-all`, (5) `test:
-  detail-page resolver, button, renderer cases`, (6) `docs:
-  Button SPEC + DECISIONS.md execution record`. Splits and order
-  are non-binding; the binding rule is "one concern per commit".
+- Vitest for unit tests; React Testing Library for component tests.
+- Mock `fetch` at the test level. Do not hit the network. Do not
+  start a Supabase client.
+- Test file name mirrors the source: `adjustment-chat.test.tsx` next
+  to `AdjustmentChat.tsx` under `__tests__/`.
+- Every Definition-of-Done bullet that names a behavior gets at least
+  one test. If a behavior is hard to test, that is a Deviation, not
+  an excuse.
 
-### 15.5 Testing
+### Errors and copy
 
-- Unit-test `resolveDetailPage` as a pure function.
-- Unit-test `Button` with `<RowContextProvider>` wrappers in
-  Vitest's `@testing-library/react` host.
-- Unit-test `Renderer`'s `pageKind` filter on a U2 config (no
-  Supabase, no async — feed `Renderer` a hand-built `SiteConfig`).
-- The catch-all `page.tsx` itself is NOT mounted in a unit test
-  (the RSC + async-params combination is not unit-testable in
-  Vitest; the Sprint 13 pattern of testing the helper rather
-  than the page module is preserved). The smoke test covers the
-  end-to-end path.
+- The `AiError` envelope from `@/lib/ai/errors` is the **only** error
+  shape the chat surfaces. Do not invent new `kind` values. Do not
+  let raw network errors leak into the UI.
+- The §9.6 user-facing copy table already lives as a private const
+  in `PreviewPanel.tsx`. Sprint 12 may either: (a) inline the same
+  copy table in `AdjustmentChat.tsx`, or (b) extract it to a tiny
+  shared module under `apps/web/components/setup-form/error-copy.ts`
+  (allowed because both `PreviewPanel.tsx` and `AdjustmentChat.tsx`
+  are owned). If you extract, update `PreviewPanel.tsx` to import
+  from it. Either choice is fine — pick one and stick to it.
 
-### 15.6 Comments
+### CLAUDE.md §15.9 carve-out (cross-sprint test fixes)
 
-- Comment *why*, not *what*. Code says what.
-- TODO comments must include a person/owner: `// TODO(max): …`.
-- No commented-out code in committed files.
-
-### 15.7 Quality gates (binding)
-
-A sprint is not "done" until ALL of the following pass:
-
-- `pnpm test` (Vitest, all tests including new ones).
-- `pnpm build` (Next.js production build, zero TypeScript
-  errors).
-- `pnpm lint` (Biome check, zero warnings).
-- The sprint's manual smoke test.
-
-If any check fails, treat it as a Deviation. Do not commit. Do
-not declare the sprint complete.
-
-### 15.8 Deviation discipline
-
-Claude Code MUST NOT silently substitute, downgrade, or skip
-work. The full Deviation Protocol is below. Every sprint
-inherits it.
-
-### 15.9 Retroactive cross-sprint cleanup
-
-When the current sprint's quality gates cannot pass because of a
-pre-existing breakage owned by an earlier sprint (typically a
-TypeScript error or a stale assertion in a Sprint N test file
-that blocks `pnpm build` or `pnpm test`), Claude Code is
-permitted to apply a minimal, surgical fix to the offending
-earlier-sprint test or config file rather than emitting a
-Deviation per occurrence. Constraints are binding: smallest
-possible change, no behavior changes, test/config files only
-(production code in another sprint's domain still requires a
-Deviation), each fix logged in `DECISIONS.md` and listed in the
-Sprint Completion Report's "Retroactive cross-sprint fixes"
-subsection. See the root `CLAUDE.md` §15.9 for the full text.
-
-A specific risk for this sprint: making `Button/index.tsx` a
-`"use client"` component MAY trigger latent type errors in
-Sprint 5 or Sprint 5b tests that imported `Button` expecting it
-to be a server-renderable function. If `pnpm build` or
-`pnpm test` flags such a case, apply the §15.9 carve-out —
-typically a one-line cast or a `vi.mock` stub — and log it in
-`DECISIONS.md`. Production code in those test files' sister
-production modules is OFF LIMITS; the carve-out is for tests
-only.
+If a Sprint 12 quality gate (`pnpm test` / `pnpm build` / `pnpm biome
+check`) surfaces a failure that originates in another sprint's test
+file (not production code), you may apply a minimal,
+behavior-preserving fix to that test file without re-raising a
+Deviation Report. Each such fix MUST be logged in the Sprint 12
+`DECISIONS.md` entry. If the failure is in production code owned by
+another sprint, that is a Deviation — stop and report.
 
 ## Deviation Protocol (mandatory — do not modify)
 
-If you (Claude Code) discover during this sprint that ANY part
-of the plan cannot be implemented exactly as written, you MUST
-stop and emit a Deviation Report in the format below. You MUST
-NOT proceed with an alternative until the user has explicitly
-approved it with the words "Approved" or equivalent.
+If you (Claude Code) discover during this sprint that ANY part of the plan
+cannot be implemented exactly as written, you MUST stop and emit a
+Deviation Report in the format below. You MUST NOT proceed with an
+alternative until the user has explicitly approved it with the words
+"Approved" or equivalent.
 
-A "deviation" includes: missing/broken/incompatible libraries,
-impossible function signatures, scope additions, file additions
-outside the declared scope, test plans that cannot be executed
-as written, and any case where you catch yourself thinking "I'll
-just do it slightly differently."
+A "deviation" includes: missing/broken/incompatible libraries, impossible
+function signatures, scope additions, file additions outside the declared
+scope, test plans that cannot be executed as written, and any case where
+you catch yourself thinking "I'll just do it slightly differently."
 
 ### Deviation Report (emit verbatim)
 
@@ -940,133 +388,195 @@ Awaiting approval to proceed. Reply "Approved" to continue, or describe a
 different direction.
 ```
 
-After emitting the report, STOP. Do not write code. Do not edit
-files. Wait.
+After emitting the report, STOP. Do not write code. Do not edit files. Wait.
 
-### Approval handling
+Approval forms accepted from the user:
 
-- "Approved" → implement the proposed alternative as written.
-- "Approved with changes: [...]" → implement with the user's
-  modifications.
-- "Rejected — [direction]" → discard the proposal; follow the new
-  direction.
-- A clarifying question → answer it; do not start work yet.
-- Anything else → ask "Is that an approval to proceed?" Do not
-  assume.
+- `Approved` — implement the alternative as proposed.
+- `Approved with changes: [...]` — implement with the user's modifications.
+- `Rejected — [direction]` — discard the alternative; follow the new direction.
+- A clarifying question — answer it; do not start work yet.
 
-After any approved deviation, append an entry to `/DECISIONS.md`
-with date, sprint, what was changed, and the user's approval
+If the user's reply is anything else, ask: "Is that an approval to
+proceed?" Do not assume.
+
+After any approved deviation, append an entry to the Sprint 12 record in
+`DECISIONS.md` with: date, sprint, what was changed, the user's approval
 message verbatim.
 
 ## Definition of "done" gating
 
-A sprint is not done until all of the following pass with no
-warnings:
+A sprint is not done until all of the following pass with zero warnings:
 
 - `pnpm test`
 - `pnpm build`
-- `pnpm lint` (Biome check)
-- The manual smoke test above.
+- `pnpm biome check`
+- The manual smoke test below.
 
-If any check fails, treat it as a Deviation. Do not commit. Do
-not declare the sprint complete.
+If any check fails, treat it as a Deviation. Do not commit. Do not
+declare the sprint complete.
 
 ## Useful local commands
 
-- `pnpm dev` — local dev server at <http://localhost:3000>.
-- `pnpm test` — Vitest, all tests.
-- `pnpm test apps/web/app/\[site\]/\[\[...slug\]\]/__tests__/page.test.tsx`
-  — fast iteration on the resolver helpers.
-- `pnpm test apps/web/components/site-components/Button/__tests__/Button.test.tsx`
-  — fast iteration on the Button.
-- `pnpm test apps/web/components/renderer/`
-  — fast iteration on the Renderer (covers the new `pageKind`
-  filter regardless of which test file ends up holding it).
-- `pnpm seed` — re-seed Supabase mock data on the linked hosted
-  project.
+- `pnpm dev` — local dev server (Next.js 15 + hosted Supabase)
+- `pnpm test` — Vitest
+- `pnpm test apps/web/components/setup-form` — narrow Vitest run
+- `pnpm test apps/web/app/api/sites` — narrow Vitest run for route tests
+- `pnpm build` — TypeScript + Next.js production build
+- `pnpm biome check` — formatting + lint
+- `pnpm typecheck` — TypeScript only (faster than full build during
+  iteration)
 
-## Notes & hints (non-binding context)
+Hosted Supabase note: per the 2026-04-25 entry in `DECISIONS.md`, the
+local Docker stack is not used. The five env vars in `apps/web/.env.local`
+must be populated from the hosted project's "Project Settings → API/
+General" pages, plus the Anthropic console key. Re-run `pnpm dev` after
+any env edit.
 
-- **The `[[...slug]]` directory.** The Sprint 13 catch-all
-  uses the OPTIONAL catch-all form (`[[...slug]]`) per the
-  2026-04-26 DECISIONS.md entry. This is what allows the bare
-  `/{siteSlug}` URL (no trailing path) to render the home page.
-  Sprint 9b's plan in `docs/planning/SPRINT_SCHEDULE.md` was
-  drafted before that decision and uses `[...slug]` in places —
-  treat the SCHEDULE wording as referring to the `[[...slug]]`
-  directory wherever they conflict. Do NOT create a parallel
-  `[...slug]` directory.
+## Pre-flight checklist (run BEFORE writing code)
 
-- **`generateMetadata` is intentionally minimal.** Sprint 13's
-  `generateMetadata` calls `resolveStaticPage` and falls back to
-  `config.meta.siteName` when no static match is found. For a
-  detail page the same fallback is acceptable for the demo —
-  per-row metadata (e.g. `<title>{unit.unitName} | Aurora</title>`)
-  is a Sprint 15 polish item. Do NOT add a detail branch to
-  `generateMetadata` in this sprint; it is a deviation.
+Run each of these and confirm. If any fails, emit a Deviation Report.
 
-- **Numeric ID regex `/^[1-9]\d*$/`.** This intentionally
-  rejects `"0"`. Sprint 1's RM-API seed assigns ids starting at
-  1; an id of 0 would be unreachable in practice. Allowing `"0"`
-  would also let `"00"`, `"000"` etc. through with `Number(...)`
-  coercing to 0; rejecting at the regex level avoids the
-  ambiguity.
+1. `apps/web/app/api/ai-edit/route.ts` exists and exports a `POST`
+   handler that accepts `{ siteId, currentVersionId, prompt,
+   attachments?, selection?, history? }` and returns either
+   `{ kind: "ok"; summary; operations }`, `{ kind: "clarify";
+   question }`, or `{ error: AiError }`. (Sprint 11.)
+2. `apps/web/app/api/sites/[siteId]/working-version/route.ts` exists
+   and exports a `PATCH` handler that takes `{ config: SiteConfig }`
+   and returns 204 / 400 / 404 / 500. (Sprint 6.)
+3. `apps/web/lib/site-config/ops.ts` exports `applyOperations(config,
+   ops)` and `OperationInvalidError`. (Sprint 11.)
+4. `apps/web/lib/site-config` re-exports `safeParseSiteConfig` and the
+   `SiteConfig` type. (Sprint 3.)
+5. `apps/web/lib/ai/errors.ts` exports `AiError` and `AiErrorKind`.
+   (Sprint 4.)
+6. `apps/web/components/setup-form/PreviewPanel.tsx` currently exports
+   a `PanelState` discriminated union with a `"generated"` variant
+   carrying `previewUrl: string` and `siteSlug: string`. (Sprint 4.)
+7. `apps/web/components/setup-form/SetupExperience.tsx` currently
+   POSTs to `/api/generate-initial-site` and parses the response into
+   `{ siteId?: string; slug?: string; versionId?: string;
+   previewUrl?: string }`. (Sprint 4.)
+8. The Supabase Storage `ai-attachments` bucket exists in the hosted
+   project. If it does not, list its absence under "External actions
+   required" in the Sprint Completion Report — do NOT create it from
+   code, and do NOT skip DoD-12.
 
-- **`getUnitById` / `getPropertyById` accept `number`.** The
-  resolver returns `rowId: number` (parsed via `Number(slug[1])`
-  after the regex check). Pass that number directly to the
-  rm-api helper; do NOT pass the original string — the helper
-  signature is `(id: number) => Promise<… | null>`.
+## Manual smoke test (numbered, click-by-click)
 
-- **Button "use client" is the same pattern Sprint 5b used for
-  InputField.** No bundle-size impact concerns are in scope for
-  this sprint; Buttons in static (non-row) contexts continue to
-  serialize fine across the RSC→client boundary because the
-  encompassing `<Renderer>` is already client.
+1. Confirm `apps/web/.env.local` has all five hosted-Supabase /
+   Anthropic env vars populated. Run `pnpm dev`.
+2. Open `http://localhost:3000/setup`.
+3. Type "Aurora Cincy" into the **Company Name** field.
+4. Click the **Ocean** palette card under **Color Scheme**.
+5. Click **Ready to Preview & Edit?** (the Save button on the setup
+   form).
+6. Wait for the preview iframe to render. Confirm the
+   `data-testid="preview-panel-pill"` reads "Live" and the URL bar
+   inside the panel shows `https://www.aurora-cincy.com`.
+7. **Verify Sprint 12 mount.** Below the iframe, an element with
+   `data-testid="adjustment-chat"` is visible. The empty-state copy
+   "Want to adjust something? Ask the AI." is shown. The Send button
+   is disabled (no prompt text yet).
+8. Type into the chat input: `Change the headline to Welcome Home`.
+   The Send button enables.
+9. Click **Send**. Confirm: (a) the user message appears in the
+   transcript immediately; (b) a `Thinking…` indicator appears; (c)
+   the indicator is replaced by an assistant summary message; (d) the
+   iframe re-renders (visually flickers / remounts).
+10. The headline inside the iframe now reads (close to) "Welcome
+    Home". (Exact wording is at the model's discretion; the change
+    must be visible.)
+11. **Verify the database write.** Open the hosted Supabase project
+    in a browser → SQL editor. Run:
+    ```sql
+    select id, is_working, config -> 'pages' -> 0 -> 'rootComponent'
+    from site_versions
+    where site_id = (select id from sites where slug = 'aurora-cincy')
+      and is_working = true;
+    ```
+    Confirm exactly one row, `is_working = true`, and the headline
+    text appears somewhere inside the `pages[0].rootComponent` JSON.
+12. **Clarification path.** Type `make it better` and click **Send**.
+    Confirm: (a) the assistant returns a single clarifying question
+    in the transcript; (b) the iframe does **not** re-render; (c) no
+    new write to the working version (re-run the SQL from step 11
+    and confirm the JSON is unchanged from step 11).
+13. **Network-error path.** Open DevTools → Network → set throttling
+    to "Offline". Type `add a footer with our address` and click
+    **Send**. Confirm an error message with the network_error copy
+    "We couldn't reach our AI service. Check your connection and try
+    again." appears. Set throttling back to "No throttling".
+14. **Attachment validation.** Click the attach button. Try to
+    upload a 6 MB image. Confirm the inline rejection copy "Each
+    image must be 5 MB or smaller." Try to upload a `.txt` file.
+    Confirm the rejection copy "Only image files are supported."
+    Upload four small valid images, then a fifth. Confirm the fifth
+    is rejected with "You can attach up to 4 images per message."
+15. **Attachment success.** Remove the attached chips. Upload one
+    small valid image. Type `keep this hero image style` and click
+    **Send**. Confirm: (a) the request body in DevTools → Network →
+    Payload includes `attachments: [{ url: "https://..." }]` with a
+    Supabase Storage public URL; (b) the chips clear from the input
+    after the response.
+16. **Concurrency.** Type a prompt and click **Send**. While the
+    request is still pending, confirm the Send button is disabled
+    and clicking it has no effect.
+17. **Unmount safety.** Hard-refresh the page. Confirm
+    `<AdjustmentChat>` is not rendered (it would only mount in the
+    generated state, and the form is now in the empty state). The
+    page does not crash; no console errors.
 
-- **No `RowContextProvider` source changes.** The Sprint 9
-  provider already accepts `kind: "repeater" | "detail"`. Sprint
-  9b's only new use is `<RowContextProvider row={row}
-  kind="detail">` inside `Renderer.tsx`. The provider's source
-  file is OFF LIMITS.
+If any step fails, treat it as a deviation and stop.
 
-- **No `ComponentRenderer.tsx` source changes.** The Sprint 9
-  resolver hook (`useRow()` + `resolveProps`) is general — the
-  moment a detail page wraps in `<RowContextProvider
-  kind="detail">`, every descendant token resolves identically
-  to a Repeater iteration. The 2026-04-26 DECISIONS.md
-  whole-token passthrough also flows through verbatim. Sprint
-  9b's tests should include at least one regression case
-  proving this (a Heading or Paragraph inside the detail page's
-  rootComponent renders `{{ row.unitName }}` as the actual
-  unitName).
+## Notes & hints (non-binding)
 
-- **Test fixture choice.** For Button tests, render inside
-  `<RowContextProvider row={...} kind="repeater">` rather than
-  `kind="detail"` for at least one case — the Button's
-  detail-href computation must NOT depend on which kind of row
-  context wraps it; either context activates the wiring. Confirm
-  this with one test of each kind.
-
-- **Pre-existing skip count.** `pnpm test` reports a small set
-  of skipped tests (the rm-api integration tests gate on
-  `process.env.NEXT_PUBLIC_SUPABASE_URL`, etc.). The DoD's
-  "zero new skipped tests" rule means: the count after Sprint
-  9b equals the count before Sprint 9b. Do NOT skip Sprint 9b's
-  new tests.
-
-- **Auth is a placeholder.** Per `PROJECT_SPEC.md` §17 / §3.1
-  the catch-all reads via the service-role client; RLS is
-  permissive in the demo. Sprint 9b adds no auth check. The
-  detail-page row fetch is just another service-role read.
-
-- **The `// === SPRINT 9B INSERTS DETAIL BRANCH HERE ===`
-  comment is consumed.** When Sprint 9b lands, the comment line
-  goes away — its sole purpose was to mark this insertion point.
-  Do NOT preserve the comment "for future sprints"; there is no
-  future sprint that needs it. The detail branch IS the comment's
-  payload.
-
----
-
-*End of Sprint 9b CLAUDE.md.*
+- The Sprint 11 hook `apps/web/components/editor/ai-chat/useAiEditChat.ts`
+  is the closest reference. **Do not import from it.** Re-implement a
+  smaller, Element-1-flavored hook (e.g. `useAdjustmentChat`) inside
+  `AdjustmentChat.tsx` (or as a sibling local file under
+  `setup-form/` if you prefer). Element 1's loop is simpler:
+  - No `selection` (whole-site only).
+  - No `history` window (each prompt is independent per §7.5).
+  - No Accept / Discard (auto-apply).
+  - No editor store integration (the chat owns its own config copy).
+- `applyOperations(config, ops)` is pure. It returns a new
+  `SiteConfig` or throws `OperationInvalidError`. Wrap the call in a
+  try/catch.
+- The PATCH endpoint writes back the **full** `SiteConfig`, not the
+  ops. Send the post-apply config object as `{ config: <full> }`.
+- `PreviewPanel`'s `?v={versionId}` query param is preserved across
+  every PATCH (the working version row's UUID does not change — only
+  its `config` jsonb changes). The `t` cache-buster you append is
+  what forces the iframe to re-fetch.
+- The Supabase Storage upload pattern is established in Sprint 4's
+  logo upload. Follow that for the attachment uploader. If you can't
+  find it, search for `.from("logos")` under
+  `apps/web/components/setup-form/` and mirror the call shape against
+  the `ai-attachments` bucket. If the bucket doesn't exist in the
+  hosted project, surface the missing-bucket condition as part of
+  the Sprint Completion Report's "External actions required" block;
+  do not auto-create.
+- `safeParseSiteConfig` returns `{ success: true, data } | { success:
+  false, error }`. Parse the GET response's `config` through it
+  before storing locally — never trust raw JSON.
+- Don't use `localStorage` or `sessionStorage` — both are forbidden
+  in this codebase per CLAUDE.md (artifacts pattern). Use React
+  state.
+- A "generation token" counter starting at `0` and incrementing per
+  successful op apply is the cleanest way to drive iframe remount.
+  Lift it into `PreviewPanel` and pass `onConfigUpdated = () =>
+  setToken(t => t + 1)` down to `AdjustmentChat`.
+- Aria-busy on the chat surface during hydration / in-flight requests
+  helps assistive tech and gives you a stable test selector.
+- Keep `AdjustmentChat`'s state machine explicit:
+  `idle | hydrating | hydrate-error | thinking | error`. Avoid
+  ad-hoc booleans — they cause race bugs.
+- The §9.6 copy table currently in `PreviewPanel.tsx` covers seven
+  `AiError` kinds. Match it exactly — the user has already seen
+  that copy in the error state of the panel; consistency matters.
+- Vitest runs in jsdom for component tests. Mock `fetch` with
+  `vi.fn<typeof fetch>(async () => new Response(...))`. The Sprint
+  4 / Sprint 11 test files in this repo show working patterns —
+  read them; do not import their helpers.
