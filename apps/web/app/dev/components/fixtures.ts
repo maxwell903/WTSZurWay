@@ -173,6 +173,18 @@ export const sprint5Fixture: SiteConfig = {
             ],
           },
           {
+            id: "cmp_btn_detail",
+            type: "Button",
+            props: {
+              label: "View Unit Detail (Sprint 9b will resolve)",
+              linkMode: "detail",
+              detailPageSlug: "units",
+              variant: "outline",
+              size: "md",
+            },
+            style: { margin: { top: 8, right: 24, bottom: 16, left: 24 } },
+          },
+          {
             id: "cmp_form",
             type: "Form",
             props: {
@@ -209,6 +221,18 @@ export const sprint5Fixture: SiteConfig = {
                   inputType: "email",
                   placeholder: "you@example.com",
                   required: true,
+                },
+                style: { margin: { bottom: 12 } },
+              },
+              {
+                id: "cmp_input_query",
+                type: "InputField",
+                props: {
+                  name: "test_input",
+                  label: "Pre-fill via ?test_input=...",
+                  inputType: "text",
+                  placeholder: "Try /dev/components?test_input=hello",
+                  defaultValueFromQueryParam: "test_input",
                 },
                 style: { margin: { bottom: 12 } },
               },
@@ -271,6 +295,55 @@ export const sprint5Fixture: SiteConfig = {
               copyright: "© 2026 Acme Property",
             },
             style: { margin: { top: 32 } },
+          },
+        ],
+      },
+    },
+    // Sprint 5b backfill — U2 same-slug coexistence case (PROJECT_SPEC.md §8.12).
+    // The static page wins for `/units`; the detail page wins for `/units/{id}`.
+    {
+      id: "p_units_static",
+      slug: "units",
+      name: "Units",
+      kind: "static",
+      rootComponent: {
+        id: "cmp_root_units_static",
+        type: "Section",
+        props: {},
+        style: { padding: { top: 32, right: 32, bottom: 32, left: 32 } },
+        children: [
+          {
+            id: "cmp_units_static_heading",
+            type: "Heading",
+            props: {
+              text: "Units listing — Sprint 9 will hydrate this with a Repeater",
+              level: 1,
+            },
+            style: {},
+          },
+        ],
+      },
+    },
+    {
+      id: "p_units_detail",
+      slug: "units",
+      name: "Units Detail",
+      kind: "detail",
+      detailDataSource: "units",
+      rootComponent: {
+        id: "cmp_root_units_detail",
+        type: "Section",
+        props: {},
+        style: { padding: { top: 32, right: 32, bottom: 32, left: 32 } },
+        children: [
+          {
+            id: "cmp_units_detail_heading",
+            type: "Heading",
+            props: {
+              text: "Unit detail template — Sprint 9b will hydrate this with row data",
+              level: 1,
+            },
+            style: {},
           },
         ],
       },

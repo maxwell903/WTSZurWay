@@ -463,3 +463,138 @@ User approval (verbatim): "approve"
   (Deviation 3: two lines).
 - `PROJECT_SPEC.md` (Deviation 1: §11 Page block replaced, §11
   trailer appended, §8.12 inserted, §8.12 Deploy renumbered to §8.13).
+
+
+## 2026-04-25 — Sprint 5b — Detail-pages backfill for Button, InputField, and the dev fixture
+
+**Context:** Sprint 5 was completed before Sprint 3b due to the order in
+which the Sprint Architect generated the new sprints. The actual execution
+order was 0 → 1 → 2 → 3 → 5 → 3b instead of the planned
+0 → 1 → 3 → 3b → 2 → 5. Sprint 3b succeeded against this codebase because
+the schema additions were purely additive with `default("static")` for
+`Page.kind`, so all Sprint 5 fixtures continued to validate. What remained
+was a focused backfill of three areas of Sprint 5 to align them with
+PROJECT_SPEC.md §8.12.
+
+**What changed:**
+- Button gains `linkMode: "static" | "detail"` (default `"static"`) and
+  `detailPageSlug?: string` (required when linkMode === "detail").
+  Renders `data-link-mode` and `data-detail-page-slug` data attributes
+  when in detail mode. Sprint 9b will compute the actual href.
+- InputField gains `defaultValueFromQueryParam?: string` and switches to
+  a client component to read `window.location.search` on mount.
+- The /dev/components fixture gains a detail Button, a query-param
+  InputField, and a second `kind="detail"` page sharing the slug "units"
+  with the static units page (the U2 coexistence case).
+
+**User approval (verbatim):** "C. Where are you getting the information
+about the due date that should be none of your concern. I need to take
+that out of files it encourages you to cut corners" (option C — pull
+detail pages into scope; the Sprint 3b + 5b backfill chain is the
+implementation of that decision)
+
+Plus the explicit Sprint 5b request: "Since this was supposed to be
+before Sprint 2 but Sprint 2 was done before we made this 3b sprint.
+[...] I have alos done Sprint 5 before Sprint 3b let me know if there is
+something Extra I need to do before sprint 4. Basically I have done
+sprint 0, 1. 2. 3. 5. 3b in this order. LEte me know what Is missing
+before starting sprint 4, Make a prompt of all the things needed done
+before moving on to sprint 4"
+
+**Trade-offs accepted:**
+- Gain: Button and InputField now expressible per §8.12; Sprint 4's
+  system prompt can teach Claude about the new props meaningfully;
+  Sprint 9b can resolve them at render time.
+- Lose: one extra sprint of work that would have been folded into Sprint
+  5 had the order been different — small cost.
+- Risk: the InputField switch to client component is the standard
+  exception for components with client-only side effects; contained to
+  this one component.
+
+**Affected files:** apps/web/components/site-components/Button/index.tsx,
+SPEC.md, __tests__/Button.test.tsx; apps/web/components/site-components/
+InputField/index.tsx, SPEC.md, __tests__/InputField.test.tsx;
+apps/web/app/dev/components/fixtures.ts.
+
+**Cross-sprint impact:** Sprint 4 is unblocked. Sprint 9b will consume
+the data attributes Button emits and the controlled value InputField
+manages.
+
+
+## 2026-04-25 — Sprint 5b — Execution record
+
+**Context:** Sprint 5b plan above was executed against `master` per the
+2026-04-25 single-branch decision. This entry captures the post-execution
+facts that the planning entry could not record in advance.
+
+**Pre-flight check result:** PASSED.
+- `PROJECT_SPEC.md` §8.12 confirmed present at line 577 with the
+  `linkMode` / `detailPageSlug` / `defaultValueFromQueryParam` prop
+  descriptions.
+- `apps/web/lib/site-config/schema.ts` confirmed to contain
+  `pageSchema.kind`, `pageSchema.detailDataSource`, the per-page
+  `superRefine` enforcing detailDataSource-iff-detail, and the
+  `siteConfigSchema` cross-page `superRefine` enforcing per-`kind`
+  slug uniqueness.
+- `Button/index.tsx` and `InputField/index.tsx` both confirmed to
+  exist (Sprint 5 ships).
+
+**Implementation summary:**
+1. Button — schema gained `linkMode` (default `"static"`) and
+   `detailPageSlug` (optional) joined by a `superRefine` enforcing the
+   cross-field rule; the inline-literal fallback was replaced with a
+   module-level `BUTTON_FALLBACK = buttonPropsSchema.parse({})` so the
+   fallback stays in sync with future schema changes; render emits
+   `data-link-mode="detail"` and `data-detail-page-slug` data attrs
+   only when `linkMode === "detail"` and `detailPageSlug` is defined.
+2. InputField — `"use client"` directive added on line 1; `useState`
+   + `useEffect` introduced for controlled-state value (and a separate
+   `checked` state for checkbox); URL hydration in a SSR-safe
+   `useEffect` (no-op on server, no-op when prop unset). All input
+   branches (text/email/tel/number/textarea/select/checkbox) wired
+   consistently as controlled.
+3. SPEC.md updates — Button props table grew by 2 rows; InputField
+   props table grew by 1 row; AI ops vocabulary entries documented as
+   Sprint 11 work; Button data-binding note explains `{{ row.* }}` is
+   stored verbatim and resolved by Sprint 9b; InputField gets a
+   header note explaining the client-component switch.
+4. Tests — pre-existing tests preserved verbatim. 4 new Button tests
+   + 4 new InputField tests, totaling 8 new tests across the two
+   files (DoD called for ≥ 6).
+5. Dev fixture — added `cmp_btn_detail` Button (`linkMode: "detail"`,
+   `detailPageSlug: "units"`) after the Repeater; added
+   `cmp_input_query` InputField (`defaultValueFromQueryParam:
+   "test_input"`) inside the existing Form between the email input
+   and the submit button; appended `p_units_static` (kind: static,
+   slug: units) and `p_units_detail` (kind: detail, slug: units,
+   detailDataSource: units) to exercise the U2 same-slug
+   coexistence.
+
+**Deviations encountered:** None. Every DoD item, file scope rule, and
+quality gate was satisfiable as written. No retroactive cross-sprint
+fixes (CLAUDE.md §15.9) were required — the inherited test/config
+files compiled and passed without modification.
+
+**Quality gate results:**
+- `pnpm test`: 51 test files, 253 passed, 2 skipped, 0 failed.
+  Button file 8 tests (4 pre-existing + 4 new). InputField file 8
+  tests (4 pre-existing + 4 new). Dev fixture parse test still passes.
+- `pnpm build`: `✓ Compiled successfully in 3.0s`. Zero TypeScript
+  errors. Zero warnings. The `/dev/components` route compiled to
+  147 kB First Load JS (up from 105 kB on the home route, reflecting
+  the added client-component runtime for the InputField hydration).
+- `pnpm lint` (Biome check): one auto-fixable formatting nit on
+  `InputField.test.tsx` was applied via `pnpm format` (single-line
+  JSX collapse). Re-run reported "Checked 168 files. No fixes
+  applied." — zero warnings.
+
+**Files modified (matches the Owned list exactly):**
+- `apps/web/components/site-components/Button/index.tsx`
+- `apps/web/components/site-components/Button/SPEC.md`
+- `apps/web/components/site-components/Button/__tests__/Button.test.tsx`
+- `apps/web/components/site-components/InputField/index.tsx`
+  (now begins with `"use client"`)
+- `apps/web/components/site-components/InputField/SPEC.md`
+- `apps/web/components/site-components/InputField/__tests__/InputField.test.tsx`
+- `apps/web/app/dev/components/fixtures.ts`
+- `DECISIONS.md` (this entry, appended below the planning entry).
