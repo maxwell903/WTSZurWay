@@ -23,6 +23,7 @@ export const previewFixture: SiteConfig = {
       id: "p_home",
       slug: "home",
       name: "Home",
+      kind: "static",
       rootComponent: {
         id: "cmp_root",
         type: "Section",

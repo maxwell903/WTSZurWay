@@ -5,7 +5,14 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { FormProvider, useForm, useFormContext } from "react-hook-form";
 import { describe, expect, it } from "vitest";
+import type { z } from "zod";
 import { GeneralSection } from "../general-section";
+
+// The schema's input shape (what react-hook-form sees on entry) differs from
+// its output shape (`SetupFormValues = z.infer<...>`) because fields with
+// `.default(...)` are optional on input but required on output. Use the
+// triple-generic form of useForm that matches setup-form.tsx (Sprint 2c).
+type SetupFormInput = z.input<typeof setupFormSchema>;
 
 function ValueSpy({ name }: { name: keyof SetupFormValues }) {
   const form = useFormContext<SetupFormValues>();
@@ -20,7 +27,7 @@ function ErrorSpy({ name }: { name: keyof SetupFormValues }) {
 }
 
 function Wrapper({ children }: { children: ReactNode }) {
-  const form = useForm<SetupFormValues>({
+  const form = useForm<SetupFormInput, undefined, SetupFormValues>({
     resolver: zodResolver(setupFormSchema),
     defaultValues: {
       companyName: "",

@@ -10,6 +10,9 @@ import {
   componentNodeSchema,
   componentTypeSchema,
   dataBindingSchema,
+  detailDataSourceSchema,
+  pageKindSchema,
+  pageSchema,
   paletteIdSchema,
   shadowPresetSchema,
   siteConfigSchema,
@@ -263,5 +266,192 @@ describe("siteConfigSchema", () => {
   it("rejects a config missing meta", () => {
     const { meta: _omit, ...withoutMeta } = makeMinimalConfig();
     expect(siteConfigSchema.safeParse(withoutMeta).success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 3b — detail page schema additions (PROJECT_SPEC.md §11 + §8.12)
+// ---------------------------------------------------------------------------
+
+describe("pageKindSchema", () => {
+  it("accepts 'static' and 'detail' and rejects unknown values", () => {
+    expect(pageKindSchema.safeParse("static").success).toBe(true);
+    expect(pageKindSchema.safeParse("detail").success).toBe(true);
+    expect(pageKindSchema.safeParse("dynamic").success).toBe(false);
+    expect(pageKindSchema.safeParse("").success).toBe(false);
+  });
+});
+
+describe("detailDataSourceSchema", () => {
+  it("accepts 'properties' and 'units' and rejects unknown values", () => {
+    expect(detailDataSourceSchema.safeParse("properties").success).toBe(true);
+    expect(detailDataSourceSchema.safeParse("units").success).toBe(true);
+    expect(detailDataSourceSchema.safeParse("units_with_property").success).toBe(false);
+    expect(detailDataSourceSchema.safeParse("company").success).toBe(false);
+  });
+});
+
+describe("pageSchema (detail-page rules)", () => {
+  function makePage(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "p_units",
+      slug: "units",
+      name: "Units",
+      rootComponent: { id: "r1", type: "Section" as const, props: {}, style: {} },
+      ...overrides,
+    };
+  }
+
+  it("defaults `kind` to 'static' when the field is omitted", () => {
+    const result = pageSchema.safeParse(makePage());
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.kind).toBe("static");
+      expect(result.data.detailDataSource).toBeUndefined();
+    }
+  });
+
+  it("accepts kind='static' with no detailDataSource", () => {
+    const result = pageSchema.safeParse(makePage({ kind: "static" }));
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts kind='detail' with detailDataSource='properties'", () => {
+    const result = pageSchema.safeParse(
+      makePage({ kind: "detail", detailDataSource: "properties" }),
+    );
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.kind).toBe("detail");
+      expect(result.data.detailDataSource).toBe("properties");
+    }
+  });
+
+  it("rejects a detail page that omits detailDataSource and points the issue at detailDataSource", () => {
+    const result = pageSchema.safeParse(makePage({ kind: "detail" }));
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.message.includes("Detail pages"));
+      expect(issue).toBeDefined();
+      expect(issue?.path).toEqual(["detailDataSource"]);
+    }
+  });
+
+  it("rejects a static page that specifies detailDataSource and points the issue at detailDataSource", () => {
+    const result = pageSchema.safeParse(makePage({ kind: "static", detailDataSource: "units" }));
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.message.includes("Static pages"));
+      expect(issue).toBeDefined();
+      expect(issue?.path).toEqual(["detailDataSource"]);
+    }
+  });
+
+  it("rejects detailDataSource values outside the ['properties','units'] enum", () => {
+    const result = pageSchema.safeParse(makePage({ kind: "detail", detailDataSource: "company" }));
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("siteConfigSchema (per-kind slug uniqueness, U2 routing)", () => {
+  function makeConfigWithPages(pages: ReadonlyArray<Record<string, unknown>>) {
+    return {
+      meta: { siteName: "Aurora", siteSlug: "aurora-cincy" },
+      brand: { palette: "ocean" as const, fontFamily: "Inter" },
+      global: {
+        navBar: { links: [], logoPlacement: "left" as const, sticky: false },
+        footer: { columns: [], copyright: "© 2026" },
+      },
+      pages,
+      forms: [],
+    };
+  }
+
+  function makePage(overrides: Record<string, unknown>) {
+    return {
+      id: "p",
+      slug: "units",
+      name: "Units",
+      rootComponent: { id: "r", type: "Section" as const, props: {}, style: {} },
+      ...overrides,
+    };
+  }
+
+  it("accepts one static page and one detail page sharing the same slug (U2)", () => {
+    const result = siteConfigSchema.safeParse(
+      makeConfigWithPages([
+        makePage({ id: "p_list", slug: "units" }),
+        makePage({
+          id: "p_detail",
+          slug: "units",
+          kind: "detail",
+          detailDataSource: "units",
+        }),
+      ]),
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects two static pages with the same slug; issue path points at the duplicate page", () => {
+    const result = siteConfigSchema.safeParse(
+      makeConfigWithPages([
+        makePage({ id: "p1", slug: "units" }),
+        makePage({ id: "p2", slug: "units" }),
+      ]),
+    );
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) =>
+        i.message.includes('Duplicate static page slug "units"'),
+      );
+      expect(issue).toBeDefined();
+      expect(issue?.path).toEqual(["pages", 1, "slug"]);
+    }
+  });
+
+  it("rejects two detail pages with the same slug; issue path points at the duplicate page", () => {
+    const result = siteConfigSchema.safeParse(
+      makeConfigWithPages([
+        makePage({
+          id: "p1",
+          slug: "units",
+          kind: "detail",
+          detailDataSource: "units",
+        }),
+        makePage({
+          id: "p2",
+          slug: "units",
+          kind: "detail",
+          detailDataSource: "units",
+        }),
+      ]),
+    );
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) =>
+        i.message.includes('Duplicate detail page slug "units"'),
+      );
+      expect(issue).toBeDefined();
+      expect(issue?.path).toEqual(["pages", 1, "slug"]);
+    }
+  });
+
+  it("treats a page omitting `kind` as 'static' for the cross-page uniqueness check", () => {
+    // Refinement ordering canary: the per-page default('static') must apply
+    // before the cross-page superRefine reads page.kind.
+    const result = siteConfigSchema.safeParse(
+      makeConfigWithPages([
+        makePage({ id: "p1", slug: "home" /* no kind */ }),
+        makePage({ id: "p2", slug: "home", kind: "static" }),
+      ]),
+    );
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) =>
+        i.message.includes('Duplicate static page slug "home"'),
+      );
+      expect(issue).toBeDefined();
+      expect(issue?.path).toEqual(["pages", 1, "slug"]);
+    }
   });
 });

@@ -1,11 +1,25 @@
 import { COMPONENT_TYPES, type ComponentNode, type ComponentType } from "@/lib/site-config";
 import type { CSSProperties, ComponentType as ReactComponentType, ReactNode } from "react";
+import { Button } from "./Button";
+import { Column } from "./Column";
 import { Divider } from "./Divider";
+import { Footer } from "./Footer";
+import { Form } from "./Form";
+import { Gallery } from "./Gallery";
 import { Heading } from "./Heading";
+import { HeroBanner } from "./HeroBanner";
 import { Image } from "./Image";
+import { InputField } from "./InputField";
+import { Logo } from "./Logo";
+import { MapEmbed } from "./MapEmbed";
+import { NavBar } from "./NavBar";
 import { Paragraph } from "./Paragraph";
+import { PropertyCard } from "./PropertyCard";
+import { Repeater } from "./Repeater";
+import { Row } from "./Row";
 import { Section } from "./Section";
 import { Spacer } from "./Spacer";
+import { UnitCard } from "./UnitCard";
 
 export type SiteComponentCategory =
   | "Layout"
@@ -32,17 +46,9 @@ export type RegistryEntry = {
   };
 };
 
-function makePlaceholder(type: ComponentType): ReactComponentType<SiteComponentProps> {
-  function Placeholder(): ReactNode {
-    throw new Error(`Component ${type} not yet implemented — Sprint 5`);
-  }
-  Placeholder.displayName = `${type}Placeholder`;
-  return Placeholder;
-}
-
-// Meta entries for the 14 not-yet-implemented components. Categories and
-// children policies are pre-assigned per PROJECT_SPEC.md §6.1 + §8.3 so that
-// Sprint 5 only has to swap the Component reference, never re-categorize.
+// Meta entries for the 14 components implemented in Sprint 5. Categories and
+// children policies were pre-assigned in Sprint 3 per PROJECT_SPEC.md §6.1 +
+// §8.3 — Sprint 5 only swaps the Component reference, never re-categorizes.
 const placeholderMeta: Record<
   Exclude<ComponentType, "Section" | "Heading" | "Paragraph" | "Image" | "Spacer" | "Divider">,
   { displayName: string; category: SiteComponentCategory; childrenPolicy: ChildrenPolicy }
@@ -88,29 +94,20 @@ export const componentRegistry: Record<ComponentType, RegistryEntry> = {
     Component: Divider,
     meta: { displayName: "Divider", category: "Layout", childrenPolicy: "none" },
   },
-  Row: { Component: makePlaceholder("Row"), meta: placeholderMeta.Row },
-  Column: { Component: makePlaceholder("Column"), meta: placeholderMeta.Column },
-  Button: { Component: makePlaceholder("Button"), meta: placeholderMeta.Button },
-  Logo: { Component: makePlaceholder("Logo"), meta: placeholderMeta.Logo },
-  NavBar: { Component: makePlaceholder("NavBar"), meta: placeholderMeta.NavBar },
-  Footer: { Component: makePlaceholder("Footer"), meta: placeholderMeta.Footer },
-  HeroBanner: {
-    Component: makePlaceholder("HeroBanner"),
-    meta: placeholderMeta.HeroBanner,
-  },
-  PropertyCard: {
-    Component: makePlaceholder("PropertyCard"),
-    meta: placeholderMeta.PropertyCard,
-  },
-  UnitCard: { Component: makePlaceholder("UnitCard"), meta: placeholderMeta.UnitCard },
-  Repeater: { Component: makePlaceholder("Repeater"), meta: placeholderMeta.Repeater },
-  InputField: {
-    Component: makePlaceholder("InputField"),
-    meta: placeholderMeta.InputField,
-  },
-  Form: { Component: makePlaceholder("Form"), meta: placeholderMeta.Form },
-  MapEmbed: { Component: makePlaceholder("MapEmbed"), meta: placeholderMeta.MapEmbed },
-  Gallery: { Component: makePlaceholder("Gallery"), meta: placeholderMeta.Gallery },
+  Row: { Component: Row, meta: placeholderMeta.Row },
+  Column: { Component: Column, meta: placeholderMeta.Column },
+  Button: { Component: Button, meta: placeholderMeta.Button },
+  Logo: { Component: Logo, meta: placeholderMeta.Logo },
+  NavBar: { Component: NavBar, meta: placeholderMeta.NavBar },
+  Footer: { Component: Footer, meta: placeholderMeta.Footer },
+  HeroBanner: { Component: HeroBanner, meta: placeholderMeta.HeroBanner },
+  PropertyCard: { Component: PropertyCard, meta: placeholderMeta.PropertyCard },
+  UnitCard: { Component: UnitCard, meta: placeholderMeta.UnitCard },
+  Repeater: { Component: Repeater, meta: placeholderMeta.Repeater },
+  InputField: { Component: InputField, meta: placeholderMeta.InputField },
+  Form: { Component: Form, meta: placeholderMeta.Form },
+  MapEmbed: { Component: MapEmbed, meta: placeholderMeta.MapEmbed },
+  Gallery: { Component: Gallery, meta: placeholderMeta.Gallery },
 };
 
 export function getRegistryEntry(type: ComponentType): RegistryEntry {

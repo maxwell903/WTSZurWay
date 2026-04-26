@@ -6,6 +6,11 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import type { ReactNode } from "react";
 import { FormProvider, useForm, useFormContext } from "react-hook-form";
 import { beforeAll, describe, expect, it } from "vitest";
+import type { z } from "zod";
+
+// See general-section.test.tsx for why we use the triple-generic useForm form
+// (input vs. output shape differ because of zod `.default(...)` fields).
+type SetupFormInput = z.input<typeof setupFormSchema>;
 
 // Radix UI components rely on a few DOM APIs that jsdom does not implement.
 // Polyfill them once before any test in this file runs.
@@ -32,7 +37,7 @@ function ValueSpy<K extends keyof SetupFormValues>({ name }: { name: K }) {
 }
 
 function Wrapper({ children }: { children: ReactNode }) {
-  const form = useForm<SetupFormValues>({
+  const form = useForm<SetupFormInput, undefined, SetupFormValues>({
     resolver: zodResolver(setupFormSchema),
     defaultValues: {
       propertyTypesFeatured: [],

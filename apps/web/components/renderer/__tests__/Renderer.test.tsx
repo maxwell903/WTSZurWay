@@ -1,6 +1,7 @@
-import { componentRegistry } from "@/components/site-components/registry";
+import { type SiteComponentProps, componentRegistry } from "@/components/site-components/registry";
 import type { ComponentNode, SiteConfig } from "@/types/site-config";
 import { render } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Renderer } from "../Renderer";
 
@@ -32,7 +33,7 @@ function makeConfig(headingTextA: string, headingTextB: string): SiteConfig {
       navBar: { links: [], logoPlacement: "left", sticky: false },
       footer: { columns: [], copyright: "" },
     },
-    pages: [{ id: "p_home", slug: "home", name: "Home", rootComponent: root }],
+    pages: [{ id: "p_home", slug: "home", name: "Home", kind: "static", rootComponent: root }],
     forms: [],
   };
 }
@@ -92,8 +93,12 @@ describe("<Renderer>", () => {
       // is memoized, so unchanged sibling props (same node reference) should
       // skip the inner function entirely on rerender.
       const original = componentRegistry.Heading.Component;
-      const spy = vi.fn(original);
-      componentRegistry.Heading.Component = spy;
+      // ComponentType<P> is ComponentClass | FunctionComponent; vi.fn() expects
+      // a plain Procedure. Narrow to the FunctionComponent branch — Heading is
+      // a function component in our registry, so this is safe.
+      type HeadingFn = (props: SiteComponentProps) => ReactNode;
+      const spy = vi.fn(original as HeadingFn);
+      componentRegistry.Heading.Component = spy as typeof original;
 
       try {
         const config1 = makeConfig("A", "B");
@@ -129,6 +134,7 @@ describe("<Renderer>", () => {
               id: config1.pages[0]?.id ?? "p_home",
               slug: config1.pages[0]?.slug ?? "home",
               name: config1.pages[0]?.name ?? "Home",
+              kind: config1.pages[0]?.kind ?? "static",
               rootComponent: {
                 ...root1,
                 children: [newA, siblingB],

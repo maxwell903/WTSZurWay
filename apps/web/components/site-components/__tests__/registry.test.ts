@@ -1,10 +1,11 @@
 import { COMPONENT_TYPES } from "@/lib/site-config";
+import { createElement } from "react";
 import { describe, expect, it } from "vitest";
 import { componentRegistry, getRegistryEntry, isRegisteredType } from "../registry";
 
-const REAL_TYPES = ["Section", "Heading", "Paragraph", "Image", "Spacer", "Divider"] as const;
-const PLACEHOLDER_TYPES = COMPONENT_TYPES.filter(
-  (t) => !(REAL_TYPES as readonly string[]).includes(t),
+const SPRINT_3_TYPES = ["Section", "Heading", "Paragraph", "Image", "Spacer", "Divider"] as const;
+const SPRINT_5_TYPES = COMPONENT_TYPES.filter(
+  (t) => !(SPRINT_3_TYPES as readonly string[]).includes(t),
 );
 
 describe("componentRegistry", () => {
@@ -25,28 +26,21 @@ describe("componentRegistry", () => {
     }
   });
 
-  it("has six real Sprint-3 components and 14 placeholders", () => {
-    expect(REAL_TYPES.length).toBe(6);
-    expect(PLACEHOLDER_TYPES.length).toBe(14);
+  it("has six Sprint-3 components and 14 Sprint-5 components", () => {
+    expect(SPRINT_3_TYPES.length).toBe(6);
+    expect(SPRINT_5_TYPES.length).toBe(14);
   });
 
-  it("placeholder Components throw 'not yet implemented — Sprint 5' when invoked", () => {
-    for (const t of PLACEHOLDER_TYPES) {
-      const Component = componentRegistry[t].Component;
+  // Building a React element from each registry entry is the typecheck-clean
+  // way to assert "this Component is a real, callable thing." We use
+  // React.createElement instead of invoking Component(...) directly because
+  // ComponentType<P> = ComponentClass | FunctionComponent and the former has
+  // no call signature under noImplicitAny / strict mode.
+  it("every registry Component yields a valid React element when given a minimal node", () => {
+    for (const t of COMPONENT_TYPES) {
+      const entry = componentRegistry[t];
       expect(() =>
-        Component({
-          node: { id: "x", type: t, props: {}, style: {} },
-          cssStyle: {},
-        }),
-      ).toThrow(`Component ${t} not yet implemented — Sprint 5`);
-    }
-  });
-
-  it("real components do NOT throw when invoked with a minimal node", () => {
-    for (const t of REAL_TYPES) {
-      const Component = componentRegistry[t].Component;
-      expect(() =>
-        Component({
+        createElement(entry.Component, {
           node: { id: "x", type: t, props: {}, style: {} },
           cssStyle: {},
         }),

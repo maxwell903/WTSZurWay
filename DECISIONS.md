@@ -238,3 +238,228 @@ schema's `fileRef = { name, url }` shape). The Sprint 2c CLAUDE.md
 phrasing of "primaryLogoUrl field" is a SiteConfig-naming reference
 (PROJECT_SPEC.md §11) — the form-state field is `logoPrimary` per the
 schema Sprint 2c is forbidden from modifying.
+
+
+## 2026-04-25 — Project-wide — Remove calendar dates from spec; Sprint Architect must not weigh schedule pressure
+
+Calendar dates in PROJECT_SPEC.md §6.1 ("April 30") and §13 heading
+("Demo Plan (April 30)") have been removed. The Sprint Architect must
+not factor calendar pressure into recommendations or sprint scopes.
+Quality, robustness, and correctness are paramount; perceived time
+pressure is irrelevant. Any future Sprint Architect or Claude Code
+output that recommends scope cuts on the basis of "we have N days left"
+is in violation of this rule and must be rejected.
+
+User approval (verbatim): "C. Where are you getting the information
+about the due date that should be none of your concern. I need to take
+that out of files it encourages you to cut corners"
+
+
+## 2026-04-25 — Sprint 5 — Allow retroactive cross-sprint test-file cleanup; surgical TS fixes to Sprint 2/3 tests
+
+Sprint 5's quality gates (§15.7) require `pnpm build` to pass with zero
+TypeScript errors. On the master branch at the start of Sprint 5, six
+pre-existing test files owned by earlier sprints already produced TS
+errors that blocked `pnpm build` regardless of any Sprint 5 work:
+
+- `apps/web/components/setup-form/__tests__/general-section.test.tsx`
+- `apps/web/components/setup-form/__tests__/template-start-section.test.tsx`
+- `apps/web/components/setup-form/__tests__/custom-instructions-section.test.tsx`
+- `apps/web/components/setup-form/__tests__/color-scheme-section.test.tsx`
+- `apps/web/components/setup-form/__tests__/advanced-section.test.tsx`
+- `apps/web/components/renderer/__tests__/Renderer.test.tsx`
+
+The first five had a `useForm<SetupFormValues>` annotation that doesn't
+match `zodResolver(setupFormSchema)` because Zod fields with
+`.default(...)` (notably `additionalLogos` and `templateStart`) make the
+schema's input shape differ from its output shape. The fix mirrors the
+working triple-generic pattern already used in
+`apps/web/components/setup-form/setup-form.tsx`:
+`useForm<SetupFormInput, undefined, SetupFormValues>` with
+`type SetupFormInput = z.input<typeof setupFormSchema>`.
+
+The renderer test failed because `vi.fn(componentRegistry.X.Component)`
+passes a `ComponentType<P>` (= `ComponentClass | FunctionComponent`) where
+`vi.fn` expects a callable; cast to a function-component shape.
+
+Sprint 5's file-scope rules forbid modifying any of these files. Per the
+Deviation Protocol, the deviation was raised, approved, and recorded
+here. The user also approved a permanent rule change: see CLAUDE.md
+§15.9 (added in this same edit), which permits future sprints to make
+minimal, surgical, behavior-preserving fixes to inherited test-file
+breakage without re-raising a Deviation per occurrence — provided each
+fix is logged in DECISIONS.md and the Sprint Completion Report.
+
+**Affected files / modules:**
+- `apps/web/components/setup-form/__tests__/general-section.test.tsx` (type-only fix).
+- `apps/web/components/setup-form/__tests__/template-start-section.test.tsx` (type-only fix).
+- `apps/web/components/setup-form/__tests__/custom-instructions-section.test.tsx` (type-only fix).
+- `apps/web/components/setup-form/__tests__/color-scheme-section.test.tsx` (type-only fix).
+- `apps/web/components/setup-form/__tests__/advanced-section.test.tsx` (type-only fix).
+- `apps/web/components/renderer/__tests__/Renderer.test.tsx` (type-only cast on `vi.fn`).
+- `CLAUDE.md` (added §15.9 "Retroactive cross-sprint cleanup").
+
+**Cross-sprint impact:** Future sprints may now apply minimal,
+behavior-preserving fixes to inherited test-file or config-file
+breakage that blocks their quality gates. Production code in
+another sprint's domain still requires a Deviation.
+
+User approval (verbatim): "Approved. Make a change to instruction
+files to allow claude code to work on sprints retroactively"
+
+
+## 2026-04-25 — Sprint 3b — Schema amendment for detail pages (planned schema-lock break)
+
+**Context:** Sprint 3 locked the SiteConfig schema. Sprint 3b is the
+planned schema-lock break referenced in `SPRINT_SCHEDULE.md` §5 row 1
+and in the Detail-pages amendment block previously appended to
+`PROJECT_SPEC.md`. The amendment introduces detail pages: Pages with
+`kind: "detail"` that render a per-row template for `properties` or
+`units`, sharing slugs with sibling static pages under the U2 routing
+pattern (`/{site}/units` static, `/{site}/units/{id}` detail).
+
+**Original plan (pre-amendment):** `Page` was `{ id, slug, name, meta?,
+rootComponent }`. Slug uniqueness was implicitly global. No `kind`
+field. `parseSiteConfig` and the existing schema tests assumed this
+shape and a lossless JSON round-trip.
+
+**What changed:**
+
+1. `pageSchema` gained `kind: pageKindSchema.default("static")` and
+   `detailDataSource: detailDataSourceSchema.optional()`, plus a
+   per-page `superRefine` enforcing `detailDataSource` is required iff
+   `kind === "detail"`. Issue paths point at `["detailDataSource"]`.
+2. `siteConfigSchema` gained a cross-page `superRefine` enforcing the
+   U2 per-`kind` slug uniqueness rule (per `PROJECT_SPEC.md` §11 "Page
+   validation rules"). Issue paths point at the second offending page
+   `["pages", index, "slug"]`.
+3. New value exports: `pageKindSchema`, `detailDataSourceSchema`. New
+   type exports: `PageKind`, `DetailDataSource`. Re-exported through
+   `apps/web/lib/site-config/index.ts` and
+   `apps/web/types/site-config.ts`.
+4. 12 new tests in `schema.test.ts` (enums + per-page validity +
+   per-page invalidity + cross-page uniqueness + ordering canary
+   confirming `default("static")` runs before the cross-page refinement
+   reads `page.kind`). 3 new tests in `parse.test.ts` (mixed-kind
+   round-trip, detail with `detailDataSource: "properties"` round-trip,
+   pre-amendment backwards-compat canary).
+
+**Rationale:** Detail pages were a gap in the prior spec; the user
+pulled them into scope and chose option U2 (shared slugs, route
+disambiguated by URL shape). Doing 3b directly after Sprint 3 — before
+later sprints rebase against the new schema — minimizes downstream
+churn.
+
+**User approval (verbatim — original schema-lock approval that
+authorized the existence of Sprint 3b):** "C. Where are you getting
+the information about the due date that should be none of your concern.
+I need to take that out of files it encourages you to cut corners" and
+"Lets do U2, Make me the 3b sprint and then generate a new
+Sprint_Schedule.md file with the modifications."
+
+**Trade-offs accepted:**
+- Gain: detail pages are now expressible in `SiteConfig`; the U2
+  routing pattern is enforced at validation time, not at request time.
+  `default("static")` keeps every pre-amendment config valid without
+  migration.
+- Lose: every later sprint that constructs `SiteConfig` literals must
+  include `kind` (the inferred output type makes it required); the
+  existing JSON round-trip test in `parse.test.ts` and three downstream
+  literal sites required minor updates (see in-sprint deviations
+  below). All updates are spelled out and behavior-preserving.
+- Risk: a hand-written invalid config (e.g. two detail pages sharing a
+  slug, or a detail page omitting `detailDataSource`) is rejected by
+  `siteConfigSchema.parse`; the deploy endpoint will re-validate at
+  the boundary.
+
+**Affected files / modules (in scope per Sprint 3b's Owned list):**
+- `apps/web/lib/site-config/schema.ts` (enums, `pageSchema`
+  refinement, `siteConfigSchema` refinement).
+- `apps/web/lib/site-config/index.ts` (new value + type re-exports).
+- `apps/web/types/site-config.ts` (new type re-exports).
+- `apps/web/lib/site-config/__tests__/schema.test.ts` (+12 tests).
+- `apps/web/lib/site-config/__tests__/parse.test.ts` (+3 tests; one
+  pre-existing fixture also touched per in-sprint deviation 2 below).
+- `DECISIONS.md` (this entry).
+
+**Cross-sprint impact:** Sprints 4, 5, 6, 8, 9, 9b, 11, 13 each carry
+an amendment to be planned when those sprints are next on the
+schedule. Per `SPRINT_SCHEDULE.md` §2, the recommended next sprints in
+order are Sprint 2 (continuation), then a re-emitted Sprint 5 (which
+gains `Button.linkMode`/`detailPageSlug` and
+`InputField.defaultValueFromQueryParam`), then Sprint 4 (AI generation
+prompt teaches detail pages).
+
+### In-sprint deviations approved during Sprint 3b
+
+**Deviation 1 — Pre-flight unblock by applying the spec amendment in-sprint.**
+
+Sprint 3b's pre-flight check requires `PROJECT_SPEC.md` §11 to contain
+the new `Page` shape and §8.12 to be "Detail pages". On entering the
+sprint, the amendment lived only as a trailing meta-block ("Apply this
+amendment to PROJECT_SPEC.md BEFORE running Sprint 3b") at the bottom
+of the file; §11 still showed the pre-amendment `Page` type and §8.12
+was still "Deploy". Per the Deviation Protocol, raised the issue. User
+approved (option B): Sprint 3b applies the three diffs verbatim from
+the trailing amendment block. The application required renumbering the
+existing `### 8.12 Deploy` to `### 8.13 Deploy` to make room for the
+new `### 8.12 Detail pages` (the only consistent way to honor the
+amendment's verbatim heading). The trailing meta-block was left intact
+as historical context; the spec now contains the post-amendment content
+canonically in §11 + §8.12.
+
+User approval (verbatim): "B."
+
+**Deviation 2 — One-line fixture update to keep the pre-existing JSON
+round-trip test green.**
+
+`parse.test.ts`'s `JSON round-trip > round-trips a JSON-stringified
+valid config without loss` test asserts strict
+`JSON.stringify(reparsed) === json` equality. Sprint 3b's
+`pageSchema.kind = z.enum([...]).default("static")` causes Zod to
+inject `"kind":"static"` into the parsed output for any page that
+omitted the field, breaking the strict-equality assertion. Confirmed
+empirically with a throwaway probe (`{"slug":"home"}` parsed to
+`{"slug":"home","kind":"static"}`). The DoD says any pre-existing
+test break is a Deviation. Per the Deviation Protocol, raised the
+issue. User approved: spell `kind: "static"` into the existing
+`makeMinimalConfig()` helper in `parse.test.ts` so the input JSON
+includes the field; round-trip equality holds. Test bodies and
+assertions are unchanged; only the fixture was touched, preserving
+every test's intent.
+
+User approval (verbatim): "approve"
+
+**Deviation 3 — Cross-sprint surgical fixes (kind: "static") to three
+downstream literal sites broken by the schema amendment.**
+
+After the schema change, three files outside Sprint 3b's Owned list
+broke `pnpm build` because the inferred `Page` type now makes `kind`
+required-on-output (Zod 4 distinguishes `_input` from `_output` for
+`.default`):
+
+- `apps/web/app/dev/preview/fixtures.ts` (Sprint 3 dev fixture, /404 in production).
+- `apps/web/app/dev/components/fixtures.ts` (Sprint 5 dev fixture, /404 in production, untracked).
+- `apps/web/components/renderer/__tests__/Renderer.test.tsx` (Sprint 3 test; two literal sites).
+
+These breakages are NOT pre-existing — they were caused by the Sprint
+3b schema change — so CLAUDE.md §15.9's retroactive-test-fix
+carve-out does not apply. Per the Deviation Protocol, raised the
+issue. User approved: add `kind: "static"` to each affected page
+literal. The fix is mechanical, behavior-preserving, and matches the
+runtime behavior of the new `default("static")` exactly. The Sprint
+3b plan's "Backwards compatibility break" hint anticipated the
+runtime case but did not contemplate the TypeScript output-type
+inference case; this deviation closes that gap.
+
+User approval (verbatim): "approve"
+
+**Affected files / modules (in-sprint deviations):**
+- `apps/web/lib/site-config/__tests__/parse.test.ts` (Deviation 2: one
+  field added to `makeMinimalConfig()`).
+- `apps/web/app/dev/preview/fixtures.ts` (Deviation 3: one line).
+- `apps/web/app/dev/components/fixtures.ts` (Deviation 3: one line).
+- `apps/web/components/renderer/__tests__/Renderer.test.tsx`
+  (Deviation 3: two lines).
+- `PROJECT_SPEC.md` (Deviation 1: §11 Page block replaced, §11
+  trailer appended, §8.12 inserted, §8.12 Deploy renumbered to §8.13).

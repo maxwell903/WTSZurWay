@@ -6,6 +6,11 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { FormProvider, useForm, useFormContext } from "react-hook-form";
 import { describe, expect, it, vi } from "vitest";
+import type { z } from "zod";
+
+// See general-section.test.tsx for why we use the triple-generic useForm form
+// (input vs. output shape differ because of zod `.default(...)` fields).
+type SetupFormInput = z.input<typeof setupFormSchema>;
 
 vi.mock("@/lib/setup-form/resize-image", () => ({
   resizeImage: vi.fn(async (file: File) => ({
@@ -26,7 +31,7 @@ function ValueSpy() {
 }
 
 function Wrapper({ children }: { children: ReactNode }) {
-  const form = useForm<SetupFormValues>({
+  const form = useForm<SetupFormInput, undefined, SetupFormValues>({
     resolver: zodResolver(setupFormSchema),
     defaultValues: {
       customInstructions: "",

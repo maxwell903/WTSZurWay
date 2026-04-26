@@ -5,7 +5,12 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { FormProvider, useForm, useFormContext } from "react-hook-form";
 import { describe, expect, it } from "vitest";
+import type { z } from "zod";
 import { TemplateStartSection } from "../template-start-section";
+
+// See general-section.test.tsx for why we use the triple-generic useForm form
+// (input vs. output shape differ because of zod `.default(...)` fields).
+type SetupFormInput = z.input<typeof setupFormSchema>;
 
 function ValueSpy() {
   const form = useFormContext<SetupFormValues>();
@@ -14,7 +19,7 @@ function ValueSpy() {
 }
 
 function Wrapper({ children }: { children: ReactNode }) {
-  const form = useForm<SetupFormValues>({
+  const form = useForm<SetupFormInput, undefined, SetupFormValues>({
     resolver: zodResolver(setupFormSchema),
     defaultValues: {
       companyName: "",

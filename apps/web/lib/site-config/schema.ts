@@ -199,43 +199,88 @@ export const footerConfigSchema = z.object({
 });
 export type FooterConfig = z.infer<typeof footerConfigSchema>;
 
-export const pageSchema = z.object({
-  id: z.string(),
-  slug: z.string(),
-  name: z.string(),
-  meta: z
-    .object({
-      title: z.string().optional(),
-      description: z.string().optional(),
-    })
-    .optional(),
-  rootComponent: componentNodeSchema,
-});
+export const pageKindSchema = z.enum(["static", "detail"]);
+export type PageKind = z.infer<typeof pageKindSchema>;
+
+export const detailDataSourceSchema = z.enum(["properties", "units"]);
+export type DetailDataSource = z.infer<typeof detailDataSourceSchema>;
+
+export const pageSchema = z
+  .object({
+    id: z.string(),
+    slug: z.string(),
+    name: z.string(),
+    kind: pageKindSchema.default("static"),
+    detailDataSource: detailDataSourceSchema.optional(),
+    meta: z
+      .object({
+        title: z.string().optional(),
+        description: z.string().optional(),
+      })
+      .optional(),
+    rootComponent: componentNodeSchema,
+  })
+  .superRefine((page, ctx) => {
+    if (page.kind === "detail" && page.detailDataSource === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["detailDataSource"],
+        message: "Detail pages must specify detailDataSource",
+      });
+    }
+    if (page.kind === "static" && page.detailDataSource !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["detailDataSource"],
+        message: "Static pages must not specify detailDataSource",
+      });
+    }
+  });
 export type Page = z.infer<typeof pageSchema>;
 
 export const paletteIdSchema = z.enum(PALETTE_IDS);
 export type PaletteId = z.infer<typeof paletteIdSchema>;
 
-export const siteConfigSchema = z.object({
-  meta: z.object({
-    siteName: z.string(),
-    siteSlug: z.string(),
-    description: z.string().optional(),
-    favicon: z.string().optional(),
-  }),
-  brand: z.object({
-    palette: paletteIdSchema,
-    primaryLogoUrl: z.string().optional(),
-    secondaryLogoUrl: z.string().optional(),
-    additionalLogos: z.array(z.string()).optional(),
-    fontFamily: z.string(),
-    customColors: z.record(z.string(), z.string()).optional(),
-  }),
-  global: z.object({
-    navBar: navBarConfigSchema,
-    footer: footerConfigSchema,
-  }),
-  pages: z.array(pageSchema),
-  forms: z.array(formDefinitionSchema),
-});
+export const siteConfigSchema = z
+  .object({
+    meta: z.object({
+      siteName: z.string(),
+      siteSlug: z.string(),
+      description: z.string().optional(),
+      favicon: z.string().optional(),
+    }),
+    brand: z.object({
+      palette: paletteIdSchema,
+      primaryLogoUrl: z.string().optional(),
+      secondaryLogoUrl: z.string().optional(),
+      additionalLogos: z.array(z.string()).optional(),
+      fontFamily: z.string(),
+      customColors: z.record(z.string(), z.string()).optional(),
+    }),
+    global: z.object({
+      navBar: navBarConfigSchema,
+      footer: footerConfigSchema,
+    }),
+    pages: z.array(pageSchema),
+    forms: z.array(formDefinitionSchema),
+  })
+  .superRefine((config, ctx) => {
+    // U2 routing per PROJECT_SPEC.md §11 + §8.12: slug uniqueness is per `kind`,
+    // not global. A static and a detail page may share a slug; two pages of the
+    // same kind may not.
+    const seen = new Map<string, number>();
+    config.pages.forEach((page, index) => {
+      const key = `${page.kind}::${page.slug}`;
+      const firstIndex = seen.get(key);
+      if (firstIndex !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["pages", index, "slug"],
+          message: `Duplicate ${page.kind} page slug "${page.slug}" (already used by page at index ${firstIndex})`,
+        });
+      } else {
+        seen.set(key, index);
+      }
+    });
+  });
 export type SiteConfig = z.infer<typeof siteConfigSchema>;

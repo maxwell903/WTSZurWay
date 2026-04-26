@@ -574,7 +574,59 @@ The most important data binding mechanic. Direct guidance for the implementation
 - Clicking links navigates between pages in preview.
 - Forms are functional (they actually submit).
 - Looks identical to Element 3.
-### 8.12 Deploy
+### 8.12 Detail pages
+
+A **detail page** is a Page with `kind: "detail"` that renders a per-row template for a `properties` or `units` data source. It is the dynamic-route counterpart to the static pages described in §8.3.
+
+#### URL pattern (option U2 — shared slugs)
+
+A detail page may share its slug with a sibling static page of the same slug. The public route handler resolves the two by URL shape:
+
+- `/{site}/units` matches the static page with `slug="units"` (the listing page).
+- `/{site}/units/{id}` matches the detail page with `slug="units"` and `detailDataSource="units"`. The handler treats the trailing segment as a numeric `id`, fetches the row via `lib/rm-api/getUnitById` (or `getPropertyById` when `detailDataSource="properties"`), and renders the page's `rootComponent` with the row provided as the page-level row context.
+
+If the row is not found, the handler renders a 404. If two detail pages share a slug, the configuration is invalid (caught at schema validation time per §11). If a static page exists at the same slug as a detail page (the U2 case), the static page wins for the bare `/{site}/{slug}` URL and the detail page wins for `/{site}/{slug}/{id}` URLs.
+
+#### Row context
+
+Every detail page wraps its `rootComponent` in a row context provider that exposes the fetched row. The same context provider is used by Repeater iterations (§8.9). Components inside a detail page or a Repeater iteration may reference the row in any string-valued prop using `{{ row.* }}` tokens — the renderer resolves them at render time. The token resolver is shared infrastructure, not a Repeater-only concept.
+
+Tokens not resolved against any in-scope row (e.g. a `{{ row.x }}` token on a static page outside any Repeater) pass through verbatim, matching the Sprint 5 shell behavior.
+
+#### Editor authoring
+
+In the Pages tab (§8.3), the "Add page" modal exposes:
+
+- **Page kind**: `Static` (default) | `Detail`.
+- When kind = `Detail`: a **Detail data source** dropdown with values `properties` and `units`.
+
+Slug uniqueness is checked against the per-kind rule from §11 — the modal allows a detail page to share a slug with an existing static page, and rejects a slug that conflicts with another page of the same kind.
+
+A detail page authored in the editor is treated like any other page in the canvas: the user drops components, edits content, and may use `{{ row.* }}` tokens via the "Bind to data" picker on string-valued props of any component (not just Repeater children).
+
+#### Linking from a Repeater item to its detail page
+
+A `Button` placed inside a Repeater iteration may set `linkMode: "detail"` and `detailPageSlug: "<slug-of-a-detail-page>"`. The renderer computes the button's `href` at render time as `/{detailPageSlug}/{row.id}`. This is the canonical pattern for "click a UnitCard's CTA, go to the unit's detail page."
+
+#### Cross-page filter parameters
+
+A `Button` not inside a Repeater may carry an `href` containing `{{ row.* }}` tokens only if it is inside a Repeater iteration; outside that scope, the token does not resolve and the href passes through verbatim. A `Button` may also carry a static query string (`href: "/units?propertyId=4"`). An `InputField` may carry a `defaultValueFromQueryParam: "<param-name>"` prop; on render, the input is hydrated from `window.location.search`. Combined, a Button with `href: "/units?propertyId={{ row.id }}"` placed inside a PropertyCard's Repeater iteration links to the units page with the property pre-selected; the units page's property dropdown reads `propertyId` from the query string and the connected-input filter on the units Repeater fires immediately.
+
+#### Operations vocabulary additions (§9.4)
+
+Three new Tier 1 ops are added by Sprint 11 to the operations vocabulary:
+
+- `setLinkMode({ componentId, value: "static" | "detail" })` — applies to `Button`.
+- `setDetailPageSlug({ componentId, value: string })` — applies to `Button` when `linkMode="detail"`.
+- `setQueryParamDefault({ componentId, value: string | null })` — applies to `InputField`. `null` clears the binding.
+
+#### Out of scope for the demo (explicit)
+
+- Detail pages for arbitrary user-defined data sources. Only `properties` and `units` are supported initially; `units_with_property` and `company` are not detail-eligible (the company is singular; `units_with_property` is a derived view).
+- Multi-segment dynamic routes (e.g. `/properties/{pid}/units/{uid}`). The U2 pattern is exactly one dynamic segment.
+- Non-numeric IDs. The handler treats the trailing segment as a numeric id and 404s if it doesn't parse.
+
+### 8.13 Deploy
  
 - Click **Deploy** in the top bar.
 - Confirmation modal: "Deploy current version to your live site?"
@@ -776,8 +828,10 @@ type Page = {
  id: string;
  slug: string;
  name: string;
+ kind: "static" | "detail";                        // default "static"
+ detailDataSource?: "properties" | "units";        // required iff kind === "detail"
  meta?: { title?: string; description?: string };
- rootComponent: ComponentNode;  // always a Section or container
+ rootComponent: ComponentNode;                     // always a Section or container
 };
  
 type ComponentNode = {
@@ -821,6 +875,12 @@ type FormDefinition = {
 };
 ```
  
+**Page validation rules** (binding from this version forward; enforced by `siteConfigSchema` in Sprint 3b):
+
+- Slug uniqueness is enforced **per `kind`**, not globally. A `[kind="static", slug="units"]` page and a `[kind="detail", slug="units"]` page may coexist; this is the U2 routing pattern described in §8.12. Two static pages with the same slug, or two detail pages with the same slug, are invalid.
+- A page with `kind="detail"` MUST specify `detailDataSource`. A page with `kind="static"` MUST NOT specify `detailDataSource`.
+- A page authored without an explicit `kind` field defaults to `"static"`. This default keeps every pre-amendment site config valid without migration.
+
 All of this is defined in `lib/site-config/schema.ts` with Zod validators.
  
 ---
@@ -1338,3 +1398,139 @@ I only have inspiration of the part that lives in RentManager Element 1. We are 
 Skip
 The User Will upload them. I have some already so dont worry about producing logos
 Again do not worry about the actual logistics of the demo we are only worried about the app and its prestige, polish, and complete functionality
+
+
+# PROJECT_SPEC.md amendment — Detail pages (option U2)
+
+> Apply this amendment to `PROJECT_SPEC.md` BEFORE running Sprint 3b. Sprint 3b's pre-flight check verifies that §11 contains the new `Page.kind` field and that §8.12 exists. If either is missing, Sprint 3b will refuse to run and emit a Deviation Report.
+>
+> The amendment has three pieces:
+>
+> 1. Replace the `Page` block in §11 with the new shape and add a "Page validation rules" trailer.
+> 2. Add a brand-new §8.12 between the existing §8.11 (Preview mode) and the §9 heading.
+> 3. No changes to §17 (Out of Scope) — detail pages were never explicitly out of scope; §8.12 makes them explicitly in.
+>
+> Apply the diffs verbatim. Do not paraphrase. The Sprint 3b schema and tests reference the exact field names below.
+
+---
+
+## Diff 1 — §11 Site Config Schema
+
+### OLD (find and replace)
+
+````md
+type Page = {
+ id: string;
+ slug: string;
+ name: string;
+ meta?: { title?: string; description?: string };
+ rootComponent: ComponentNode;  // always a Section or container
+};
+````
+
+### NEW
+
+````md
+type Page = {
+ id: string;
+ slug: string;
+ name: string;
+ kind: "static" | "detail";                        // default "static"
+ detailDataSource?: "properties" | "units";        // required iff kind === "detail"
+ meta?: { title?: string; description?: string };
+ rootComponent: ComponentNode;                     // always a Section or container
+};
+````
+
+### NEW — append after the closing ` ``` ` of the §11 schema block, before the "All of this is defined in `lib/site-config/schema.ts` with Zod validators." line
+
+````md
+**Page validation rules** (binding from this version forward; enforced by `siteConfigSchema` in Sprint 3b):
+
+- Slug uniqueness is enforced **per `kind`**, not globally. A `[kind="static", slug="units"]` page and a `[kind="detail", slug="units"]` page may coexist; this is the U2 routing pattern described in §8.12. Two static pages with the same slug, or two detail pages with the same slug, are invalid.
+- A page with `kind="detail"` MUST specify `detailDataSource`. A page with `kind="static"` MUST NOT specify `detailDataSource`.
+- A page authored without an explicit `kind` field defaults to `"static"`. This default keeps every pre-amendment site config valid without migration.
+
+````
+
+---
+
+## Diff 2 — Insert new §8.12 between the existing §8.11 (Preview mode) and the start of §9
+
+### NEW (insert in full)
+
+````md
+### 8.12 Detail pages
+
+A **detail page** is a Page with `kind: "detail"` that renders a per-row template for a `properties` or `units` data source. It is the dynamic-route counterpart to the static pages described in §8.3.
+
+#### URL pattern (option U2 — shared slugs)
+
+A detail page may share its slug with a sibling static page of the same slug. The public route handler resolves the two by URL shape:
+
+- `/{site}/units` matches the static page with `slug="units"` (the listing page).
+- `/{site}/units/{id}` matches the detail page with `slug="units"` and `detailDataSource="units"`. The handler treats the trailing segment as a numeric `id`, fetches the row via `lib/rm-api/getUnitById` (or `getPropertyById` when `detailDataSource="properties"`), and renders the page's `rootComponent` with the row provided as the page-level row context.
+
+If the row is not found, the handler renders a 404. If two detail pages share a slug, the configuration is invalid (caught at schema validation time per §11). If a static page exists at the same slug as a detail page (the U2 case), the static page wins for the bare `/{site}/{slug}` URL and the detail page wins for `/{site}/{slug}/{id}` URLs.
+
+#### Row context
+
+Every detail page wraps its `rootComponent` in a row context provider that exposes the fetched row. The same context provider is used by Repeater iterations (§8.9). Components inside a detail page or a Repeater iteration may reference the row in any string-valued prop using `{{ row.* }}` tokens — the renderer resolves them at render time. The token resolver is shared infrastructure, not a Repeater-only concept.
+
+Tokens not resolved against any in-scope row (e.g. a `{{ row.x }}` token on a static page outside any Repeater) pass through verbatim, matching the Sprint 5 shell behavior.
+
+#### Editor authoring
+
+In the Pages tab (§8.3), the "Add page" modal exposes:
+
+- **Page kind**: `Static` (default) | `Detail`.
+- When kind = `Detail`: a **Detail data source** dropdown with values `properties` and `units`.
+
+Slug uniqueness is checked against the per-kind rule from §11 — the modal allows a detail page to share a slug with an existing static page, and rejects a slug that conflicts with another page of the same kind.
+
+A detail page authored in the editor is treated like any other page in the canvas: the user drops components, edits content, and may use `{{ row.* }}` tokens via the "Bind to data" picker on string-valued props of any component (not just Repeater children).
+
+#### Linking from a Repeater item to its detail page
+
+A `Button` placed inside a Repeater iteration may set `linkMode: "detail"` and `detailPageSlug: "<slug-of-a-detail-page>"`. The renderer computes the button's `href` at render time as `/{detailPageSlug}/{row.id}`. This is the canonical pattern for "click a UnitCard's CTA, go to the unit's detail page."
+
+#### Cross-page filter parameters
+
+A `Button` not inside a Repeater may carry an `href` containing `{{ row.* }}` tokens only if it is inside a Repeater iteration; outside that scope, the token does not resolve and the href passes through verbatim. A `Button` may also carry a static query string (`href: "/units?propertyId=4"`). An `InputField` may carry a `defaultValueFromQueryParam: "<param-name>"` prop; on render, the input is hydrated from `window.location.search`. Combined, a Button with `href: "/units?propertyId={{ row.id }}"` placed inside a PropertyCard's Repeater iteration links to the units page with the property pre-selected; the units page's property dropdown reads `propertyId` from the query string and the connected-input filter on the units Repeater fires immediately.
+
+#### Operations vocabulary additions (§9.4)
+
+Three new Tier 1 ops are added by Sprint 11 to the operations vocabulary:
+
+- `setLinkMode({ componentId, value: "static" | "detail" })` — applies to `Button`.
+- `setDetailPageSlug({ componentId, value: string })` — applies to `Button` when `linkMode="detail"`.
+- `setQueryParamDefault({ componentId, value: string | null })` — applies to `InputField`. `null` clears the binding.
+
+#### Out of scope for the demo (explicit)
+
+- Detail pages for arbitrary user-defined data sources. Only `properties` and `units` are supported initially; `units_with_property` and `company` are not detail-eligible (the company is singular; `units_with_property` is a derived view).
+- Multi-segment dynamic routes (e.g. `/properties/{pid}/units/{uid}`). The U2 pattern is exactly one dynamic segment.
+- Non-numeric IDs. The handler treats the trailing segment as a numeric id and 404s if it doesn't parse.
+
+````
+
+---
+
+## Diff 3 — §17 Out of Scope
+
+No change. Detail pages were never explicitly listed as out of scope, and §8.12 now makes them explicitly in scope. If a future amendment removes detail pages, that amendment is what edits §17 — not this one.
+
+---
+
+## Where Sprint 3b stops
+
+Sprint 3b implements ONLY the §11 changes — the schema and validation rules. It does NOT:
+
+- Build the row context provider (Sprint 9b owns that).
+- Build the dynamic public route (Sprint 13 + Sprint 9b — the route is jointly designed).
+- Add the Pages tab "kind" picker (Sprint 6 amendment).
+- Add `linkMode` / `detailPageSlug` to the Button component or `defaultValueFromQueryParam` to InputField (Sprint 5 amendment — to be re-emitted).
+- Add the new operations vocabulary (Sprint 11 amendment).
+- Update the AI generation system prompt to teach Claude about detail pages (Sprint 4 amendment).
+
+Each downstream amendment will be planned in its own turn when those sprints are next on the schedule. The full updated `SPRINT_SCHEDULE.md` produced alongside this amendment lays out the new dependencies and order.

@@ -82,6 +82,43 @@ full Deviation Protocol is below. Every sprint inherits it. Summary:
 - Approved alternatives are logged in `/DECISIONS.md` (append-only).
 - "I can do it slightly differently" counts as a deviation.
 
+### 15.9 Retroactive cross-sprint cleanup (added 2026-04-25)
+
+When the current sprint's quality gates (§15.7) cannot pass because of a
+pre-existing breakage owned by an earlier sprint -- for example, a
+TypeScript error in a Sprint 2 test file that blocks `pnpm build` for
+Sprint 5 -- Claude Code is permitted to apply a minimal, surgical fix to
+the offending earlier-sprint file rather than emitting a Deviation for
+each occurrence. This avoids the situation where every later sprint is
+permanently blocked by inherited breakage in files it is forbidden to
+touch.
+
+Constraints (binding):
+
+- The fix MUST be the smallest change that unblocks the gate. No
+  refactors, renames, or scope expansion.
+- The fix MUST NOT change runtime behavior. Acceptable: type
+  annotations, import order, casts, dropping dead suppressions, fixing
+  formatting. NOT acceptable: behavior changes, new dependencies,
+  feature additions, deletions of test logic.
+- Production code (i.e. anything outside `__tests__/` and `*.test.*`)
+  in another sprint's domain still requires a Deviation. This carve-out
+  is for test-file and config-file housekeeping only.
+- Each retroactive fix is recorded in `DECISIONS.md` along with the
+  current sprint's other deviation entries so future sprints can see
+  why that file was edited.
+- The current sprint's Sprint Completion Report MUST list each
+  retroactive fix in a "Retroactive cross-sprint fixes" subsection so
+  the change is visible at review time.
+- "Pre-existing" means the issue was reproducible on the branch at the
+  start of the current sprint -- verifiable via `git stash` or by
+  inspecting the file's history. If you can't demonstrate the breakage
+  predates your work, treat it as a Deviation instead.
+
+If a fix would require changing more than ~5 lines per file, or if it
+touches multiple files in a non-mechanical way, escalate via the
+Deviation Protocol before proceeding.
+
 ---
 
 ## Deviation Protocol (mandatory -- do not modify)
