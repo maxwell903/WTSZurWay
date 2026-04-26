@@ -234,6 +234,37 @@ export type Database = {
           },
         ];
       };
+      form_submissions: {
+        Row: {
+          id: number;
+          site_id: string | null;
+          form_id: string;
+          page_slug: string | null;
+          submitted_data: Json;
+          submitter_ip: string | null;
+          user_agent: string | null;
+          created_at: string | null;
+        };
+        Insert: {
+          id?: number;
+          site_id?: string | null;
+          form_id: string;
+          page_slug?: string | null;
+          submitted_data: Json;
+          submitter_ip?: string | null;
+          user_agent?: string | null;
+          created_at?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["form_submissions"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "form_submissions_site_id_fkey";
+            columns: ["site_id"];
+            referencedRelation: "sites";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

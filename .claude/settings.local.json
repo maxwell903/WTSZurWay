@@ -12,7 +12,15 @@
       "Bash(pnpm add *)",
       "Bash(pnpm install *)",
       "Bash(pnpm vitest *)",
-      "Bash(pnpm biome *)"
+      "Bash(pnpm biome *)",
+      "Bash(npx vitest *)",
+      "Bash(node -e \"const {z} = require\\('/c/Users/maxwa/WTSZurWay/apps/web/node_modules/zod'\\); const r = z.string\\(\\).uuid\\(\\).safeParse\\('11111111-1111-1111-1111-111111111111'\\); console.log\\(JSON.stringify\\(r\\)\\)\")",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\maxwa\\\\WTSZurWay\\\\apps\\\\web\\\\.next\" -Force -ErrorAction SilentlyContinue | Select-Object Name, @{N='Locked';E={try { [IO.File]::OpenWrite\\($_.FullName\\).Close\\(\\); $false } catch { $true }}})",
+      "PowerShell($f = Get-Item \"C:\\\\Users\\\\maxwa\\\\WTSZurWay\\\\apps\\\\web\\\\.next\\\\trace\" -Force -ErrorAction SilentlyContinue; if \\($f\\) { $f | Format-List Name, Attributes, IsReadOnly, LastWriteTime; Write-Host \"ACL:\"; \\(Get-Acl $f.FullName\\).Access | Format-List IdentityReference, FileSystemRights, AccessControlType })",
+      "PowerShell($cutoff = \\(Get-Date\\).AddMinutes\\(-15\\); Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.StartTime -gt $cutoff } | ForEach-Object { Write-Host \"Stopping node PID $\\($_.Id\\) started $\\($_.StartTime\\)\"; Stop-Process -Id $_.Id -Force -ErrorAction Continue }; Start-Sleep -Seconds 2; Get-Process -Name node -ErrorAction SilentlyContinue | Select-Object Id, StartTime | Format-Table -AutoSize)",
+      "PowerShell(try { Rename-Item \"C:\\\\Users\\\\maxwa\\\\WTSZurWay\\\\apps\\\\web\\\\.next\\\\trace\" \"trace.locked.$\\(Get-Random\\)\" -Force -ErrorAction Stop; \"rename-ok\" } catch { \"rename-failed: $_\" })",
+      "PowerShell(openfiles /query /fo csv 2>&1)",
+      "Bash(pnpm format *)"
     ]
   }
 }

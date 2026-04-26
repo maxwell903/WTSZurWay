@@ -48,6 +48,7 @@ export { ComponentCard } from "./sidebar/add-tab/ComponentCard";
 export { COMPONENT_CATALOG, COMPONENT_GROUP_ORDER } from "./sidebar/add-tab/component-catalog";
 export type { ComponentCatalogEntry, ComponentGroup } from "./sidebar/add-tab/component-catalog";
 export { DataTab } from "./sidebar/data-tab/DataTab";
+export { SubmissionsModal } from "./sidebar/data-tab/SubmissionsModal";
 export { AddPageDialog } from "./sidebar/pages-tab/AddPageDialog";
 export { DeletePageConfirm } from "./sidebar/pages-tab/DeletePageConfirm";
 export { PageRow } from "./sidebar/pages-tab/PageRow";
