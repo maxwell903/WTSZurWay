@@ -1,6 +1,6 @@
 import { RightSidebar } from "@/components/editor/sidebar/RightSidebar";
 import { DeployButton } from "@/components/editor/topbar/DeployButton";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const toastMock = vi.fn();
@@ -26,9 +26,14 @@ describe("placeholder shells", () => {
     expect(screen.getByTestId("right-sidebar")).toBeInTheDocument();
   });
 
-  it("Deploy button fires a toast and does not navigate", () => {
+  // Sprint 13 (2026-04-26) -- the Deploy button is now the real Element-3
+  // implementation that opens a confirmation dialog and POSTs to
+  // /api/sites/[siteId]/deploy. The Sprint 6 placeholder toast copy was
+  // removed by the authorized DeployButton hand-off; per CLAUDE.md §15.9
+  // this assertion is rewritten to a behavior-preserving "renders without
+  // crashing" check matching Sprint 11's parallel right-sidebar fix.
+  it("Deploy button renders without crashing", () => {
     render(<DeployButton />);
-    fireEvent.click(screen.getByTestId("deploy-button"));
-    expect(toastMock).toHaveBeenCalledWith("Deploy is coming in a later sprint.");
+    expect(screen.getByTestId("deploy-button")).toBeInTheDocument();
   });
 });

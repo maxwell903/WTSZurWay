@@ -1192,3 +1192,104 @@ domain was not touched.
 
 **No user approval was solicited per §15.9.** Each occurrence is
 behavior-preserving and constrained to a single line / single assertion.
+
+## 2026-04-26 — Sprint 13 — Retroactive cross-sprint test-file fix (CLAUDE.md §15.9)
+
+**Context:** Sprint 13 rewrites
+`apps/web/components/editor/topbar/DeployButton.tsx` from the Sprint 6
+placeholder ("Deploy is coming in a later sprint.") into the real
+Element-3 implementation that opens a confirmation dialog, POSTs to
+`/api/sites/[siteId]/deploy`, and fires a Sonner success/error toast on
+the response. The Sprint 6 placeholder test in
+`apps/web/components/editor/__tests__/placeholders.test.tsx` asserted
+the toast string the placeholder used to fire and would have failed
+under the new implementation, blocking the `pnpm test` quality gate.
+
+**File / lines:**
+`apps/web/components/editor/__tests__/placeholders.test.tsx` (the
+"Deploy button fires a toast and does not navigate" assertion).
+The assertion was rewritten to a "renders without crashing" check via
+`expect(screen.getByTestId("deploy-button")).toBeInTheDocument()`,
+mirroring how Sprint 11 fixed the parallel right-sidebar placeholder
+test in this same file. The unused `fireEvent` import was dropped at
+the same time so Biome's noUnusedImports rule stays clean. Sprint 6
+territory.
+
+This fix is **test-file only** and behavior-preserving (the test still
+verifies that the component renders); production code in another
+sprint's domain was not touched. The fix is **pre-authorized by Sprint
+13's CLAUDE.md** ("The §15.9 fix is pre-authorized — do NOT raise a
+Deviation for the placeholder test rewrite; just do it and log it"),
+so no Deviation Report was raised.
+
+**No user approval was solicited per §15.9** -- the constraints
+("smallest possible change", "test/config files only", "no behavior
+changes") are met; the fix is logged here per the §15.9 contract.
+
+## 2026-04-26 — Sprint 13 — Catch-all directory uses optional brackets `[[...slug]]`
+
+**Context:** Sprint 13's CLAUDE.md "Files you may create or modify"
+list specifies the public catch-all route at
+`apps/web/app/[site]/[...slug]/page.tsx`. The Definition of Done text,
+the manual smoke test, and the resolver test cases collectively
+require behavior that only the optional-catch-all variant
+(`[[...slug]]`) can provide, however:
+
+- DoD step 1 of the catch-all page: "reads `site` (string) and `slug`
+  (string[] | undefined)". The `| undefined` is the param type for
+  optional catch-alls only -- a non-optional `[...slug]` always yields
+  `string[]`.
+- Resolver test case 1 (DoD): "`undefined` slug → resolves to the
+  `home` page". Only an optional catch-all ever passes `undefined`.
+- Manual smoke test step 9: "navigate to
+  `http://localhost:3000/{siteSlug}` (the bare site URL with no
+  trailing path). The home page renders". Next.js's non-optional
+  `[...slug]` does NOT match the bare parent URL -- only `[[...slug]]`
+  does.
+
+**What changed:** Sprint 13 implements the catch-all at
+`apps/web/app/[site]/[[...slug]]/page.tsx` (with the resolver helper
+and tests in the matching `[[...slug]]/` directory) rather than the
+literal `[...slug]/` directory named in the file scope. All other
+file paths, exports, and the load-bearing
+`// === SPRINT 9B INSERTS DETAIL BRANCH HERE ===` insertion-point
+comment are unchanged.
+
+**Rationale:** The DoD text and the smoke test are the substantive
+specification; the file-scope notation was shorthand consistent with
+casual usage where both `[...slug]` and `[[...slug]]` are called
+"catch-all" routes. Choosing `[...slug]` would honor a 2-character
+typographic detail while breaking smoke test step 9 and the
+explicitly-typed `slug: string[] | undefined` API. Sprint 9b's
+detail-branch addition is purely additive and unaffected by which
+bracket form is used; the insertion-point comment is preserved
+verbatim.
+
+**User approval (verbatim):** Not requested -- per the user's standing
+guidance ("Surface blockers and unworkable approaches early ...
+Critical → ask. Non-critical → flag and keep working"), this 2-char
+typographic resolution is non-critical and is being flagged in the
+Sprint Completion Report and here rather than blocking the sprint.
+
+**Trade-offs accepted:**
+- Gain: smoke test step 9 passes; the bare `/{siteSlug}` URL renders
+  the home page; the resolver's `string[] | undefined` API is the
+  type Next.js actually delivers.
+- Lose: the directory name differs from the file scope by two
+  characters (`[[...slug]]` vs. `[...slug]`).
+- Risk: if Sprint 9b's plan greps for the literal `[...slug]/page.tsx`
+  path it will need to grep for `[[...slug]]/page.tsx` instead. The
+  `// === SPRINT 9B INSERTS DETAIL BRANCH HERE ===` comment is
+  preserved verbatim and can be located by content rather than path.
+
+**Affected files / modules:**
+- `apps/web/app/[site]/[[...slug]]/page.tsx` (new — instead of
+  `[...slug]/page.tsx`).
+- `apps/web/app/[site]/[[...slug]]/resolve.ts` (new — pure helper).
+- `apps/web/app/[site]/[[...slug]]/__tests__/page.test.tsx` (new —
+  resolver unit tests).
+
+**Cross-sprint impact:** Sprint 9b will extend the same file at
+`apps/web/app/[site]/[[...slug]]/page.tsx` rather than the
+`[...slug]/page.tsx` path named in its plan. The detail-branch
+insertion is additive and unaffected by the directory name.
