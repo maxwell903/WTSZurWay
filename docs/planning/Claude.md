@@ -1,651 +1,785 @@
-# CLAUDE.md — Sprint 13: Deploy + Element 3
+# CLAUDE.md — Sprint 9b: Detail pages runtime + row context generalization
 
 ## Mission
 
-Sprint 13 ships the third and final element of Orion's Belt: the
-**public site**. The user clicks **Deploy** in the editor's top bar; the
-working `SiteConfig` is snapshotted as a new row in `site_versions`
-with `is_deployed = true` (after the previous deployed row, if any, is
-flipped to `is_deployed = false`); a toast confirms the deploy with a
-copy-to-clipboard link; and the deployed config becomes browsable at the
-public route `/{site}/[...slug]` rendered by the shared renderer in
-`mode="public"`.
+Sprint 9b is the third and final piece of the detail-pages story
+(`PROJECT_SPEC.md` §8.12 + the per-`kind` slug rule in §11). The
+preceding pieces are already in place:
 
-The work spans three layers, each independently testable:
+- **Sprint 3b** amended the schema so `Page.kind` is `"static" | "detail"`
+  (default `"static"`), `Page.detailDataSource` is required iff
+  `kind === "detail"`, and slug uniqueness is per-`kind` (the U2
+  routing pattern: `/{site}/units` static + `/{site}/units/{id}`
+  detail can share the slug `units`).
+- **Sprint 5b** added `Button.linkMode: "static" | "detail"` and
+  `Button.detailPageSlug?: string` (with a `superRefine` enforcing
+  the cross-field rule), and switched `InputField` to a
+  `"use client"` component that hydrates from
+  `window.location.search` via `defaultValueFromQueryParam`.
+- **Sprint 9** shipped `apps/web/lib/row-context/` (a
+  `RowContextProvider` accepting `kind: "repeater" | "detail"` + a
+  `useRow()` hook) AND `apps/web/lib/token-resolver/` (the pure
+  `resolveTokens(value, row)` function with the `money` / `number` /
+  `date` / `lower` / `upper` formatters), plus a resolver hook in
+  `ComponentRenderer.tsx` that walks every component's string props
+  when a row is in scope and short-circuits whole-token strings to
+  the underlying typed value (per the 2026-04-26 DECISIONS.md
+  entry).
+- **Sprint 13** shipped the public catch-all at
+  `apps/web/app/[site]/[[...slug]]/page.tsx` (the directory uses
+  the **optional** catch-all `[[...slug]]` form per the 2026-04-26
+  DECISIONS.md entry — Sprint 9b's plan paths are corrected from
+  `[...slug]` to `[[...slug]]` accordingly), with a load-bearing
+  `// === SPRINT 9B INSERTS DETAIL BRANCH HERE ===` comment
+  immediately above the final `notFound()` and a sibling
+  `resolve.ts` containing `resolveStaticPage`.
 
-1. **The deploy endpoint.** `POST /api/sites/[siteId]/deploy` validates
-   the `siteId` param, loads the working version row from Supabase,
-   re-validates its config against `siteConfigSchema` (the deploy gate
-   per `PROJECT_SPEC.md` §11 — an invalid working config CANNOT deploy),
-   flips any existing `is_deployed=true` row for the site to `false`,
-   and inserts a new `site_versions` row with the snapshotted config,
-   `is_deployed=true`, `is_working=false`, `source="deploy"`,
-   `parent_version_id` set to the working version's id. Returns
-   `{ versionId, deployedUrl }` on 200; structured `AiError` on failure.
-   `runtime = "nodejs"`, `dynamic = "force-dynamic"`.
-2. **The Deploy button.** `apps/web/components/editor/topbar/DeployButton.tsx`
-   replaces Sprint 6's placeholder ("Deploy is coming in a later sprint.")
-   with a real button that opens a shadcn `<Dialog>` confirmation modal,
-   POSTs to the deploy endpoint on confirm, fires a Sonner toast with
-   the live URL plus a copy button on success, and surfaces error copy
-   on failure. Per `PROJECT_SPEC.md` §8.2 the button is greyed out when
-   there are unsaved changes (saveState `dirty` / `saving` / `error`)
-   and enabled when the working version is fully saved (`saved` /
-   `idle`).
-3. **The public catch-all route.** `apps/web/app/[site]/[...slug]/page.tsx`
-   is a server component (RSC) that loads the site by slug, loads the
-   site's deployed `site_versions` row, parses the config, splits the
-   trailing path into segments, finds a STATIC page where
-   `kind === "static" && slug === segments.join("/")` (or `"home"` when
-   there are no segments), and renders it via `<Renderer config={config}
-   page={page.slug} mode="public" />`. If no site, no deployed version,
-   or no matching static page — `notFound()`. **Sprint 9b will append
-   the detail branch to this same file**; Sprint 13 must structure the
-   file so 9b's addition is purely additive.
+Sprint 9b adds the runtime that makes detail pages actually render:
+
+1. **Detail-page resolver.**
+   `apps/web/app/[site]/[[...slug]]/resolve.ts` gains a new exported
+   helper:
+
+```ts
+   export type DetailMatch = { page: Page; rowId: number };
+   export function resolveDetailPage(
+     config: SiteConfig,
+     slug: string[] | undefined,
+   ): DetailMatch | null;
+```
+
+   The helper fires only when `slug` is exactly two segments, the
+   second segment parses as a positive integer (regex
+   `/^[1-9]\d*$/` — leading zeros, signs, decimals, and `0` are all
+   rejected to keep the route URL space deterministic), AND a page
+   exists with `kind === "detail"` whose `slug` equals the first
+   segment. The single-segment case (`["units"]`), the
+   multi-segment case (`["foo", "bar", "baz"]`), and the
+   non-numeric trailing-segment case (`["units", "abc"]`) all
+   return `null`. `resolveStaticPage` is unchanged.
+
+2. **Detail branch in the catch-all.**
+   `apps/web/app/[site]/[[...slug]]/page.tsx` is extended IN PLACE.
+   The load-bearing comment line
+   `// === SPRINT 9B INSERTS DETAIL BRANCH HERE ===` is REPLACED
+   (the comment line itself goes away — its single purpose was to
+   mark this insertion point) by a block that calls
+   `resolveDetailPage`, fetches the row via `lib/rm-api/getUnitById`
+   when `page.detailDataSource === "units"` or
+   `lib/rm-api/getPropertyById` when `page.detailDataSource ===
+   "properties"`, and renders the matched page wrapped in row
+   context. If `resolveDetailPage` returns `null`, the static
+   branch's behavior of falling through to `notFound()` is
+   preserved. If the page resolves but the fetched row is `null`
+   (unknown id), the branch ALSO falls through to `notFound()` —
+   per `PROJECT_SPEC.md` §8.12 ("If the row is not found, the
+   handler renders a 404."). The existing static branch above the
+   insertion point is untouched. The final `notFound()` line is
+   untouched.
+
+3. **`Renderer` gains opt-in detail mode.**
+   `apps/web/components/renderer/Renderer.tsx` accepts two new
+   optional props:
+
+```ts
+   pageKind?: "static" | "detail";  // default "static"
+   row?: unknown;                    // default undefined
+```
+
+   When `pageKind === "detail"`, the page lookup filters
+   `pages.find((p) => p.slug === page && p.kind === "detail")` so
+   the U2 same-slug coexistence resolves correctly. When `row` is
+   provided AND `pageKind === "detail"`, the renderer wraps ONLY
+   the matched page's `rootComponent` (not the global NavBar /
+   Footer) in `<RowContextProvider row={row} kind="detail">`.
+   NavBar and Footer stay outside the row scope so their `href`
+   strings are not accidentally resolved against the in-scope row.
+   Existing callers pass neither prop and continue to behave
+   exactly as before; test snapshots, fixture pages, and the
+   editor's `mode="edit"` path are unaffected.
+
+4. **Button consumes row context for detail links.**
+   `apps/web/components/site-components/Button/index.tsx` becomes
+   a `"use client"` component (mirroring the Sprint 5b InputField
+   switch). It calls `useRow()` and, when `data.linkMode ===
+   "detail"`, `data.detailPageSlug !== undefined`, the row context
+   `kind !== null`, the row is non-null, AND `row.id` is a
+   `number | string`, the rendered `<a>`'s href is computed at
+   render time as `/${data.detailPageSlug}/${row.id}`. In every
+   other case the existing `data.href` passes through verbatim
+   (the existing token-string and static-href behaviors are
+   preserved), the existing `data-link-mode` and
+   `data-detail-page-slug` data attributes continue to render, and
+   Sprint 5b's silent-fallback semantics still hold for invalid
+   prop combinations. Ownership of `Button/index.tsx` transfers
+   from Sprint 5 to Sprint 9b for this hand-off, mirroring the
+   Sprint 2c BrandSection precedent.
+
+5. **Test coverage for detail-page row context.**
+   New unit tests prove (a) `resolveDetailPage` returns the right
+   `{ page, rowId }` for a U2 config and `null` for every
+   non-detail-shaped slug; (b) the Button computes the
+   `/units/{id}` href when wrapped in `<RowContextProvider row={{
+   id: 42, ... }} kind="detail">`; (c) the Button leaves `href`
+   untouched when `linkMode === "static"`, when no row is in scope,
+   or when `row.id` is missing or non-scalar; (d) the Renderer's
+   new `pageKind` filter resolves the static and detail variants
+   of a U2 config independently; (e) descendants of the
+   `RowContextProvider` resolve `{{ row.* }}` tokens through the
+   existing ComponentRenderer hook (token resolution on a detail
+   page is the same code path as token resolution inside a
+   Repeater iteration — Sprint 9b adds a regression test that
+   confirms this without rewriting the Sprint 9 hook); and (f) the
+   pre-existing Sprint 13 resolver tests in
+   `apps/web/app/[site]/[[...slug]]/__tests__/page.test.tsx` stay
+   green verbatim.
 
 The work does **not** touch `lib/rm-api/`, `lib/site-config/schema.ts`,
-the renderer source, `lib/editor-state/` (no new mutators), or any
-site-component implementation file. It declares **one** retroactive
-test-file fix per `CLAUDE.md` §15.9 to update an existing placeholder
-test — see "Authorized retroactive fixes" below.
+the renderer's `ComponentRenderer.tsx` source (the resolver hook
+already handles every per-prop case), the `RowContextProvider` /
+`useRow` source files, the `token-resolver` source files, the deploy
+endpoint, the AI endpoints, the editor, the setup form, or the
+Supabase migrations. It extends exactly three production files
+(`Button/index.tsx`, `Renderer.tsx`, `[[...slug]]/page.tsx`), one
+helper file (`resolve.ts`), one component SPEC.md
+(`Button/SPEC.md`), and the matching test files.
 
 ## Spec sections in scope
 
-- `PROJECT_SPEC.md` §2.3 — The Element 2 → Element 3 handoff
-  (the four-step deploy contract Sprint 13 must implement byte-for-byte).
-- `PROJECT_SPEC.md` §3.1 — Tech stack (Next.js 15 App Router, RSC where
-  useful — the public route is RSC).
-- `PROJECT_SPEC.md` §3.4 — Infra (Vercel hosting target).
-- `PROJECT_SPEC.md` §8.2 — Top bar Deploy button ("greyed out if no
-  unsaved changes since last deploy"; toast confirms).
-- `PROJECT_SPEC.md` §8.13 — Deploy details (confirmation modal copy,
-  the "Live at..." toast with copy button, snapshot semantics).
-- `PROJECT_SPEC.md` §10 / §10.3 — The shared renderer; in `public` mode,
-  fetching happens server-side via RSC where possible.
-- `PROJECT_SPEC.md` §11 — Page validation rules (the deploy endpoint
-  re-validates against `siteConfigSchema` so an invalid config — e.g. a
-  detail page with no `detailDataSource` — cannot deploy).
-- `PROJECT_SPEC.md` §12 — `sites` and `site_versions` schema (the
-  partial unique index `site_versions_one_deployed_per_site` is what
-  drives the "flip old to false, then insert new" ordering).
-- `PROJECT_SPEC.md` §13.2 — Demo flow step 7-8 (the canonical Deploy
-  click and the "Live at https://www.aurora-cincy.com" toast).
-- `PROJECT_SPEC.md` §17 — Out of scope (no per-customer subdomains;
-  the deploy URL is `https://www.{siteSlug}.com` — a display string,
-  not a real DNS mapping).
+- `PROJECT_SPEC.md` §8.12 — Detail pages: U2 routing, row context,
+  Repeater→detail-page linking via `Button.linkMode = "detail"`,
+  cross-page filter parameters, and the explicit out-of-scope list
+  (no nested dynamic segments, no non-numeric ids, only `properties`
+  and `units` are detail-eligible).
+- `PROJECT_SPEC.md` §11 — Page validation rules: per-`kind` slug
+  uniqueness, `detailDataSource` required iff `kind === "detail"`,
+  `kind` defaults to `"static"`. Sprint 9b reads this contract; it
+  does not modify it.
+- `PROJECT_SPEC.md` §10 / §10.3 — The shared renderer; in `public`
+  mode the public route is RSC, the row fetch is server-side, and
+  the row context provider crosses the RSC→client boundary as a
+  serialized prop.
+- `PROJECT_SPEC.md` §17 — Out of scope: no per-customer subdomains,
+  no auth beyond a placeholder. The detail-page route is reachable
+  via the same service-role client the catch-all already uses; no
+  new auth gates.
+- `PROJECT_SPEC.md` §13.2 — Demo flow. Sprint 9b does not change
+  the demo script; it makes the detail-page links inside the
+  generated Aurora site clickable end-to-end so Sprint 15's E2E can
+  assert "click a UnitCard's CTA → unit detail page renders with
+  that unit's data."
 
 Quote each section as you build the corresponding piece. Do not
-paraphrase the §8.13 toast copy — it is part of the demo script.
+paraphrase the §8.12 rules — the renderer behavior is gated on the
+exact contract.
 
 ## Pre-flight check (MANDATORY — emit before reading or writing any non-spec file)
 
 Before reading or modifying any file other than the items listed in
-"Spec sections in scope" above, run these fourteen checks. If any
+"Spec sections in scope" above, run these fifteen checks. If any
 fails, STOP and emit a Deviation Report per the protocol embedded
 later in this file. Do not attempt to work around a failed check.
 
 1. **Single-branch workflow.** Run `git branch --show-current` and
    verify the output is exactly `master`. If it is not, STOP and
-   emit a Deviation Report — do NOT create a `sprint/13` branch and
-   do NOT switch branches. Per `DECISIONS.md` 2026-04-25 the project
-   uses a single `master` branch on a single repo; worktrees are
-   not in use.
+   emit a Deviation Report — do NOT create a `sprint/9b` branch
+   and do NOT switch branches. Per `DECISIONS.md` 2026-04-25 the
+   project uses a single `master` branch on a single repo;
+   worktrees are not in use.
 
-2. **Predecessor sprints merged.** Confirm the following files
-   exist on disk and are non-empty:
-   - `apps/web/lib/site-config/schema.ts` (Sprint 3/3b — read-only;
-     verify it exports `siteConfigSchema` and that `pageSchema`
-     carries `kind: pageKindSchema.default("static")`).
-   - `apps/web/lib/site-config/index.ts` (Sprint 3 — read-only;
-     verify it re-exports `parseSiteConfig`, `safeParseSiteConfig`,
-     and the `SiteConfig` / `Page` types).
-   - `apps/web/lib/supabase/service.ts` (Sprint 0/1 — read-only;
-     consume `createServiceSupabaseClient`).
-   - `apps/web/lib/ai/errors.ts` (Sprint 4 — read-only; consume
-     `AiError` and `formatErrorReport` for structured error
-     responses and the toast copy).
-   - `apps/web/types/database.ts` (Sprint 1 — read-only; verify
-     `Database.public.Tables.site_versions.Row` exists with the
-     `is_deployed`, `is_working`, `source`, `parent_version_id`,
-     `config` columns).
-   - `apps/web/components/renderer/Renderer.tsx` (Sprint 3 — read-only;
-     verify it accepts `mode: "edit" | "preview" | "public"`).
-   - `apps/web/components/editor/topbar/DeployButton.tsx` (Sprint 6
-     placeholder — Sprint 13 REWRITES this; ownership hand-off is
-     declared below and matches the Sprint 11 RightSidebar pattern).
-   - `apps/web/components/editor/topbar/TopBar.tsx` (Sprint 6 —
-     Sprint 13 does NOT modify; the rewritten DeployButton keeps
-     its existing import path so TopBar is untouched).
-   - `apps/web/app/[site]/preview/page.tsx` (Sprint 4 — read-only;
-     pattern reference for the public route's "load site by slug,
-     load version, parse, render" flow).
-   - `apps/web/app/api/sites/[siteId]/working-version/route.ts`
-     (Sprint 6 — read-only; pattern reference for the deploy
-     endpoint's request-validate-supabase-respond flow).
-   - `apps/web/app/api/generate-initial-site/route.ts` (Sprint 4 —
-     read-only; pattern reference for `runtime = "nodejs"`,
-     `jsonError`, error-status mapping).
+2. **Predecessor sprints merged.** Run `git log --oneline -n 50`
+   and confirm commits referencing Sprints 0, 1, 2, 3, 3b, 5, 5b,
+   4, 6, 7, 8, 9, 11, 13 are present. The recommended execution
+   order in `docs/planning/SPRINT_SCHEDULE.md` §3 places Sprint 9b
+   AFTER Sprint 13. If Sprint 13 is not merged, STOP — Sprint 9b
+   cannot extend a route file that does not yet exist.
 
-3. **`site_versions` partial unique index exists.** Confirm
-   `supabase/migrations/20260425000007_create_sites_and_site_versions.sql`
-   contains the line
-   `create unique index site_versions_one_deployed_per_site on
-   site_versions (site_id) where is_deployed = true;`. If absent,
-   STOP — Sprint 1's migration is incomplete and the deploy
-   endpoint's flip-then-insert ordering cannot be relied upon.
+3. **Catch-all route present (with the optional brackets).**
+   Run `ls apps/web/app/[site]/[[...slug]]/` and confirm the
+   directory contains at least `page.tsx`, `resolve.ts`, and
+   `__tests__/page.test.tsx`. The directory is `[[...slug]]`
+   (TWO opening brackets, TWO closing brackets) per the
+   2026-04-26 DECISIONS.md "Catch-all directory uses optional
+   brackets" entry. If the directory is `[...slug]` instead, STOP
+   — that means Sprint 13 did not land in its final form and
+   Sprint 9b's plan path needs reconciliation. Do NOT create a
+   second `[...slug]` directory in parallel; raise a Deviation.
 
-4. **Owned paths are clean.** Verify the following do NOT yet exist
-   on disk (clean-slate creations):
-   - `apps/web/app/api/sites/[siteId]/deploy/`
-   - `apps/web/app/[site]/[...slug]/`
-   - `apps/web/components/editor/topbar/DeployConfirmDialog.tsx`
+4. **Insertion-point comment present.** Run
+   `grep -n "SPRINT 9B INSERTS DETAIL BRANCH HERE" apps/web/app/[site]/[[...slug]]/page.tsx`
+   and confirm exactly one match, immediately above the final
+   `notFound()` line, in the form
+   `// === SPRINT 9B INSERTS DETAIL BRANCH HERE ===`. If the
+   comment is missing, has been moved, or has been re-worded,
+   STOP — Sprint 13's contract has been broken; raise a
+   Deviation. The replacement block goes EXACTLY where this
+   comment is; nothing above it (the `staticPage` lookup, the
+   config parse, the site / version load) is touched.
 
-   If any already exists and is non-empty, STOP and surface — the
-   sprint plan assumes these are new. (Empty stub files are OK;
-   delete them and proceed.)
+5. **`resolveStaticPage` exported and untouched.** Open
+   `apps/web/app/[site]/[[...slug]]/resolve.ts` and confirm it
+   exports `resolveStaticPage(config: SiteConfig, slug: string[] |
+   undefined): Page | null`. Sprint 9b ADDS `resolveDetailPage` to
+   this same file; it does NOT modify `resolveStaticPage`'s body
+   or signature.
 
-5. **DeployButton is the Sprint 6 placeholder.** Open
-   `apps/web/components/editor/topbar/DeployButton.tsx` and confirm
-   it currently imports from `sonner` and toasts the literal string
-   `"Deploy is coming in a later sprint."`. If the file has already
-   been rewritten with real deploy behavior, STOP — Sprint 13 is
-   already partially executed; surface the deviation.
+6. **Row context module exports the right names.** Open
+   `apps/web/lib/row-context/index.ts` and confirm it re-exports
+   `RowContext`, `RowContextProvider`, `RowProvided`, and `useRow`.
+   Open `apps/web/lib/row-context/RowContext.tsx` and confirm
+   `RowContextProvider` accepts `kind: "repeater" | "detail"` and
+   the `RowProvided` type is the discriminated union
+   `{ row: unknown; kind: "repeater" | "detail" } | { row: null;
+   kind: null }`. Both shapes are required as written; if either
+   diverges, STOP.
 
-6. **Placeholder test is present.** Open
-   `apps/web/components/editor/__tests__/placeholders.test.tsx` and
-   confirm it asserts `toastMock.toHaveBeenCalledWith("Deploy is
-   coming in a later sprint.")`. This test is owned by Sprint 6;
-   Sprint 13's rewrite will break it. The fix is one of two paths
-   (your choice — both are §15.9 retroactive test-file fixes): (a)
-   update the assertion to `getByTestId("deploy-button")` (matching
-   the same pattern Sprint 11 used for the right-sidebar
-   placeholder rewrite — see DECISIONS.md 2026-04-26 Sprint 11 entry),
-   or (b) delete the assertion entirely. Pick (a) — it preserves the
-   "renders without crashing" intent. Log it in the Sprint Completion
-   Report's "Retroactive cross-sprint fixes" subsection and in
-   `DECISIONS.md`.
+7. **Token resolver public surface intact.** Open
+   `apps/web/lib/token-resolver/index.ts` and confirm it exports
+   `resolveTokens` (the `(value: string, row: unknown | null) =>
+   string` function) and `FORMATTERS`. Open
+   `apps/web/lib/token-resolver/resolve.ts` and confirm the
+   contract: when `row === null || row === undefined` the input
+   is returned verbatim; unknown `{{ row.path }}` paths emit the
+   token verbatim; the `money` / `number` / `date` / `lower` /
+   `upper` formatters all exist. Sprint 9b consumes this surface
+   read-only.
 
-7. **`Toaster` is mounted.** Confirm
-   `apps/web/app/[site]/edit/EditorShell.tsx` already mounts
-   `<Toaster />` from `@/components/ui/sonner`. If absent, STOP —
-   the Deploy success/error toasts will not render and Sprint 6 is
-   incomplete.
+8. **`useRow()` returns the right discriminated shape.** Open
+   `apps/web/lib/row-context/useRow.ts` (or whatever file
+   `useRow` is exported from) and confirm the function returns
+   the same `RowProvided` union shape exported from `RowContext.tsx`.
+   The Button code in step 4 of Mission depends on `kind === null`
+   and `row !== null` being checkable independently.
 
-8. **shadcn `Dialog` primitive available.** Confirm
-   `apps/web/components/ui/dialog.tsx` exists and exports `Dialog`,
-   `DialogContent`, `DialogHeader`, `DialogTitle`, `DialogDescription`,
-   `DialogFooter`. (It is consumed by `AddPageDialog` so it should
-   be present.) If absent, STOP — re-running `pnpm dlx shadcn@latest
-   add dialog` is a Sprint 1c concern, not a Sprint 13 concern.
+9. **`ComponentRenderer.tsx` resolver hook present.** Open
+   `apps/web/components/renderer/ComponentRenderer.tsx` and
+   confirm it imports `useRow` from `@/lib/row-context`, that it
+   has the `WHOLE_TOKEN_RE` regex, the `resolveStringProp` /
+   `resolveValue` / `resolveProps` helpers, and the
+   `useMemo<ComponentNode>(() => kind === null ? node : { ...node,
+   props: resolveProps(node.props, row) }, ...)` block. Sprint 9b
+   does NOT touch this file — the per-component prop resolution is
+   already general enough to handle detail-page row context the
+   moment a `RowContextProvider kind="detail"` wraps the rendered
+   tree. If any of these landmarks are missing, STOP.
 
-9. **`@/components/ui/button` is canonical shadcn.** Confirm
-   `apps/web/components/ui/button.tsx` exports `Button` and supports
-   `variant="outline"` and `size="sm"`. The confirmation modal uses
-   both.
-
-10. **Deployed-version partial unique index is honored.** Open
-    `apps/web/types/database.ts` and confirm
-    `Database.public.Tables.site_versions.Insert` accepts
-    `is_deployed?: boolean | null`. The deploy route's INSERT writes
-    `is_deployed: true`; the type must allow it.
-
-11. **No Vercel-specific code paths.** Verify there is no existing
-    `vercel.json`, no `output: "standalone"` in `next.config.*`, and
-    no Vercel-only API used in any source file you will read. The
-    Sprint 13 deploy mechanism is **runtime-agnostic** (Supabase
-    rows + Next route handlers); the User Actions Required section
-    handles the Vercel project setup separately.
-
-12. **`.env.example` lists the five required keys.** Open
-    `.env.example` at the repo root and confirm it lists
-    `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-    `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_PROJECT_REF`,
-    `ANTHROPIC_API_KEY`. Sprint 13 does not introduce a new env var,
-    but the User Actions Required section instructs the user to set
-    these five on Vercel — the file must match the instructions.
-
-13. **Slug routing safety.** Open
-    `apps/web/lib/site-config/schema.ts` and confirm
-    `siteConfigSchema`'s `superRefine` enforces per-`kind` slug
-    uniqueness (per `PROJECT_SPEC.md` §11 "Page validation rules").
-    The deploy endpoint relies on this — if a config with two
-    static pages sharing a slug somehow reaches deploy, the
-    re-validation step must reject it.
-
-14. **Renderer accepts `mode="public"`.** Open
+10. **`Renderer.tsx` exists and exports `Renderer`.** Open
     `apps/web/components/renderer/Renderer.tsx` and confirm the
-    `Mode` type from `./ComponentRenderer` is
-    `"edit" | "preview" | "public"`. If `"public"` is missing, STOP
-    — Sprint 3 is incomplete and the catch-all route cannot pass
-    `mode="public"` without a TypeScript error.
+    file exports a default or named `Renderer` component that
+    takes `config: SiteConfig`, `page: string`, and `mode: "edit" |
+    "preview" | "public"`. Note where the page lookup happens
+    (`config.pages.find(...)`) and where the page's
+    `rootComponent` is rendered relative to the global NavBar /
+    Footer chrome — Sprint 9b's additive props (`pageKind`, `row`)
+    interleave with that exact location.
 
-After all fourteen checks pass, list each as `[x]` in your first
+11. **`lib/rm-api` exposes `getUnitById` and `getPropertyById`.**
+    Open `apps/web/lib/rm-api/index.ts` and confirm it re-exports
+    `getUnitById` from `./units` and `getPropertyById` from
+    `./properties`. Both functions take a `number` id and return
+    `Unit | null` / `Property | null` respectively (per
+    `apps/web/lib/rm-api/__tests__/units.test.ts` and
+    `apps/web/lib/rm-api/__tests__/properties.test.ts` — confirm
+    by reading the test files, not by running them, since the
+    integration tests skip without env vars in CI).
+
+12. **`Button/index.tsx` matches the Sprint 5b shape.** Open
+    `apps/web/components/site-components/Button/index.tsx` and
+    confirm:
+    - It does NOT have a `"use client"` directive at the top
+      (Sprint 9b adds it).
+    - The `buttonPropsSchema` includes `linkMode` (default
+      `"static"`) and `detailPageSlug` (optional), joined by a
+      `superRefine` that errors when `linkMode === "detail"` and
+      `detailPageSlug === undefined`.
+    - The module-level `BUTTON_FALLBACK = buttonPropsSchema.parse({})`
+      exists.
+    - The render emits `data-link-mode="detail"` and
+      `data-detail-page-slug` data attributes only when
+      `data.linkMode === "detail"` and `data.detailPageSlug !==
+      undefined`.
+    If anything diverges, STOP — Sprint 9b's wiring depends on the
+    Sprint 5b contract.
+
+13. **`InputField/index.tsx` is already a client component.**
+    Open `apps/web/components/site-components/InputField/index.tsx`
+    and confirm the first non-comment line is `"use client";` and
+    that the `useEffect` reading `window.location.search` is
+    wired to `data.defaultValueFromQueryParam`. Sprint 9b makes
+    NO changes to this file — Sprint 5b's wiring is sufficient.
+    If the directive is missing, STOP and raise a Deviation.
+
+14. **`Repeater/index.tsx` continues to use `RowContextProvider`.**
+    Open `apps/web/components/site-components/Repeater/index.tsx`
+    and confirm it imports `RowContextProvider` from
+    `@/lib/row-context` and wraps each row's template render in
+    `<RowContextProvider key={...} row={row} kind="repeater">`.
+    Sprint 9b's detail-page wrap uses the IDENTICAL component;
+    confirm the import is still there so any future regression
+    in the row-context surface affects both call sites equally.
+
+15. **Schema enforces detail-page validation.** Open
+    `apps/web/lib/site-config/schema.ts` and confirm `pageSchema`
+    defaults `kind` to `"static"`, `siteConfigSchema`'s
+    cross-page `superRefine` enforces per-`kind` slug uniqueness,
+    and a per-page `superRefine` rejects `kind === "detail"`
+    without `detailDataSource`. Sprint 9b relies on the catch-all
+    receiving validated configs (the deploy gate re-validates
+    before snapshotting), so a detail page in the deployed config
+    is guaranteed to carry a `detailDataSource`.
+
+After all fifteen checks pass, list each as `[x]` in your first
 response and then proceed.
 
 ## Authorized hand-offs from earlier sprints
 
-The following are planned hand-offs and are NOT Deviations. They are
-honored by this sprint and listed in the Sprint Completion Report under
-"Authorized hand-offs honored":
+The following are planned hand-offs and are NOT Deviations. They
+are honored by this sprint and listed in the Sprint Completion
+Report under "Authorized hand-offs honored":
 
-- `apps/web/components/editor/topbar/DeployButton.tsx` — Sprint 6
-  shipped this as a placeholder that toasts "Deploy is coming in a
-  later sprint." Sprint 13 REWRITES it. The export name `DeployButton`
-  is preserved so `TopBar.tsx` (Sprint 6) is not modified.
-- `apps/web/components/editor/__tests__/placeholders.test.tsx` — the
-  existing assertion against the placeholder toast text is updated to
-  a "renders without crashing" assertion via `getByTestId`. This is a
-  §15.9 retroactive test-file fix; log it in `DECISIONS.md` and the
-  Sprint Completion Report.
+- `apps/web/components/site-components/Button/index.tsx` — Sprint 5
+  shipped this as a server component; Sprint 5b extended its
+  schema and data attributes; **Sprint 9b adds a `"use client"`
+  directive and a `useRow()` call to compute the detail href**.
+  The file's exported name (`Button`), its prop schema, its
+  render output (the `<a>` / `<button>` discriminator on
+  `data.href`), and the Sprint 5b data attributes are all
+  preserved. The `BUTTON_FALLBACK`, `VARIANT_STYLES`, and
+  `SIZE_STYLES` literals are unchanged.
+
+- `apps/web/components/renderer/Renderer.tsx` — Sprint 3 owns the
+  file; Sprint 9b adds two optional props (`pageKind`, `row`)
+  with defaults that preserve every existing call site. Mirror
+  the additive pattern Sprint 9 used when adding the resolver
+  hook to `ComponentRenderer.tsx`.
+
+- `apps/web/app/[site]/[[...slug]]/page.tsx` — Sprint 13 owns the
+  file; the load-bearing
+  `// === SPRINT 9B INSERTS DETAIL BRANCH HERE ===` comment is
+  the agreed insertion point. Replace exactly that line with the
+  new branch. Everything above it (the
+  `loadSiteAndDeployedVersion` call, the `parseSiteConfig` call,
+  the `staticPage` lookup, the static-render return) is
+  untouched.
+
+- `apps/web/app/[site]/[[...slug]]/resolve.ts` — Sprint 13 owns
+  the file; Sprint 9b APPENDS `resolveDetailPage` and exports it.
+  `resolveStaticPage` is untouched.
+
+- `apps/web/app/[site]/[[...slug]]/__tests__/page.test.tsx` —
+  Sprint 13 owns the file; Sprint 9b APPENDS new `describe` blocks
+  for `resolveDetailPage` and the U2 routing cases. Every existing
+  Sprint 13 test passes verbatim.
+
+No other earlier-sprint files are modified. If you find yourself
+wanting to edit any other file, that is a Deviation.
 
 ## Definition of Done
 
-- [ ] **Deploy route handler.**
-      `apps/web/app/api/sites/[siteId]/deploy/route.ts` exports a
-      `POST` handler with `runtime = "nodejs"` and
-      `dynamic = "force-dynamic"`. The handler:
-      1. Reads the `siteId` route param via `await context.params`.
-      2. Validates the body is empty or `{}` (the deploy endpoint
-         takes no body — the working version is the input).
-      3. Loads the site row by id (`select id, slug, name from sites
-         where id = siteId`). 404 if not found.
-      4. Loads the working `site_versions` row
-         (`select id, config from site_versions where site_id =
-         siteId and is_working = true`). 404 if not found.
-      5. Re-validates the loaded `config` against `siteConfigSchema`.
-         If invalid, returns 400 with
-         `{ error: { kind: "invalid_output", message: "Working
-         config failed schema validation.", details: <issues JSON> } }`.
-         This is the §11 "deploy gate" — a config that fails schema
-         validation cannot deploy.
-      6. Flips any existing deployed row for the site:
-         `update site_versions set is_deployed = false where
-         site_id = siteId and is_deployed = true`.
-      7. Inserts a new row:
-         `{ site_id: siteId, config: <validatedConfig>,
-            is_working: false, is_deployed: true,
-            source: "deploy", parent_version_id: workingVersion.id,
-            created_by: null }`.
-         Returns the new row's `id`.
-      8. Returns 200 with body
-         `{ versionId: string, deployedUrl: string }`. The
-         `deployedUrl` is `https://www.{site.slug}.com` — a display
-         string per §17, not a real DNS mapping.
+- [ ] **`resolveDetailPage` exported.**
+      `apps/web/app/[site]/[[...slug]]/resolve.ts` exports
+      `resolveDetailPage(config: SiteConfig, slug: string[] |
+      undefined): { page: Page; rowId: number } | null` with the
+      exact signature above. The function:
+      1. Returns `null` when `slug` is `undefined` or has length
+         other than 2.
+      2. Returns `null` when `slug[1]` does NOT match the regex
+         `/^[1-9]\d*$/` (i.e., a positive integer with no leading
+         zeros, no signs, no decimals — `"0"`, `"01"`, `"-1"`,
+         `"1.5"`, `"abc"` all return `null`).
+      3. Otherwise looks up
+         `config.pages.find((p) => p.kind === "detail" && p.slug
+         === slug[0])` and returns `{ page, rowId: Number(slug[1])
+         }` when found, `null` when not.
+      The function is pure (no async, no side effects) and is
+      exported alongside `resolveStaticPage`. The existing
+      `resolveStaticPage` body is untouched.
 
-      Errors map via the existing `categorizeAiError` only when
-      they originate from a thrown exception in the orchestration;
-      otherwise the handler builds the structured `AiError` body
-      directly. HTTP status mapping: 400 for invalid_output, 404
-      for not_found-shaped errors, 500 for everything else.
+- [ ] **Detail branch landed in the catch-all.**
+      `apps/web/app/[site]/[[...slug]]/page.tsx` is extended
+      in place. The line currently reading
+      `  // === SPRINT 9B INSERTS DETAIL BRANCH HERE ===`
+      is REPLACED (the comment goes away) with a block that:
+      1. Calls `resolveDetailPage(config, params.slug)`.
+      2. If the match is non-null, calls
+         `getUnitById(match.rowId)` when `match.page.detailDataSource
+         === "units"` or `getPropertyById(match.rowId)` when
+         `match.page.detailDataSource === "properties"`. The two
+         imports are added to the top of the file alongside the
+         existing supabase / renderer / parseSiteConfig imports.
+      3. If the row is `null`, falls through to the existing
+         `notFound()` line below (do NOT inline a new
+         `notFound()` — let the existing one handle it).
+      4. If the row is non-null, returns
+         `<Renderer config={config} page={match.page.slug}
+         pageKind="detail" row={row} mode="public" />`.
+      The trailing `notFound()` line (and its position relative
+      to the static branch) is unchanged. The static branch above
+      the insertion point is unchanged. `generateMetadata` does
+      NOT need a detail-page branch in this sprint — its
+      fall-through behavior of using `config.meta.siteName` is
+      acceptable for the demo; a detail-aware metadata branch is
+      a Sprint 15 polish item.
 
-- [ ] **Deploy route unit tests.**
-      `apps/web/app/api/sites/[siteId]/deploy/__tests__/route.test.ts`
-      tests, with Supabase mocked via `vi.mock("@/lib/supabase", ...)`
-      (mirroring the
-      `apps/web/app/api/sites/[siteId]/working-version/__tests__/`
-      pattern Sprint 6 established):
-      1. Returns 200 + `{ versionId, deployedUrl }` on the happy
-         path; verifies the orchestrated supabase calls in order
-         (load site, load working version, schema validation, flip
-         old deployed, insert new deployed).
-      2. Returns 404 when the site does not exist.
-      3. Returns 404 when no working version exists.
-      4. Returns 400 with `kind: "invalid_output"` when the working
-         config fails schema validation. Use a config with two
-         static pages sharing a slug to trigger the §11 refinement.
-      5. Returns 200 even when there is no existing deployed row
-         (the flip step is a no-op; the insert still succeeds).
-      6. Verifies the inserted row's `source === "deploy"` and
-         `parent_version_id === workingVersion.id`.
-      7. Returns 500 with a generic `AiError` when Supabase throws
-         on the insert.
+- [ ] **`Renderer` accepts `pageKind` and `row`.**
+      `apps/web/components/renderer/Renderer.tsx` accepts the two
+      new optional props with the defaults documented in Mission
+      §3. The page lookup uses `(p) => p.slug === page && p.kind
+      === (pageKind ?? "static")`. When `pageKind === "detail"`
+      AND `row !== undefined`, the rendered page-rootComponent
+      tree is wrapped in `<RowContextProvider row={row}
+      kind="detail">…</RowContextProvider>`; when `pageKind ===
+      "static"` (the default) the wrap is NOT applied and the
+      tree renders exactly as it did before this sprint. Global
+      NavBar / Footer rendering is unaffected by either prop.
 
-- [ ] **Public catch-all route.**
-      `apps/web/app/[site]/[...slug]/page.tsx` is a server component
-      that:
-      1. Awaits `params` (Next 15 async params) and reads `site`
-         (string) and `slug` (string[] | undefined).
-      2. Computes `slugPath = (slug?.join("/") ?? "") || "home"` —
-         empty trailing path resolves to the `home` page.
-      3. Loads the site by slug:
-         `select id, slug, name from sites where slug = site`.
-         Calls `notFound()` if not found.
-      4. Loads the deployed version:
-         `select id, config from site_versions where site_id =
-         site.id and is_deployed = true`. Calls `notFound()` if
-         absent.
-      5. Parses the config via `parseSiteConfig`. If the parse
-         throws, calls `notFound()` (a corrupted deployed config
-         should never be reachable since the deploy gate validates,
-         but the catch is defense-in-depth).
-      6. **Static branch (Sprint 13 owns this):**
-         `const page = config.pages.find((p) => p.kind === "static"
-         && p.slug === slugPath);`
-         If `page` is found, render
-         `<Renderer config={config} page={page.slug} mode="public" />`.
-         If not, fall through.
-      7. Calls `notFound()` if no static branch matched. **Sprint
-         9b will replace this `notFound()` call with the detail
-         branch** — the file structure must clearly mark the
-         insertion point with a comment block:
-         `// === SPRINT 9B INSERTS DETAIL BRANCH HERE ===` immediately
-         above the `notFound()` call.
-      8. Implements `generateMetadata` that loads the site +
-         deployed config + matching page and returns `{ title:
-         page.meta?.title ?? config.meta.siteName, description:
-         page.meta?.description ?? config.meta.description }`. On any
-         error, returns `{ title: "Site not found" }` (mirrors the
-         Sprint 4 preview page pattern).
+- [ ] **Button computes the detail href.**
+      `apps/web/components/site-components/Button/index.tsx`:
+      1. Adds `"use client";` as the first non-blank line of the
+         file (above the existing comment block).
+      2. Imports `useRow` from `@/lib/row-context`.
+      3. Calls `const { row, kind } = useRow();` inside the
+         `Button` function body, after `parsed` / `data` are
+         derived.
+      4. Computes `let href = data.href;` and, when (i)
+         `data.linkMode === "detail"`, (ii) `data.detailPageSlug
+         !== undefined`, (iii) `kind !== null`, (iv) `row !== null
+         && typeof row === "object"`, AND (v)
+         `(row as { id?: unknown }).id` is `typeof "number" |
+         "string"`, sets
+         `href = "/" + data.detailPageSlug + "/" + (row as {id:
+         number | string}).id`.
+      5. Renders the `<a>` branch when this computed `href` is
+         defined (existing behavior — `<a>` is chosen iff `href`
+         is set), and falls back to the `<button>` branch
+         otherwise.
+      6. Continues to emit `data-link-mode="detail"` and
+         `data-detail-page-slug` data attributes under the
+         existing condition (`data.linkMode === "detail"` AND
+         `data.detailPageSlug !== undefined`); the data attrs
+         are independent of whether row context is in scope.
+      The Sprint 5b silent-fallback semantics (invalid prop
+      combinations cause `parsed.success === false`, falling back
+      to `BUTTON_FALLBACK`) are preserved verbatim — the new
+      logic only fires on the success branch.
 
-- [ ] **Public route unit-style test.**
-      `apps/web/app/[site]/[...slug]/__tests__/page.test.tsx` tests
-      the segment-to-slug computation and static-page lookup as a
-      pure function. Extract a helper
-      `resolveStaticPage(config: SiteConfig, slug: string[] |
-      undefined): Page | null` from the page module, export it for
-      test purposes (or test via a small helper file
-      `apps/web/app/[site]/[...slug]/resolve.ts` that the page
-      imports). Cases:
-      1. `undefined` slug → resolves to the `home` page.
-      2. Empty array `[]` → resolves to the `home` page.
-      3. `["about"]` → resolves to a static page with
-         `slug: "about"`.
-      4. `["foo", "bar"]` → resolves to a static page with
-         `slug: "foo/bar"` (multi-segment static slug).
-      5. No matching page → returns `null`.
-      6. A detail page with the same slug as the static branch
-         lookup is **ignored** — only `kind === "static"` is matched.
-         Use a config with one static page `slug: "units"` and one
-         detail page `slug: "units"` (the U2 case from §11). The
-         lookup for `["units"]` returns the static page; the lookup
-         for `["units", "42"]` returns `null` (Sprint 9b will handle
-         the detail branch).
+- [ ] **Button SPEC reflects the detail-href behavior.**
+      `apps/web/components/site-components/Button/SPEC.md`'s
+      "Data binding" section is updated to state that when a
+      Button is inside a row context (Repeater iteration or
+      detail page) AND `linkMode === "detail"` with a valid
+      `detailPageSlug`, the rendered href is computed as
+      `/{detailPageSlug}/{row.id}` at render time. The existing
+      note about `{{ row.* }}` tokens being stored verbatim by
+      Sprint 5b is preserved; Sprint 9b's wiring complements it,
+      it does not replace it. No other section of `SPEC.md` is
+      modified.
 
-- [ ] **Deploy button rewrite.**
-      `apps/web/components/editor/topbar/DeployButton.tsx` is
-      replaced with a `"use client"` component that:
-      1. Reads `siteId`, `siteSlug`, and `saveState` from
-         `useEditorStore`.
-      2. Renders the same `<Button>` shell as the placeholder
-         (preserving `data-testid="deploy-button"` and the Rocket
-         icon) but with `disabled` set to
-         `saveState !== "saved" && saveState !== "idle"`. On hover
-         the button shows a tooltip via `title=` attribute when
-         disabled — `"Save in progress…"` for `"saving"`,
-         `"Saving…"` for `"dirty"`, `"Save failed; cannot deploy"`
-         for `"error"`. (No new tooltip primitive — the native
-         `title` attribute is sufficient for the demo.)
-      3. On click, opens a `<DeployConfirmDialog />` (new sibling
-         file). The dialog renders the §8.13 copy `"Deploy current
-         version to your live site?"` with Cancel and Confirm
-         buttons.
-      4. On Confirm, the dialog closes and the button POSTs to
-         `/api/sites/{siteId}/deploy` (no body). While the request
-         is in flight the button shows "Deploying…" and is
-         disabled.
-      5. On 200, fires
-         `toast.success("Deployed. Your site is live at " + url, {
-         action: { label: "Copy", onClick: () =>
-         navigator.clipboard.writeText(url) } })` where
-         `url = response.deployedUrl`. The `action` button is the
-         Sonner-canonical way to add a "Copy" affordance to a
-         toast.
-      6. On error, fires
-         `toast.error("Deploy failed: " + error.message)` (or the
-         §9.6 friendly copy when `error.kind` matches a known
-         category).
+- [ ] **Resolver tests green + new detail cases.**
+      `apps/web/app/[site]/[[...slug]]/__tests__/page.test.tsx`
+      keeps every existing Sprint 13 test passing verbatim and
+      adds a new `describe("resolveDetailPage", () => { … })`
+      block with at least these six cases:
+      1. Two-segment slug whose first segment matches a detail
+         page → returns `{ page, rowId }` with the right page id
+         and a numeric `rowId`.
+      2. Two-segment slug whose first segment matches a STATIC
+         page (and no sibling detail page exists) → returns
+         `null`.
+      3. U2 case: two-segment slug `["units", "42"]` against a
+         config with a static `units` page AND a detail `units`
+         page (`detailDataSource: "units"`) → returns the DETAIL
+         page, `rowId === 42`. The static page is ignored.
+      4. Single-segment slug `["units"]` against the same U2
+         config → returns `null` (the detail branch does not
+         fire on the bare slug; `resolveStaticPage` handles
+         that — covered by the existing Sprint 13 test).
+      5. Three-segment slug `["units", "42", "extra"]` → returns
+         `null`.
+      6. Non-numeric trailing segment `["units", "abc"]` → returns
+         `null`. Edge-case sub-cases: `["units", "0"]`,
+         `["units", "01"]`, `["units", "-1"]`,
+         `["units", "1.5"]`, `["units", " 1 "]` all return `null`.
 
-- [ ] **DeployConfirmDialog.**
-      `apps/web/components/editor/topbar/DeployConfirmDialog.tsx` is
-      a `"use client"` component that wraps shadcn `<Dialog>` /
-      `<DialogContent>` / `<DialogHeader>` / `<DialogTitle>` /
-      `<DialogDescription>` / `<DialogFooter>`. Props:
-      `{ open: boolean; onOpenChange: (open: boolean) => void;
-      onConfirm: () => void; isDeploying: boolean }`. The Confirm
-      button is disabled when `isDeploying` is true.
+- [ ] **Button tests cover the detail-href computation.**
+      `apps/web/components/site-components/Button/__tests__/Button.test.tsx`
+      adds a new `describe("Button (detail href under row context)",
+      () => { … })` block with at least these six cases (each
+      rendered inside a `<RowContextProvider>` wrapper):
+      1. `linkMode: "detail"`, `detailPageSlug: "units"`, row =
+         `{ id: 42 }`, `kind: "repeater"` → rendered `<a>` has
+         `href === "/units/42"`.
+      2. Same as (1) but `kind: "detail"` → same href result.
+      3. `linkMode: "static"`, `href: "/about"`, row = `{ id: 42 }`
+         → href stays `/about` (static-mode is not affected by
+         row context).
+      4. `linkMode: "detail"`, `detailPageSlug: "units"`, row =
+         `null` (no provider) → href stays `data.href`'s pre-row
+         value (or undefined → `<button>` branch). The
+         `data-link-mode="detail"` data attr still renders.
+      5. `linkMode: "detail"`, `detailPageSlug: "units"`, row =
+         `{ name: "Apt 101" }` (id missing) → href stays the
+         pre-row value; no `/units/undefined` artifact.
+      6. `linkMode: "detail"`, `detailPageSlug: "units"`, row =
+         `{ id: { nested: 1 } }` (non-scalar id) → href stays
+         the pre-row value.
+      Pre-existing Sprint 5 / Sprint 5b Button tests continue to
+      pass verbatim.
 
-- [ ] **Deploy button tests.**
-      `apps/web/components/editor/topbar/__tests__/DeployButton.test.tsx`
-      tests, with `useEditorStore` hydrated to a known state and
-      `fetch` mocked via `vi.stubGlobal("fetch", ...)` and `sonner`
-      mocked the same way the existing `placeholders.test.tsx`
-      does:
-      1. Renders an enabled button when `saveState === "saved"`.
-      2. Renders a disabled button when `saveState === "dirty"`,
-         `saveState === "saving"`, or `saveState === "error"`. The
-         disabled `title` matches the expected hint.
-      3. Clicking opens the confirmation dialog (`getByRole(
-         "dialog" )` is present).
-      4. Clicking Confirm POSTs to
-         `/api/sites/{siteId}/deploy` with method `"POST"`.
-      5. On a 200 response, `toast.success` is called with a
-         message containing `"Deployed."` and the deployedUrl, and
-         with an `action` object whose `label` is `"Copy"`.
-      6. Clicking the `action.onClick` writes the URL to
-         `navigator.clipboard.writeText`.
-      7. On a 4xx response with
-         `{ error: { kind: "invalid_output", message: "..." } }`,
-         `toast.error` is called.
-      8. While the request is in flight the button label is
-         `"Deploying…"` and the button is disabled.
+- [ ] **Renderer test covers the U2 disambiguation.**
+      Add or extend a renderer test (in
+      `apps/web/components/renderer/__tests__/Renderer.test.tsx`
+      if a test already covers `Renderer`'s page lookup, or in a
+      new sibling test file otherwise) that asserts:
+      1. With a U2 config (a static `units` page and a detail
+         `units` page), `<Renderer page="units" mode="public" />`
+         renders the static page's tree.
+      2. The same call with `pageKind="detail" row={{ id: 42, … }}`
+         renders the detail page's tree, wrapped in row context
+         (a descendant `{{ row.* }}` token resolves).
+      If `Renderer.test.tsx` is in another sprint's domain and
+      adding to it constitutes a deviation, prefer a new test
+      file alongside the renderer at
+      `apps/web/components/renderer/__tests__/Renderer.detail.test.tsx`
+      and document the choice in the Sprint Completion Report.
 
-- [ ] **Placeholder test fix (§15.9).**
-      `apps/web/components/editor/__tests__/placeholders.test.tsx`
-      has its `"Deploy button fires a toast and does not navigate"`
-      assertion rewritten to a `"Deploy button renders without
-      crashing"` assertion using
-      `expect(getByTestId("deploy-button")).toBeInTheDocument()`,
-      mirroring how Sprint 11 fixed the parallel right-sidebar
-      placeholder test (DECISIONS.md 2026-04-26 Sprint 11 entry).
-      List this fix in the Sprint Completion Report's "Retroactive
-      cross-sprint fixes" subsection and append a `DECISIONS.md`
-      entry per §15.9.
+- [ ] **End-to-end smoke test passes** (see "Manual smoke test"
+      below).
 
-- [ ] **DECISIONS.md updated.** A single entry is appended for the
-      §15.9 retroactive fix above. If any in-sprint Deviation is
-      raised and approved, additional entries are appended per the
-      Deviation Protocol.
-
-- [ ] **All new code has unit tests (Vitest).** No new function
-      ships without a test.
-
+- [ ] **All new code has unit tests (Vitest).**
 - [ ] `pnpm test` passes with zero failures and zero new skipped
-      tests. Pre-existing skip count is unchanged.
-
-- [ ] `pnpm build` succeeds with zero TypeScript errors.
-
-- [ ] `pnpm lint` (Biome check) passes with zero warnings.
-
-- [ ] Manual smoke test (below) passes on a fresh `pnpm dev`
-      against the linked hosted Supabase project.
-
-- [ ] No new files outside the "Files you may create or modify"
-      list.
-
-- [ ] No new dependencies added without an approved Deviation
-      Report.
+      tests (the pre-existing skip count for the integration
+      tests that gate on env vars is unchanged).
+- [ ] `pnpm build` succeeds with zero TypeScript errors and zero
+      warnings.
+- [ ] `pnpm lint` (Biome) passes with zero warnings.
+- [ ] No new files outside the "may create or modify" list.
+- [ ] No new dependencies added without an approved Deviation.
+- [ ] `DECISIONS.md` updated if any deviation was approved during
+      this sprint, AND a single execution-record entry is
+      appended for Sprint 9b that lists the files actually
+      modified, the new tests added, the pre-flight check result,
+      and any retroactive cross-sprint test fixes (per CLAUDE.md
+      §15.9) that proved necessary.
 
 ## File scope
 
 ### You may create or modify
 
-- `apps/web/app/api/sites/[siteId]/deploy/route.ts` (new).
-- `apps/web/app/api/sites/[siteId]/deploy/__tests__/route.test.ts`
-  (new).
-- `apps/web/app/[site]/[...slug]/page.tsx` (new — catch-all; static
-  branch only. Sprint 9b adds the detail branch).
-- `apps/web/app/[site]/[...slug]/resolve.ts` (new — pure helper for
-  static-page lookup, exposed for unit testing).
-- `apps/web/app/[site]/[...slug]/__tests__/page.test.tsx` (new —
-  unit tests against `resolve.ts`).
-- `apps/web/components/editor/topbar/DeployButton.tsx` (REWRITE —
-  authorized Sprint 6 hand-off).
-- `apps/web/components/editor/topbar/DeployConfirmDialog.tsx` (new).
-- `apps/web/components/editor/topbar/__tests__/DeployButton.test.tsx`
-  (new).
-- `apps/web/components/editor/__tests__/placeholders.test.tsx`
-  (§15.9 retroactive test fix — one assertion rewrite).
-- `DECISIONS.md` (append-only — log the §15.9 fix and any approved
-  Deviations).
+- `apps/web/app/[site]/[[...slug]]/page.tsx` — extend in place at
+  the load-bearing comment site only.
+- `apps/web/app/[site]/[[...slug]]/resolve.ts` — append
+  `resolveDetailPage`; do not modify `resolveStaticPage`.
+- `apps/web/app/[site]/[[...slug]]/__tests__/page.test.tsx` —
+  append the `resolveDetailPage` describe block.
+- `apps/web/components/renderer/Renderer.tsx` — add the two
+  optional props and the conditional row-context wrap.
+- `apps/web/components/site-components/Button/index.tsx` — add
+  the `"use client"` directive, the `useRow` import, and the
+  detail-href computation.
+- `apps/web/components/site-components/Button/SPEC.md` — update
+  the Data binding section.
+- `apps/web/components/site-components/Button/__tests__/Button.test.tsx`
+  — append the detail-href describe block.
+- `apps/web/components/renderer/__tests__/Renderer.detail.test.tsx`
+  (NEW; only if extending the existing `Renderer.test.tsx` would
+  cross sprint domains — see the DoD note).
+- `DECISIONS.md` — append exactly one Sprint 9b execution-record
+  entry at the END of the file (do not edit any earlier entry).
 
 ### You may read but NOT modify
 
-- `PROJECT_SPEC.md`.
-- `apps/web/lib/site-config/schema.ts`.
-- `apps/web/lib/site-config/index.ts`.
-- `apps/web/lib/site-config/parse.ts`.
-- `apps/web/lib/supabase/service.ts`.
-- `apps/web/lib/supabase/index.ts`.
-- `apps/web/lib/ai/errors.ts`.
-- `apps/web/types/database.ts`.
-- `apps/web/types/site-config.ts`.
-- `apps/web/components/renderer/**`.
-- `apps/web/components/site-components/**`.
-- `apps/web/components/editor/topbar/TopBar.tsx`.
-- `apps/web/components/editor/topbar/SaveIndicator.tsx`
-  (read-only — useful pattern for `useEditorStore` consumption).
-- `apps/web/components/ui/dialog.tsx`.
-- `apps/web/components/ui/button.tsx`.
-- `apps/web/components/ui/sonner.tsx`.
-- `apps/web/lib/editor-state/index.ts`.
-- `apps/web/lib/editor-state/store.ts`.
-- `apps/web/app/[site]/preview/page.tsx` (pattern reference).
-- `apps/web/app/[site]/edit/page.tsx` (pattern reference).
-- `apps/web/app/[site]/edit/EditorShell.tsx` (verify Toaster mount).
-- `apps/web/app/api/generate-initial-site/route.ts` (pattern).
-- `apps/web/app/api/sites/[siteId]/working-version/route.ts`
-  (pattern reference).
-- `apps/web/app/api/sites/[siteId]/working-version/__tests__/route.test.ts`
-  (pattern reference for the deploy route's tests).
-- `supabase/migrations/20260425000007_create_sites_and_site_versions.sql`
-  (verify the partial unique index).
-- `.env.example`.
+- `PROJECT_SPEC.md` — authoritative spec; raise concerns via the
+  Deviation Protocol, never edit.
+- `CLAUDE.md` (root) — master coding standards + Deviation
+  Protocol.
+- `apps/web/lib/site-config/schema.ts` — Sprint 3/3b domain.
+- `apps/web/lib/site-config/index.ts` — Sprint 3 domain (re-exports).
+- `apps/web/types/site-config.ts` — Sprint 3 domain.
+- `apps/web/lib/row-context/RowContext.tsx` — Sprint 9 domain.
+- `apps/web/lib/row-context/useRow.ts` — Sprint 9 domain.
+- `apps/web/lib/row-context/index.ts` — Sprint 9 domain.
+- `apps/web/lib/token-resolver/**` — Sprint 9 domain.
+- `apps/web/lib/rm-api/**` — Sprint 1 domain.
+- `apps/web/lib/supabase/**` — Sprint 0/1 domain.
+- `apps/web/components/renderer/ComponentRenderer.tsx` — Sprint 3/9
+  domain. Sprint 9b does NOT touch the resolver hook; the
+  existing per-prop walker already handles detail-page row
+  context once a `<RowContextProvider kind="detail">` wraps the
+  tree.
+- `apps/web/components/site-components/Repeater/**` — Sprint 9
+  domain (the row-context wrap pattern Sprint 9b mirrors lives
+  here).
+- `apps/web/components/site-components/InputField/**` — Sprint 5/5b
+  domain. Sprint 9b makes NO changes; the Sprint 5b client wiring
+  is sufficient for the smoke test.
+- `apps/web/app/api/sites/[siteId]/deploy/**` — Sprint 13 domain.
 
 ### You MUST NOT modify
 
-- `PROJECT_SPEC.md` — raise concerns via the Deviation Protocol.
-- `DECISIONS.md` — append-only; never edit existing entries.
-- `apps/web/lib/rm-api/**` — Sprint 1's domain.
-- `apps/web/lib/site-config/**` — Sprint 3/3b/9 domain.
-- `apps/web/lib/ai/**` — Sprint 4/11 domain.
-- `apps/web/lib/editor-state/**` — Sprint 6/9/11 domain. Sprint 13
-  introduces NO new mutators.
-- `apps/web/lib/row-context/**` — Sprint 9 domain (Sprint 9b will
-  generalize, not Sprint 13).
-- `apps/web/lib/token-resolver/**` — Sprint 9 domain.
-- `apps/web/components/renderer/**` — Sprint 3/9 domain.
-- `apps/web/components/site-components/**` — Sprint 5/9/10 domain.
-- `apps/web/components/setup-form/**` — Sprint 2/4 domain.
-- `apps/web/components/editor/sidebar/**` — Sprint 6/9/10/11 domain.
-- `apps/web/components/editor/canvas/**` — Sprint 6/7 domain.
-- `apps/web/components/editor/edit-panels/**` — Sprint 8 domain.
-- `apps/web/components/editor/ai-chat/**` — Sprint 11 domain.
-- `apps/web/components/editor/topbar/TopBar.tsx` — Sprint 6 (do
-  not modify; the rewritten `DeployButton` keeps its export name).
-- `apps/web/components/editor/topbar/PageSelector.tsx`,
-  `PreviewToggle.tsx`, `SaveIndicator.tsx`, `SiteNameInput.tsx` —
-  Sprint 6 (read-only).
-- `apps/web/app/[site]/preview/**` — Sprint 4.
-- `apps/web/app/[site]/edit/**` — Sprint 6.
-- `apps/web/app/(rmx)/**` — Sprint 1.
-- `apps/web/app/dev/**` — Sprint 3/5/9 dev fixtures (Sprint 13
-  does not need these and they 404 in production).
-- `apps/web/app/api/generate-initial-site/**` — Sprint 4.
-- `apps/web/app/api/sites/[siteId]/working-version/**` — Sprint 6.
-- `apps/web/app/api/ai-edit/**` — Sprint 11.
-- `apps/web/app/api/form-submissions/**` — Sprint 10.
-- `supabase/migrations/**` — Sprint 13 introduces NO migrations.
-- `apps/web/package.json` — Sprint 13 introduces NO dependencies.
-- `next.config.*`, `tsconfig*.json`, `vitest.config.*`,
-  `biome.json` — root config files; untouched.
+- `PROJECT_SPEC.md` — the spec is authoritative.
+- `DECISIONS.md` — APPEND-ONLY; never edit earlier entries.
+- The repo-root `CLAUDE.md`.
+- `apps/web/lib/rm-api/**`, `apps/web/lib/site-config/**`,
+  `apps/web/lib/ai/**`, `apps/web/lib/editor-state/**`,
+  `apps/web/lib/row-context/**` (source files; tests live in
+  `__tests__/`),  `apps/web/lib/token-resolver/**`,
+  `apps/web/lib/supabase/**`.
+- `apps/web/components/renderer/ComponentRenderer.tsx`.
+- `apps/web/components/site-components/**` EXCEPT the four Button
+  files listed above. Specifically: `InputField/**` is OFF
+  LIMITS for this sprint.
+- `apps/web/components/setup-form/**`,
+  `apps/web/components/editor/**`, `apps/web/components/rmx-shell/**`.
+- `apps/web/app/[site]/edit/**`, `apps/web/app/[site]/preview/**`,
+  `apps/web/app/(rmx)/**`, `apps/web/app/dev/**`,
+  `apps/web/app/setup/**`, `apps/web/app/api/**` (every API route
+  is owned by the sprint that authored it).
+- `supabase/migrations/**` — Sprint 9b introduces NO new
+  migrations.
+- `apps/web/package.json`, `next.config.*`, `tsconfig*.json`,
+  `vitest.config.*`, `biome.json`, `apps/web/.env.local`,
+  `.env.example`, `pnpm-lock.yaml` — Sprint 9b introduces NO new
+  dependencies and NO new env vars.
+
+If you find yourself wanting to add a file outside this list, that
+is a Deviation. Raise the report; do not just add the file.
 
 ## Manual smoke test (numbered, click-by-click)
 
 Run against the linked hosted Supabase project (per the 2026-04-25
-DECISIONS.md "hosted Supabase" decision). Requires the seeded Aurora
-Property Group fixture (`pnpm seed`) and a working version row to
-exist. If a working version does not exist, run the Element 1 generate
-flow first (open `/setup`, fill the form, click "Ready to Preview &
-Edit", wait for generation to complete) so an editable site exists.
+DECISIONS.md "hosted Supabase" decision). Requires the seeded
+Aurora Property Group fixture (`pnpm seed`) and a working version
+that has been deployed at least once (Sprint 13's smoke test
+covers this — re-run it if `site_versions` for the Aurora site
+has no `is_deployed = true` row).
+
+If the working SiteConfig for Aurora does not already include a
+detail page for `units`, you can either (a) use the editor's
+Pages tab "Add page" modal to add one (Static / Detail picker;
+data source `units`; slug `units`) and re-deploy, OR (b) follow
+the dev fixture path: open
+`http://localhost:3000/dev/components` and confirm the U2 detail
+page in the Sprint 5b dev fixture is rendered (Sprint 5b's
+`p_units_static` + `p_units_detail` coexistence).
+
+The smoke-test sequence below uses the Aurora Property Group
+fixture and assumes a deployed site where at least one detail
+page exists.
 
 1. Run `pnpm dev` and confirm the dev server starts on
    `http://localhost:3000` with no startup errors in the console.
-2. Open `http://localhost:3000/setup` and find an existing site in
-   the "Open an existing site in the editor" list. Click into it
-   to open the editor at `/{site}/edit`.
-3. The editor loads. The top-bar SaveIndicator shows "Ready" or
-   "Saved Xs ago". The Deploy button is enabled (saveState is
-   `idle` or `saved`).
-4. Click the Deploy button. A modal opens with the title "Deploy
-   current version to your live site?" and Cancel / Confirm
-   buttons.
-5. Click Cancel. The modal closes; nothing happens. The button is
-   still enabled.
-6. Click Deploy again. Click Confirm. The button label changes to
-   "Deploying…" and is disabled.
-7. Within ~2 seconds, a Sonner toast appears in the top-right
-   reading
-   `Deployed. Your site is live at https://www.{siteSlug}.com`
-   with a Copy action button. The Deploy button returns to its
-   normal state.
-8. Click the Copy button on the toast. Open a scratch buffer and
-   paste — confirm the URL was copied.
-9. Open a new browser tab and navigate to
-   `http://localhost:3000/{siteSlug}` (the bare site URL with no
-   trailing path). The home page renders in `mode="public"` with
-   no editor chrome (no selection outlines, no drag handles, no
-   sidebars). Sub-page navigation links (if any in the navbar)
-   work.
-10. Navigate to `http://localhost:3000/{siteSlug}/about` (or
-    whichever static page exists in the deployed config). The
-    page renders.
-11. Navigate to `http://localhost:3000/{siteSlug}/this-page-does-not-exist`.
-    Next renders the framework 404 page.
-12. Run a SQL query against the linked Supabase project (in the
-    Supabase dashboard SQL editor):
-    `select id, is_working, is_deployed, source, parent_version_id
-    from site_versions where site_id = '<siteId>' order by
-    created_at desc limit 5;`
-    Confirm:
-    - The top row is the new deployed snapshot:
-      `is_working = false`, `is_deployed = true`,
-      `source = 'deploy'`, `parent_version_id` matches the working
-      row's id.
-    - The working row is unchanged: `is_working = true`,
-      `is_deployed = false`.
-    - At most one row has `is_deployed = true` (the partial unique
-      index is honored).
-13. Back in the editor, make a small edit (rename the site via
-    `SiteNameInput`). The SaveIndicator flips to "Saving…" then
-    "Saved Xs ago" once autosave completes. The Deploy button is
-    disabled during "Saving…" and enabled again after "Saved".
-14. Click Deploy → Confirm. Wait for the success toast.
-15. Re-run the SQL query in step 12. Confirm:
-    - A second deployed snapshot row was inserted (it is now the
-      top row).
-    - The previous deployed snapshot has been flipped to
-      `is_deployed = false`.
-    - Exactly one row still has `is_deployed = true`.
-16. Open `http://localhost:3000/{siteSlug}` in a new tab.
-    Confirm the renamed site name appears in the navbar / page
-    title.
-17. Test the deploy gate: in the Supabase dashboard, manually
-    insert a row with an invalid config (e.g. two static pages
-    sharing a slug) and set `is_working = true` for a TEST site
-    (do NOT do this on the Aurora Property Group fixture).
-    Click Deploy on that test site. Confirm the toast reads a
-    `Deploy failed:` message referencing schema validation. The
-    SQL query confirms no new deployed row was created. (If you
-    do not have a test site to spare, skip this step and rely on
-    the unit test that covers it.)
-18. Run `pnpm test` from the repo root. Confirm all tests pass and
-    the suite's pre-existing skip count is unchanged.
-19. Run `pnpm build`. Confirm "Compiled successfully" with zero
-    TypeScript errors.
-20. Run `pnpm lint`. Confirm zero warnings.
+
+2. Run `pnpm seed` if not run since the last `pnpm db:reset`.
+   Confirm the Aurora seed loads (rm-api integration tests
+   in step 19 implicitly cover this).
+
+3. Open `http://localhost:3000/setup`. Click into the existing
+   Aurora site to open the editor at `/{site}/edit`.
+
+4. In the Pages tab, confirm there is at least one detail page
+   for the `units` data source. If the page selector visually
+   distinguishes detail pages (per the Sprint 6 Pages-tab
+   amendment), the badge / DETAIL marker confirms which page is
+   the detail variant. If no detail page exists yet, add one via
+   the "Add page" modal (Page kind: Detail; Detail data source:
+   units; slug: `units`), drop a Heading and a Paragraph that
+   reference `{{ row.unitName }}` and `{{ row.currentMarketRent
+   | money }}` into its rootComponent, and let autosave settle.
+
+5. Click Deploy. Click Confirm in the modal. Wait for the toast.
+
+6. Open a new browser tab. Navigate to
+   `http://localhost:3000/{siteSlug}/units` (the bare units URL).
+   Confirm the static units listing renders — Sprint 13's static
+   branch behavior is unchanged.
+
+7. Navigate to `http://localhost:3000/{siteSlug}/units/<some
+   seeded unit id>` — pick a real unit id from the Aurora seed
+   (id 101 is the canonical "Apt 101" per
+   `apps/web/lib/rm-api/__tests__/units.test.ts`). Confirm:
+   - The detail page renders (NavBar + the detail page's
+     rootComponent + Footer).
+   - Tokens like `{{ row.unitName }}` render as the unit's name
+     ("Apt 101").
+   - Tokens like `{{ row.currentMarketRent | money }}` render
+     formatted (e.g. `$1,200`).
+   - There is no editor chrome (no selection outlines, no
+     handles, no sidebars).
+
+8. Navigate to
+   `http://localhost:3000/{siteSlug}/units/999999` (a unit id
+   that does not exist in the seed). Confirm Next renders the
+   framework 404 page.
+
+9. Navigate to
+   `http://localhost:3000/{siteSlug}/units/abc`. Confirm 404 —
+   the non-numeric trailing segment is rejected by
+   `resolveDetailPage`.
+
+10. Navigate to `http://localhost:3000/{siteSlug}/units/0`,
+    `http://localhost:3000/{siteSlug}/units/01`, and
+    `http://localhost:3000/{siteSlug}/units/-1`. Confirm each
+    returns 404 (the regex rejects all three).
+
+11. Navigate to
+    `http://localhost:3000/{siteSlug}/units/42/extra-segment`.
+    Confirm 404 — the three-segment shape is not a detail-page
+    shape.
+
+12. Back on the listing page (`/{siteSlug}/units`), find a
+    UnitCard with a CTA that links to its detail page (the
+    canonical pattern: a UnitCard inside a Repeater of `units`
+    with a Button child whose `linkMode === "detail"` and
+    `detailPageSlug === "units"`). Confirm the rendered `<a>`'s
+    `href` attribute is exactly `/units/{thatUnitsId}` — inspect
+    the DOM via DevTools. Click the CTA. Confirm the browser
+    navigates to the detail page for that exact unit and the
+    page renders that unit's data.
+
+13. From the detail page, confirm the global NavBar links and
+    Footer copyright text do NOT contain row-derived strings —
+    if you authored a NavBar link with `{{ row.x }}` it should
+    pass through verbatim because Sprint 9b's row-context wrap
+    is scoped to the rootComponent only. (If you have not
+    authored such a NavBar token, this step is a documentation
+    confirmation rather than a runtime check.)
+
+14. Test the cross-page filter integration: on a page that
+    contains an `<InputField>` with
+    `defaultValueFromQueryParam: "propertyId"`, navigate to
+    `http://localhost:3000/{siteSlug}/{thatPageSlug}?propertyId=4`.
+    Confirm the input is pre-filled with `4` on mount. (This
+    confirms Sprint 5b's wiring is still intact end-to-end on a
+    deployed page; Sprint 9b makes no code changes here.)
+
+15. Run the full quality gate suite from the repo root:
+```
+    pnpm test
+    pnpm build
+    pnpm lint
+```
+    Confirm all three pass. The `pnpm test` output should show
+    the new Sprint 9b tests passing AND the pre-existing skip
+    count unchanged from before this sprint.
+
+16. Run the targeted test for the resolver and the Button:
+```
+    pnpm test apps/web/app/\[site\]/\[\[...slug\]\]/__tests__/page.test.tsx
+    pnpm test apps/web/components/site-components/Button/__tests__/Button.test.tsx
+```
+    Both files report all tests passing, and the new
+    detail-branch / detail-href cases appear in the output.
 
 If any step fails, treat the failure as a Deviation per the
 protocol below — do not commit a partial sprint.
+
+## User Actions Required
+
+None. Sprint 9b introduces no new dependencies, no new env vars,
+no new Supabase migrations, and no Vercel-specific changes. The
+existing hosted Supabase project, the Sprint 13 Vercel project (if
+already created), and the existing `.env.local` are sufficient.
 
 ## Coding standards (binding — copied verbatim from `PROJECT_SPEC.md` §15)
 
@@ -660,20 +794,25 @@ protocol below — do not commit a partial sprint.
 ### 15.2 React
 
 - Server components by default. `"use client"` only where needed.
-  The catch-all page is RSC. The DeployButton and
-  DeployConfirmDialog are `"use client"` (they read from Zustand
-  and call `fetch` / `navigator.clipboard`).
+  The catch-all page is RSC. The Renderer is `"use client"`
+  (inherited from `ComponentRenderer`). The Button BECOMES
+  `"use client"` in this sprint because it calls `useRow()`.
+  `RowContextProvider` is `"use client"` (Sprint 9). The
+  RSC→client boundary at the Renderer call sends the `row` prop
+  as a JSON-serialized payload.
 - One component per file. File name = export name.
 - Use `cn(...)` helper from shadcn for class merging.
-- No prop drilling deeper than 2 levels — lift to Zustand.
+- No prop drilling deeper than 2 levels — lift to Zustand. (Sprint
+  9b adds NO Zustand usage; the row prop flows directly from the
+  RSC catch-all to the Renderer to the RowContextProvider.)
 
 ### 15.3 Naming
 
-- Files: `kebab-case.ts(x)`. (Sprint 13 follows the existing
-  PascalCase filenames for the editor's topbar components —
-  `DeployButton.tsx`, `DeployConfirmDialog.tsx` — to match the
-  `apps/web/components/editor/topbar/` convention already in
-  place.)
+- Files: `kebab-case.ts(x)`. (Sprint 9b follows the existing
+  PascalCase / mixed-case filenames already in the affected
+  directories — `Button/index.tsx`, `Renderer.tsx`,
+  `[[...slug]]/page.tsx`, `[[...slug]]/resolve.ts` — to match
+  precedent.)
 - Components: `PascalCase`.
 - Hooks: `useThing`.
 - API routes: `kebab-case`.
@@ -687,13 +826,26 @@ protocol below — do not commit a partial sprint.
   `docs:`, `test:`.
 - One concern per commit. If a commit message has "and" in it,
   split it.
+- Suggested commit sequence for this sprint: (1) `feat: add
+  resolveDetailPage helper`, (2) `feat: add pageKind/row props
+  to Renderer`, (3) `feat: button computes detail href under row
+  context`, (4) `feat: detail branch in catch-all`, (5) `test:
+  detail-page resolver, button, renderer cases`, (6) `docs:
+  Button SPEC + DECISIONS.md execution record`. Splits and order
+  are non-binding; the binding rule is "one concern per commit".
 
 ### 15.5 Testing
 
-- Unit-test the deploy route with a mocked Supabase client.
-- Unit-test the static-page resolver as a pure function.
-- Unit-test DeployButton with `vi.stubGlobal("fetch", ...)` and a
-  Sonner mock.
+- Unit-test `resolveDetailPage` as a pure function.
+- Unit-test `Button` with `<RowContextProvider>` wrappers in
+  Vitest's `@testing-library/react` host.
+- Unit-test `Renderer`'s `pageKind` filter on a U2 config (no
+  Supabase, no async — feed `Renderer` a hand-built `SiteConfig`).
+- The catch-all `page.tsx` itself is NOT mounted in a unit test
+  (the RSC + async-params combination is not unit-testable in
+  Vitest; the Sprint 13 pattern of testing the helper rather
+  than the page module is preserved). The smoke test covers the
+  end-to-end path.
 
 ### 15.6 Comments
 
@@ -706,50 +858,58 @@ protocol below — do not commit a partial sprint.
 A sprint is not "done" until ALL of the following pass:
 
 - `pnpm test` (Vitest, all tests including new ones).
-- `pnpm build` (Next.js production build, zero TypeScript errors).
+- `pnpm build` (Next.js production build, zero TypeScript
+  errors).
 - `pnpm lint` (Biome check, zero warnings).
 - The sprint's manual smoke test.
 
-If any check fails, treat it as a Deviation. Do not commit. Do not
-declare the sprint complete.
+If any check fails, treat it as a Deviation. Do not commit. Do
+not declare the sprint complete.
 
 ### 15.8 Deviation discipline
 
-Claude Code MUST NOT silently substitute, downgrade, or skip work.
-The full Deviation Protocol is below. Every sprint inherits it.
+Claude Code MUST NOT silently substitute, downgrade, or skip
+work. The full Deviation Protocol is below. Every sprint
+inherits it.
 
 ### 15.9 Retroactive cross-sprint cleanup
 
 When the current sprint's quality gates cannot pass because of a
 pre-existing breakage owned by an earlier sprint (typically a
-TypeScript error or a stale assertion in a Sprint N test file that
-blocks `pnpm build` or `pnpm test`), Claude Code is permitted to
-apply a minimal, surgical fix to the offending earlier-sprint test
-or config file rather than emitting a Deviation per occurrence.
-Constraints are binding: smallest possible change, no behavior
-changes, test/config files only (production code in another
-sprint's domain still requires a Deviation), each fix logged in
-`DECISIONS.md` and listed in the Sprint Completion Report's
-"Retroactive cross-sprint fixes" subsection. See the root
-`CLAUDE.md` §15.9 for the full text.
+TypeScript error or a stale assertion in a Sprint N test file
+that blocks `pnpm build` or `pnpm test`), Claude Code is
+permitted to apply a minimal, surgical fix to the offending
+earlier-sprint test or config file rather than emitting a
+Deviation per occurrence. Constraints are binding: smallest
+possible change, no behavior changes, test/config files only
+(production code in another sprint's domain still requires a
+Deviation), each fix logged in `DECISIONS.md` and listed in the
+Sprint Completion Report's "Retroactive cross-sprint fixes"
+subsection. See the root `CLAUDE.md` §15.9 for the full text.
 
-The §15.9 fix for Sprint 13 is the
-`apps/web/components/editor/__tests__/placeholders.test.tsx`
-assertion rewrite covered above. It is pre-authorized by the DoD;
-log it in `DECISIONS.md` and the Sprint Completion Report but do
-NOT raise a separate Deviation.
+A specific risk for this sprint: making `Button/index.tsx` a
+`"use client"` component MAY trigger latent type errors in
+Sprint 5 or Sprint 5b tests that imported `Button` expecting it
+to be a server-renderable function. If `pnpm build` or
+`pnpm test` flags such a case, apply the §15.9 carve-out —
+typically a one-line cast or a `vi.mock` stub — and log it in
+`DECISIONS.md`. Production code in those test files' sister
+production modules is OFF LIMITS; the carve-out is for tests
+only.
 
 ## Deviation Protocol (mandatory — do not modify)
 
-If you (Claude Code) discover during this sprint that ANY part of the plan
-cannot be implemented exactly as written, you MUST stop and emit a Deviation
-Report in the format below. You MUST NOT proceed with an alternative until
-the user has explicitly approved it with the words "Approved" or equivalent.
+If you (Claude Code) discover during this sprint that ANY part
+of the plan cannot be implemented exactly as written, you MUST
+stop and emit a Deviation Report in the format below. You MUST
+NOT proceed with an alternative until the user has explicitly
+approved it with the words "Approved" or equivalent.
 
-A "deviation" includes: missing/broken/incompatible libraries, impossible
-function signatures, scope additions, file additions outside the declared
-scope, test plans that cannot be executed as written, and any case where you
-catch yourself thinking "I'll just do it slightly differently."
+A "deviation" includes: missing/broken/incompatible libraries,
+impossible function signatures, scope additions, file additions
+outside the declared scope, test plans that cannot be executed
+as written, and any case where you catch yourself thinking "I'll
+just do it slightly differently."
 
 ### Deviation Report (emit verbatim)
 
@@ -780,7 +940,8 @@ Awaiting approval to proceed. Reply "Approved" to continue, or describe a
 different direction.
 ```
 
-After emitting the report, STOP. Do not write code. Do not edit files. Wait.
+After emitting the report, STOP. Do not write code. Do not edit
+files. Wait.
 
 ### Approval handling
 
@@ -794,177 +955,118 @@ After emitting the report, STOP. Do not write code. Do not edit files. Wait.
   assume.
 
 After any approved deviation, append an entry to `/DECISIONS.md`
-with date, sprint, what was changed, and the user's approval message
-verbatim.
+with date, sprint, what was changed, and the user's approval
+message verbatim.
 
 ## Definition of "done" gating
 
-A sprint is not done until all of the following pass with no warnings:
+A sprint is not done until all of the following pass with no
+warnings:
 
 - `pnpm test`
 - `pnpm build`
 - `pnpm lint` (Biome check)
 - The manual smoke test above.
 
-If any check fails, treat it as a Deviation. Do not commit. Do not
-declare the sprint complete.
+If any check fails, treat it as a Deviation. Do not commit. Do
+not declare the sprint complete.
 
 ## Useful local commands
 
 - `pnpm dev` — local dev server at <http://localhost:3000>.
 - `pnpm test` — Vitest, all tests.
-- `pnpm test apps/web/app/api/sites/\[siteId\]/deploy/__tests__/route.test.ts`
-  — fast iteration on the deploy route.
-- `pnpm test apps/web/app/\[site\]/\[...slug\]/__tests__/page.test.tsx`
-  — fast iteration on the resolver.
-- `pnpm test apps/web/components/editor/topbar/__tests__/DeployButton.test.tsx`
-  — fast iteration on the button.
-- `pnpm build` — production build.
-- `pnpm lint` — Biome check.
-- `pnpm format` — Biome format --write.
-- `pnpm typecheck` — TypeScript no-emit check.
-
-## User Actions Required (emit at the end of the Sprint Completion Report)
-
-These are external steps only the user can perform. Surface them
-explicitly in the Sprint Completion Report under a section titled
-"User Actions Required" so they cannot be missed.
-
-1. **Vercel project setup (one-time).**
-   - Sign in to <https://vercel.com> with the same GitHub account
-     that owns this repo.
-   - Click **Add New… → Project**, import the Orion's Belt repo,
-     and select `apps/web` as the Root Directory.
-   - Framework preset: **Next.js** (auto-detected).
-   - Build command: leave default (`next build`).
-   - Output: leave default.
-   - Click **Deploy**. The first deploy will fail because env vars
-     are not yet set — that is expected. Proceed to step 2.
-
-2. **Vercel environment variables (one-time per environment).**
-   In the Vercel project dashboard, **Settings → Environment
-   Variables**, add the following five variables for **Production**
-   (also Preview if you want preview deployments):
-   - `NEXT_PUBLIC_SUPABASE_URL` — from Supabase Project Settings →
-     API.
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — same page.
-   - `SUPABASE_SERVICE_ROLE_KEY` — same page. **KEEP SECRET.** Do
-     not check the "Expose to client-side bundle" box.
-   - `SUPABASE_PROJECT_REF` — the project ref segment from your
-     Supabase URL.
-   - `ANTHROPIC_API_KEY` — from <https://console.anthropic.com>.
-     **KEEP SECRET.**
-   After adding all five, click **Deployments** in the left rail,
-   find the most recent failed deployment, and click **Redeploy**.
-
-3. **Verify the public route works on Vercel.**
-   Once the redeploy succeeds, open the production Vercel URL.
-   Navigate to `/setup`, generate a small site (or use a seeded
-   one), open it in the editor, click Deploy, accept the
-   confirmation. Then visit `/{site-slug}` on the production
-   Vercel URL. The deployed site should render. If it does not,
-   check the Vercel runtime logs for the failed request.
-
-4. **Optional: custom domain.**
-   The toast displays `https://www.{siteSlug}.com` per
-   `PROJECT_SPEC.md` §17 — this is a display string, not a real
-   domain. If you want one of the demo sites to actually resolve
-   at `aurora-cincy.com`, that is a Vercel custom-domain setup
-   step (Settings → Domains) that is **out of scope for Sprint 13
-   per `PROJECT_SPEC.md` §17** ("Multi-tenant deployment to
-   per-customer Netlify subdomains" is out of scope). Skip
-   unless explicitly directed.
-
-5. **No new Supabase migrations.** Sprint 13 introduces no schema
-   changes. The `sites` and `site_versions` tables are already in
-   place from Sprint 4. No `pnpm db:push` is required.
-
-6. **No new env vars.** Sprint 13 does not introduce new
-   environment variables. `.env.example` is unchanged.
+- `pnpm test apps/web/app/\[site\]/\[\[...slug\]\]/__tests__/page.test.tsx`
+  — fast iteration on the resolver helpers.
+- `pnpm test apps/web/components/site-components/Button/__tests__/Button.test.tsx`
+  — fast iteration on the Button.
+- `pnpm test apps/web/components/renderer/`
+  — fast iteration on the Renderer (covers the new `pageKind`
+  filter regardless of which test file ends up holding it).
+- `pnpm seed` — re-seed Supabase mock data on the linked hosted
+  project.
 
 ## Notes & hints (non-binding context)
 
-- **Pattern reference, route handler.** The Sprint 6 file
-  `apps/web/app/api/sites/[siteId]/working-version/route.ts` is
-  the closest existing parallel. Mirror its `runtime = "nodejs"`,
-  `dynamic = "force-dynamic"`, `RouteContext` typing, the `await
-  context.params` pattern for Next 15 async params, the
-  `requestBodySchema.safeParse` style (even though deploy takes no
-  body — explicitly accept empty body or `{}` and reject anything
-  else with 400 invalid_output), the `jsonError(...)` helper, and
-  the structured `ErrorBody` type. Sprint 13's `ErrorBody` should
-  use the `AiError` shape from `lib/ai/errors.ts` so the
-  DeployButton's error toast can route on `error.kind` if needed.
-- **Pattern reference, public route loader.** The Sprint 4 file
-  `apps/web/app/[site]/preview/page.tsx` is the closest parallel
-  to the Sprint 13 catch-all. Mirror its `loadSiteAndVersion`
-  inline-helper pattern (per the Sprint 6 deviation that
-  rejected the `lib/sites/repo.ts` extraction). Do NOT extract a
-  shared helper — three near-duplicate loaders is acceptable for
-  the demo; consolidation is its own future sprint.
-- **Why `parent_version_id` matters.** It records that the
-  deployed snapshot was forked from a specific working version.
-  Future sprints (notably an "ai-edit creates a versioned
-  snapshot" follow-up referenced in the Sprint 11 cost-guardrail
-  comment) may want to walk the chain. Set it explicitly.
-- **Why `is_working: false` on the deployed row.** The partial
-  unique index `site_versions_one_working_per_site` enforces
-  exactly one working row per site. The deployed snapshot is a
-  separate row from the working version — it must NOT carry
-  `is_working = true`, or the insert will fail.
-- **Why no transaction.** Supabase JS client doesn't expose
-  transactions without an RPC; flip-then-insert is two sequential
-  awaits. A theoretical race is possible if two deploys land
-  simultaneously, but the demo is single-user. Sprint 15 polish
-  could harden this with an RPC; not required here.
-- **Toast `action` button.** Sonner's `action: { label, onClick }`
-  is the canonical way to attach an actionable button to a toast.
-  Confirm the project's installed Sonner version supports this
-  shape (it does — see usages elsewhere in the repo if unsure).
-- **Catch-all + `notFound()`.** Next 15's `notFound()` from
-  `next/navigation` triggers the route segment's `not-found.tsx`
-  if present, otherwise the framework default 404. Sprint 13 does
-  NOT need to author a custom `not-found.tsx` — the framework
-  default is acceptable for the demo.
-- **`mode="public"` vs `mode="preview"`.** The renderer treats
-  both modes identically for chrome (no edit affordances). The
-  difference is documented in `PROJECT_SPEC.md` §10.2-10.3:
-  "public" mode also commits to RSC-where-possible data fetching.
-  For Sprint 13, the page-level data load (sites, site_versions)
-  IS server-side. The renderer itself remains a client component
-  per the Sprint 9 deviation; that is fine for SEO of the
-  initial HTML payload (Next streams the client component's
-  initial render server-side).
-- **The "no unsaved changes" §8.2 nuance.** Sprint 13 implements
-  a simpler gate (`saveState in {"saved", "idle"}`) rather than a
-  diff-against-deployed-snapshot gate. The simpler gate matches
-  the demo flow (§13.2 step 7-8: edit → accept → autosave saves
-  → Deploy enabled → Confirm → live). A true diff-based gate is a
-  Sprint 15 polish item. Do NOT implement it here.
-- **Sprint 9b insertion-point comment.** The literal text
-  `// === SPRINT 9B INSERTS DETAIL BRANCH HERE ===` immediately
-  above the `notFound()` call is load-bearing — Sprint 9b's plan
-  greps for it. Do not change the wording.
+- **The `[[...slug]]` directory.** The Sprint 13 catch-all
+  uses the OPTIONAL catch-all form (`[[...slug]]`) per the
+  2026-04-26 DECISIONS.md entry. This is what allows the bare
+  `/{siteSlug}` URL (no trailing path) to render the home page.
+  Sprint 9b's plan in `docs/planning/SPRINT_SCHEDULE.md` was
+  drafted before that decision and uses `[...slug]` in places —
+  treat the SCHEDULE wording as referring to the `[[...slug]]`
+  directory wherever they conflict. Do NOT create a parallel
+  `[...slug]` directory.
+
+- **`generateMetadata` is intentionally minimal.** Sprint 13's
+  `generateMetadata` calls `resolveStaticPage` and falls back to
+  `config.meta.siteName` when no static match is found. For a
+  detail page the same fallback is acceptable for the demo —
+  per-row metadata (e.g. `<title>{unit.unitName} | Aurora</title>`)
+  is a Sprint 15 polish item. Do NOT add a detail branch to
+  `generateMetadata` in this sprint; it is a deviation.
+
+- **Numeric ID regex `/^[1-9]\d*$/`.** This intentionally
+  rejects `"0"`. Sprint 1's RM-API seed assigns ids starting at
+  1; an id of 0 would be unreachable in practice. Allowing `"0"`
+  would also let `"00"`, `"000"` etc. through with `Number(...)`
+  coercing to 0; rejecting at the regex level avoids the
+  ambiguity.
+
+- **`getUnitById` / `getPropertyById` accept `number`.** The
+  resolver returns `rowId: number` (parsed via `Number(slug[1])`
+  after the regex check). Pass that number directly to the
+  rm-api helper; do NOT pass the original string — the helper
+  signature is `(id: number) => Promise<… | null>`.
+
+- **Button "use client" is the same pattern Sprint 5b used for
+  InputField.** No bundle-size impact concerns are in scope for
+  this sprint; Buttons in static (non-row) contexts continue to
+  serialize fine across the RSC→client boundary because the
+  encompassing `<Renderer>` is already client.
+
+- **No `RowContextProvider` source changes.** The Sprint 9
+  provider already accepts `kind: "repeater" | "detail"`. Sprint
+  9b's only new use is `<RowContextProvider row={row}
+  kind="detail">` inside `Renderer.tsx`. The provider's source
+  file is OFF LIMITS.
+
+- **No `ComponentRenderer.tsx` source changes.** The Sprint 9
+  resolver hook (`useRow()` + `resolveProps`) is general — the
+  moment a detail page wraps in `<RowContextProvider
+  kind="detail">`, every descendant token resolves identically
+  to a Repeater iteration. The 2026-04-26 DECISIONS.md
+  whole-token passthrough also flows through verbatim. Sprint
+  9b's tests should include at least one regression case
+  proving this (a Heading or Paragraph inside the detail page's
+  rootComponent renders `{{ row.unitName }}` as the actual
+  unitName).
+
+- **Test fixture choice.** For Button tests, render inside
+  `<RowContextProvider row={...} kind="repeater">` rather than
+  `kind="detail"` for at least one case — the Button's
+  detail-href computation must NOT depend on which kind of row
+  context wraps it; either context activates the wiring. Confirm
+  this with one test of each kind.
+
+- **Pre-existing skip count.** `pnpm test` reports a small set
+  of skipped tests (the rm-api integration tests gate on
+  `process.env.NEXT_PUBLIC_SUPABASE_URL`, etc.). The DoD's
+  "zero new skipped tests" rule means: the count after Sprint
+  9b equals the count before Sprint 9b. Do NOT skip Sprint 9b's
+  new tests.
+
 - **Auth is a placeholder.** Per `PROJECT_SPEC.md` §17 / §3.1
-  the deploy endpoint writes via the service-role client; RLS is
-  permissive in the demo. Do not add an auth check; that is a
-  post-demo hardening item.
-- **Test boundaries.**
-  `apps/web/components/editor/topbar/__tests__/DeployButton.test.tsx`
-  must NEVER hit the real `/api/sites/[siteId]/deploy` route.
-  `vi.stubGlobal('fetch', …)` is the right primitive. The
-  resolver test (`apps/web/app/[site]/[...slug]/__tests__/page.test.tsx`)
-  is a pure-function test against the helper in `resolve.ts`; it
-  does NOT mount the React Server Component itself (RSC unit
-  testing is out of scope for the demo per the Sprint 4 pattern).
-- **"Live at..." toast copy.** Per `PROJECT_SPEC.md` §13.2 step 8
-  the canonical demo toast is
-  `Live at https://www.aurora-cincy.com`. The implementation
-  builds this URL from `siteSlug` (e.g.
-  `https://www.aurora-cincy.com` for slug `aurora-cincy`). Note
-  this is a display string only — DNS does not resolve it. The
-  user is aware and the toast is the demo's pretty-URL theater.
+  the catch-all reads via the service-role client; RLS is
+  permissive in the demo. Sprint 9b adds no auth check. The
+  detail-page row fetch is just another service-role read.
+
+- **The `// === SPRINT 9B INSERTS DETAIL BRANCH HERE ===`
+  comment is consumed.** When Sprint 9b lands, the comment line
+  goes away — its sole purpose was to mark this insertion point.
+  Do NOT preserve the comment "for future sprints"; there is no
+  future sprint that needs it. The detail branch IS the comment's
+  payload.
 
 ---
 
-*End of Sprint 13 CLAUDE.md.*
+*End of Sprint 9b CLAUDE.md.*

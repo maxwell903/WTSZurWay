@@ -18,11 +18,12 @@
  */
 
 import { Renderer } from "@/components/renderer";
+import { getPropertyById, getUnitById } from "@/lib/rm-api";
 import { type SiteConfig, parseSiteConfig } from "@/lib/site-config";
 import { createServiceSupabaseClient } from "@/lib/supabase";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { resolveStaticPage } from "./resolve";
+import { resolveDetailPage, resolveStaticPage } from "./resolve";
 
 type CatchAllPageParams = { site: string; slug?: string[] };
 type CatchAllPageProps = { params: Promise<CatchAllPageParams> };
@@ -85,6 +86,32 @@ export default async function CatchAllPage(props: CatchAllPageProps) {
     return <Renderer config={config} page={staticPage.slug} mode="public" />;
   }
 
-  // === SPRINT 9B INSERTS DETAIL BRANCH HERE ===
+  const detailMatch = resolveDetailPage(config, params.slug);
+  if (detailMatch) {
+    // PROJECT_SPEC.md §8.12: row fetch happens server-side. The row is then
+    // serialized across the RSC->client boundary as the `row` prop on the
+    // Renderer, which wraps the rootComponent in a <RowContextProvider
+    // kind="detail">. detailDataSource is guaranteed by the schema (§11)
+    // when kind === "detail"; the explicit fall-through to null is
+    // defense-in-depth.
+    const row =
+      detailMatch.page.detailDataSource === "units"
+        ? await getUnitById(detailMatch.rowId)
+        : detailMatch.page.detailDataSource === "properties"
+          ? await getPropertyById(detailMatch.rowId)
+          : null;
+    if (row !== null) {
+      return (
+        <Renderer
+          config={config}
+          page={detailMatch.page.slug}
+          pageKind="detail"
+          row={row}
+          mode="public"
+        />
+      );
+    }
+  }
+
   notFound();
 }

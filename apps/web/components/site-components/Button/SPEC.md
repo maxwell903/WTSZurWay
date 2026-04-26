@@ -41,11 +41,30 @@ parse failure.
 None — the label is a static string. (Buttons inside a Form participate in
 submission via Sprint 10's `submitButtonId` wiring.)
 
-`href` strings may contain `{{ row.* }}` tokens that Sprint 9b's renderer
-resolves at render time when the Button is inside a Repeater iteration or a
-detail page (any scope that provides row context per PROJECT_SPEC.md §8.12).
-Sprint 5b stores the token-bearing `href` verbatim; no resolution happens in
-this file.
+`href` strings may contain `{{ row.* }}` tokens that the renderer resolves
+at render time when the Button is inside a Repeater iteration or a detail
+page (any scope that provides row context per PROJECT_SPEC.md §8.12). Sprint
+5b stores the token-bearing `href` verbatim; resolution happens upstream in
+the ComponentRenderer's per-prop walker.
+
+### Detail href computation (Sprint 9b)
+
+When all of the following hold, the rendered `<a>`'s `href` is computed at
+render time as `/{detailPageSlug}/{row.id}` instead of using `data.href`:
+
+- `linkMode === "detail"` and `detailPageSlug` is set (the cross-field rule
+  from Sprint 5b).
+- A `RowContextProvider` (Repeater iteration or detail-page wrap) is in
+  scope; `useRow()` reports `kind !== null`.
+- The in-scope `row` is a non-null object with `id` of type `number` or
+  `string`.
+
+If any of those conditions fail, `data.href` (which may itself be a
+`{{ row.* }}` token-bearing string resolved by the renderer's per-prop
+walker) passes through unchanged. The `data-link-mode="detail"` and
+`data-detail-page-slug` attributes still render whenever `linkMode ===
+"detail"` with a valid `detailPageSlug`, regardless of whether row context
+is available — they're independent of the href computation.
 
 ## Children policy
 

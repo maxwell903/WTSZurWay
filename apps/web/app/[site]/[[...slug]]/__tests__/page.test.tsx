@@ -1,6 +1,6 @@
 import type { SiteConfig } from "@/lib/site-config";
 import { describe, expect, it } from "vitest";
-import { resolveStaticPage } from "../resolve";
+import { resolveDetailPage, resolveStaticPage } from "../resolve";
 
 const BASE_CONFIG: SiteConfig = {
   meta: { siteName: "Test", siteSlug: "test" },
@@ -97,5 +97,70 @@ describe("resolveStaticPage", () => {
     // resolveStaticPage returns null. Sprint 9b's detail branch will own
     // this path.
     expect(resolveStaticPage(U2_CONFIG, ["units", "42"])).toBeNull();
+  });
+});
+
+// Sprint 9b: detail-page resolver. PROJECT_SPEC.md §8.12 specifies
+// `/{site}/{slug}/{id}` for detail pages with `kind === "detail"`. The id
+// regex `/^[1-9]\d*$/` rejects leading zeros, signs, and decimals to keep
+// the URL space deterministic.
+const DETAIL_ONLY_CONFIG: SiteConfig = {
+  ...BASE_CONFIG,
+  pages: [
+    ...BASE_CONFIG.pages,
+    {
+      id: "p_props_detail",
+      slug: "properties",
+      name: "Property Detail",
+      kind: "detail",
+      detailDataSource: "properties",
+      rootComponent: { id: "c_props_d", type: "Section", props: {}, style: {}, children: [] },
+    },
+  ],
+};
+
+describe("resolveDetailPage", () => {
+  it("returns the detail page and a numeric rowId for a two-segment slug matching a detail page", () => {
+    const match = resolveDetailPage(DETAIL_ONLY_CONFIG, ["properties", "7"]);
+    expect(match).not.toBeNull();
+    expect(match?.page.id).toBe("p_props_detail");
+    expect(match?.page.kind).toBe("detail");
+    expect(match?.rowId).toBe(7);
+    expect(typeof match?.rowId).toBe("number");
+  });
+
+  it("returns null when the first segment matches only a STATIC page (no sibling detail)", () => {
+    expect(resolveDetailPage(BASE_CONFIG, ["about", "42"])).toBeNull();
+  });
+
+  it("U2 case: returns the detail page (not the static one) for [slug, id]", () => {
+    const match = resolveDetailPage(U2_CONFIG, ["units", "42"]);
+    expect(match).not.toBeNull();
+    expect(match?.page.id).toBe("p_units_detail");
+    expect(match?.page.kind).toBe("detail");
+    expect(match?.rowId).toBe(42);
+  });
+
+  it("returns null for a single-segment slug (the bare listing path)", () => {
+    expect(resolveDetailPage(U2_CONFIG, ["units"])).toBeNull();
+  });
+
+  it("returns null for a three-segment slug (no nested dynamic routes per §8.12)", () => {
+    expect(resolveDetailPage(U2_CONFIG, ["units", "42", "extra"])).toBeNull();
+  });
+
+  it("returns null when the trailing segment is not a positive integer", () => {
+    expect(resolveDetailPage(U2_CONFIG, ["units", "abc"])).toBeNull();
+    expect(resolveDetailPage(U2_CONFIG, ["units", "0"])).toBeNull();
+    expect(resolveDetailPage(U2_CONFIG, ["units", "01"])).toBeNull();
+    expect(resolveDetailPage(U2_CONFIG, ["units", "-1"])).toBeNull();
+    expect(resolveDetailPage(U2_CONFIG, ["units", "1.5"])).toBeNull();
+    expect(resolveDetailPage(U2_CONFIG, ["units", " 1 "])).toBeNull();
+    expect(resolveDetailPage(U2_CONFIG, ["units", ""])).toBeNull();
+  });
+
+  it("returns null when slug is undefined or empty", () => {
+    expect(resolveDetailPage(U2_CONFIG, undefined)).toBeNull();
+    expect(resolveDetailPage(U2_CONFIG, [])).toBeNull();
   });
 });

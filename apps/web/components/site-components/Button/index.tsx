@@ -1,16 +1,14 @@
+"use client";
+
 // Sprint 5b backfill: Button stores `linkMode` and `detailPageSlug` per
 // PROJECT_SPEC.md §8.12. When `linkMode === "detail"`, the rendered element
 // carries `data-link-mode="detail"` and `data-detail-page-slug` data
-// attributes. The actual href computation `/{detailPageSlug}/{row.id}`
-// happens in Sprint 9b at render time when row context is available
-// (Repeater iteration or detail page).
-//
-// In this sprint we do NOT:
-//   - Compute the detail href.
-//   - Read row context.
-//   - Resolve `{{ row.* }}` tokens in `href`.
-// Touching any of those here is a Deviation.
+// attributes. Sprint 9b adds the render-time href computation
+// `/{detailPageSlug}/{row.id}` when row context is available (Repeater
+// iteration or detail page) and switches the file to a "use client"
+// component so it can call useRow().
 
+import { useRow } from "@/lib/row-context";
 import type { ComponentNode } from "@/types/site-config";
 import type { CSSProperties } from "react";
 import { z } from "zod";
@@ -85,6 +83,7 @@ type ButtonProps = {
 export function Button({ node, cssStyle }: ButtonProps) {
   const parsed = buttonPropsSchema.safeParse(node.props);
   const data = parsed.success ? parsed.data : BUTTON_FALLBACK;
+  const { row, kind } = useRow();
 
   const finalStyle: CSSProperties = {
     cursor: "pointer",
@@ -105,12 +104,31 @@ export function Button({ node, cssStyle }: ButtonProps) {
         }
       : {};
 
-  if (data.href !== undefined) {
+  // Sprint 9b: detail-href computation. PROJECT_SPEC.md §8.12. The override
+  // fires only when every condition holds; otherwise data.href passes through
+  // verbatim and the silent-fallback semantics from Sprint 5b are preserved
+  // (parse failures already swap data for BUTTON_FALLBACK whose linkMode is
+  // "static", so the override never fires on the fallback path).
+  let href: string | undefined = data.href;
+  if (
+    data.linkMode === "detail" &&
+    data.detailPageSlug !== undefined &&
+    kind !== null &&
+    row !== null &&
+    typeof row === "object"
+  ) {
+    const id = (row as { id?: unknown }).id;
+    if (typeof id === "number" || typeof id === "string") {
+      href = `/${data.detailPageSlug}/${id}`;
+    }
+  }
+
+  if (href !== undefined) {
     return (
       <a
         data-component-id={node.id}
         data-component-type="Button"
-        href={data.href}
+        href={href}
         style={finalStyle}
         {...detailDataAttrs}
       >

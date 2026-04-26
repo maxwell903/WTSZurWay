@@ -1293,3 +1293,123 @@ Sprint Completion Report and here rather than blocking the sprint.
 `apps/web/app/[site]/[[...slug]]/page.tsx` rather than the
 `[...slug]/page.tsx` path named in its plan. The detail-branch
 insertion is additive and unaffected by the directory name.
+
+## 2026-04-26 — Sprint 9b — Execution record (detail pages runtime + row-context generalization)
+
+**Context:** Sprint 9b is the third and final piece of the detail-pages story
+(PROJECT_SPEC.md §8.12 + §11). Sprint 3b added the schema, Sprint 5b added
+the Button/InputField props, Sprint 9 added the row context provider and
+token resolver, and Sprint 13 shipped the public catch-all with a load-bearing
+`// === SPRINT 9B INSERTS DETAIL BRANCH HERE ===` insertion-point comment.
+Sprint 9b wires the runtime: a detail-page resolver, the catch-all detail
+branch, additive `pageKind`/`row` props on `<Renderer>`, and a Button that
+computes `/{detailPageSlug}/{row.id}` at render time when row context is in
+scope.
+
+**Pre-flight check result:** PASSED — all fifteen checks satisfied. Branch
+is `master`; the catch-all directory is `[[...slug]]` with `page.tsx`,
+`resolve.ts`, and `__tests__/page.test.tsx`; the insertion-point comment
+was at `page.tsx:88`; `resolveStaticPage`, the row-context surface, the
+token-resolver surface, the `ComponentRenderer` resolver hook, the Renderer
+export shape, the rm-api `getUnitById` / `getPropertyById` re-exports, the
+Sprint 5b Button shape, the Sprint 5b InputField client-component status,
+the Repeater row-context wrap, and the Sprint 3b schema's per-kind slug
+uniqueness + detail-data-source `superRefine` were all verified before
+any non-spec file was modified.
+
+**Files modified:**
+- `apps/web/app/[site]/[[...slug]]/resolve.ts` — appended
+  `resolveDetailPage(config, slug)` plus a `DetailMatch` type and the
+  `/^[1-9]\d*$/` regex. `resolveStaticPage` is unchanged.
+- `apps/web/app/[site]/[[...slug]]/page.tsx` — replaced the load-bearing
+  insertion-point comment with the detail branch (calls `resolveDetailPage`,
+  fetches the row via `getUnitById` / `getPropertyById` based on
+  `detailDataSource`, falls through to the existing `notFound()` on a null
+  match or null row, otherwise returns
+  `<Renderer ... pageKind="detail" row={row} mode="public" />`).
+- `apps/web/app/[site]/[[...slug]]/__tests__/page.test.tsx` — appended
+  the `resolveDetailPage` describe block with seven cases (single match,
+  static-only, U2 disambiguation, single-segment fall-through, three-segment
+  fall-through, non-numeric / leading-zero / sign / decimal / whitespace /
+  empty trailing segment fall-throughs, undefined / empty slug).
+- `apps/web/components/renderer/Renderer.tsx` — added optional
+  `pageKind?: "static" | "detail"` and `row?: unknown` props. The page
+  lookup now filters by `(p) => p.slug === page && p.kind ===
+  (pageKind ?? "static")`. When `pageKind === "detail"` and `row !==
+  undefined`, the rootComponent tree is wrapped in
+  `<RowContextProvider row={row} kind="detail">`.
+- `apps/web/components/site-components/Button/index.tsx` — switched to a
+  `"use client"` component (mirroring Sprint 5b's InputField precedent),
+  imported `useRow`, and added the detail-href computation. The override
+  fires only when `linkMode === "detail"`, `detailPageSlug !== undefined`,
+  the row context's `kind !== null`, the row is a non-null object, and
+  `row.id` is a `number | string`. `BUTTON_FALLBACK`, `VARIANT_STYLES`,
+  `SIZE_STYLES`, the data-attribute emission, and Sprint 5b's silent-
+  fallback semantics are unchanged.
+- `apps/web/components/site-components/Button/SPEC.md` — updated the
+  Data binding section with a new "Detail href computation (Sprint 9b)"
+  subsection. No other section is changed.
+- `apps/web/components/site-components/Button/__tests__/Button.test.tsx`
+  — appended `describe("Button (detail href under row context)")` with
+  seven cases (Repeater-kind wrap, Detail-kind wrap, string row.id,
+  static-mode unaffected, no-provider unaffected with data attrs intact,
+  missing id unaffected, non-scalar id unaffected). Pre-existing Sprint
+  5 / Sprint 5b Button tests continue to pass verbatim.
+
+**Files created:**
+- `apps/web/components/renderer/__tests__/Renderer.detail.test.tsx` — new
+  sibling test file (rather than appending to Sprint 3's
+  `Renderer.test.tsx`) so the Sprint 3 test file stays untouched. Four
+  cases: pageKind-omitted defaults to static, pageKind=static defaults
+  to static, pageKind=detail picks the detail page and resolves
+  `{{ row.* }}` tokens via the new RowContextProvider wrap, "Page not
+  found" fall-through under pageKind=detail.
+
+**Tests added:** 18 new Vitest cases (7 `resolveDetailPage` + 7 Button
+detail-href + 4 Renderer detail-page disambiguation). Total before
+sprint: 1015 (1013 passed, 2 skipped). Total after sprint: 1033 (1031
+passed, 2 skipped). The pre-existing skip count is unchanged per the DoD.
+
+**Quality gate result:**
+- `pnpm test`: 110 test files, 1031 passed, 2 skipped (1033 total).
+- `pnpm build`: Compiled successfully in 4.9s; nine static pages
+  generated; zero TypeScript errors; zero warnings.
+- `pnpm lint`: Checked 352 files in 99ms. No fixes applied.
+  (One Biome formatting violation surfaced and was fixed in
+  `Button.test.tsx` — wrapping two over-long lines. The fix was
+  whitespace-only and did not change test semantics.)
+
+**Authorized hand-offs honored:**
+- `apps/web/components/site-components/Button/index.tsx` — server →
+  `"use client"` per Sprint 9b CLAUDE.md "Authorized hand-offs".
+- `apps/web/components/renderer/Renderer.tsx` — additive `pageKind` /
+  `row` props per Sprint 9b CLAUDE.md.
+- `apps/web/app/[site]/[[...slug]]/page.tsx` — insertion-point comment
+  consumed; static branch and final `notFound()` untouched.
+- `apps/web/app/[site]/[[...slug]]/resolve.ts` — `resolveDetailPage`
+  appended; `resolveStaticPage` untouched.
+- `apps/web/app/[site]/[[...slug]]/__tests__/page.test.tsx` — Sprint
+  13 cases preserved verbatim; new `describe("resolveDetailPage")`
+  block appended.
+
+**Deviations approved during sprint:** None. Every DoD bullet was
+implementable as written; no library, signature, scope, or file-scope
+constraint forced a Deviation Report.
+
+**Retroactive cross-sprint fixes (CLAUDE.md §15.9):** None. The
+`"use client"` switch on `Button/index.tsx` did NOT cascade type
+errors into Sprint 5 / Sprint 5b's existing test file (the imports
+were already shape-compatible with a function component); no other
+test or config file required a surgical fix.
+
+**Manual smoke test:** Steps 15 and 16 (the `pnpm test` / `pnpm build`
+/ `pnpm lint` quality gate and the targeted resolver / Button test
+runs) completed from this session and reported in the section above.
+Steps 1–14 (the click-by-click flow against the linked hosted Supabase
+project) require a human operator at a browser; they are recorded in
+the Sprint Completion Report as the un-driven portion. The unit-test
+coverage for the resolver, the Button, and the Renderer's pageKind
+filter, plus the successful production build of the catch-all route,
+collectively give high confidence that the wired path works — but the
+DoD's "manual smoke test passes" line is honored only once a human
+runs steps 1–14 end-to-end.

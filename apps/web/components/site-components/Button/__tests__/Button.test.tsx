@@ -1,5 +1,7 @@
+import { RowContextProvider } from "@/lib/row-context";
 import type { ComponentNode } from "@/types/site-config";
 import { render } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
 import { Button } from "../index";
 
@@ -113,5 +115,137 @@ describe("<Button>", () => {
     expect(el?.hasAttribute("data-link-mode")).toBe(false);
     expect(el?.hasAttribute("data-detail-page-slug")).toBe(false);
     expect(el?.textContent).toBe("Button");
+  });
+});
+
+// Sprint 9b: detail-href computation under row context. PROJECT_SPEC.md §8.12.
+// Either Repeater iteration kind ("repeater") or detail-page kind ("detail")
+// activates the wiring -- neither kind takes precedence over the other.
+
+function renderWithRow(button: ReactElement, row: unknown, kind: "repeater" | "detail") {
+  return render(
+    <RowContextProvider row={row} kind={kind}>
+      {button}
+    </RowContextProvider>,
+  );
+}
+
+describe("Button (detail href under row context)", () => {
+  it("computes /detailPageSlug/row.id when wrapped in a Repeater-kind RowContextProvider", () => {
+    const { container } = renderWithRow(
+      <Button
+        node={makeNode({ label: "View Unit", linkMode: "detail", detailPageSlug: "units" })}
+        cssStyle={{}}
+      />,
+      { id: 42, unitName: "Apt 101" },
+      "repeater",
+    );
+    const el = container.querySelector("a[data-component-type='Button']") as HTMLElement | null;
+    expect(el).not.toBeNull();
+    expect(el?.getAttribute("href")).toBe("/units/42");
+    expect(el?.getAttribute("data-link-mode")).toBe("detail");
+    expect(el?.getAttribute("data-detail-page-slug")).toBe("units");
+  });
+
+  it("computes /detailPageSlug/row.id when wrapped in a Detail-kind RowContextProvider too", () => {
+    const { container } = renderWithRow(
+      <Button
+        node={makeNode({ label: "View Unit", linkMode: "detail", detailPageSlug: "units" })}
+        cssStyle={{}}
+      />,
+      { id: 42, unitName: "Apt 101" },
+      "detail",
+    );
+    const el = container.querySelector("a[data-component-type='Button']") as HTMLElement | null;
+    expect(el?.getAttribute("href")).toBe("/units/42");
+  });
+
+  it("accepts a string row.id and produces the same path shape", () => {
+    const { container } = renderWithRow(
+      <Button
+        node={makeNode({
+          label: "View Property",
+          linkMode: "detail",
+          detailPageSlug: "properties",
+        })}
+        cssStyle={{}}
+      />,
+      { id: "P-77" },
+      "repeater",
+    );
+    const el = container.querySelector("a[data-component-type='Button']") as HTMLElement | null;
+    expect(el?.getAttribute("href")).toBe("/properties/P-77");
+  });
+
+  it("leaves data.href untouched in static mode (the override does not fire)", () => {
+    const { container } = renderWithRow(
+      <Button
+        node={makeNode({ label: "About", linkMode: "static", href: "/about" })}
+        cssStyle={{}}
+      />,
+      { id: 42 },
+      "repeater",
+    );
+    const el = container.querySelector("a[data-component-type='Button']") as HTMLElement | null;
+    expect(el?.getAttribute("href")).toBe("/about");
+    expect(el?.hasAttribute("data-link-mode")).toBe(false);
+    expect(el?.hasAttribute("data-detail-page-slug")).toBe(false);
+  });
+
+  it("leaves the rendered element a <button> with data attrs intact when no provider wraps it", () => {
+    const { container } = render(
+      <Button
+        node={makeNode({ label: "View Unit", linkMode: "detail", detailPageSlug: "units" })}
+        cssStyle={{}}
+      />,
+    );
+    // No href, no provider -> <button>; data attrs still render per the
+    // Sprint 5b contract (independent of row context).
+    expect(container.querySelector("a[data-component-type='Button']")).toBeNull();
+    const el = container.querySelector(
+      "button[data-component-type='Button']",
+    ) as HTMLElement | null;
+    expect(el).not.toBeNull();
+    expect(el?.getAttribute("data-link-mode")).toBe("detail");
+    expect(el?.getAttribute("data-detail-page-slug")).toBe("units");
+  });
+
+  it("keeps the pre-row href when row.id is missing (no /units/undefined artifact)", () => {
+    const { container } = renderWithRow(
+      <Button
+        node={makeNode({
+          label: "View Unit",
+          linkMode: "detail",
+          detailPageSlug: "units",
+          href: "/fallback",
+        })}
+        cssStyle={{}}
+      />,
+      { unitName: "Apt 101" },
+      "repeater",
+    );
+    const el = container.querySelector("a[data-component-type='Button']") as HTMLElement | null;
+    expect(el?.getAttribute("href")).toBe("/fallback");
+    // The Sprint 5b data attrs still render -- they don't depend on the
+    // row's id presence.
+    expect(el?.getAttribute("data-link-mode")).toBe("detail");
+  });
+
+  it("keeps the pre-row href when row.id is non-scalar (a nested object)", () => {
+    const { container } = renderWithRow(
+      <Button
+        node={makeNode({
+          label: "View Unit",
+          linkMode: "detail",
+          detailPageSlug: "units",
+          href: "/fallback",
+        })}
+        cssStyle={{}}
+      />,
+      { id: { nested: 1 } },
+      "repeater",
+    );
+    const el = container.querySelector("a[data-component-type='Button']") as HTMLElement | null;
+    expect(el?.getAttribute("href")).toBe("/fallback");
   });
 });

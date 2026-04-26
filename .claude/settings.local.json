@@ -33,7 +33,13 @@
       "Bash(ls -la \"C:\\\\Users\\\\maxwa\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-maxwa-WTSZurWay\\\\a8be69a0-95ea-49bc-9835-f9a427e547e8\\\\tasks\\\\\\\\\")",
       "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Select-Object ProcessId, CreationDate, @{Name='Cmd'; Expression={$_.CommandLine.Substring\\(0, [Math]::Min\\(140, $_.CommandLine.Length\\)\\)}} | Format-List)",
       "Bash(pnpm typecheck *)",
-      "Bash(pnpm --filter web test -- run components/editor/topbar/__tests__/DeployButton.test.tsx)"
+      "Bash(pnpm --filter web test -- run components/editor/topbar/__tests__/DeployButton.test.tsx)",
+      "Bash(pnpm --filter web test --run -t \"resolveDetailPage\")",
+      "Bash(pnpm --filter web test --run -t \"detail-page disambiguation\")",
+      "Bash(pnpm --filter web test --run -t \"<Renderer>\")",
+      "Bash(pnpm --filter web test --run -t \"Button\")",
+      "Bash(pnpm --filter web test --run -t \"detail href under row context\")",
+      "Bash(pnpm dev *)"
     ]
   }
 }
