@@ -1,0 +1,44 @@
+"use client";
+
+import { Toaster } from "@/components/ui/sonner";
+import { Canvas } from "@/components/editor/canvas/Canvas";
+import { LeftSidebar } from "@/components/editor/sidebar/LeftSidebar";
+import { RightSidebar } from "@/components/editor/sidebar/RightSidebar";
+import { TopBar } from "@/components/editor/topbar/TopBar";
+import { useAutosave, useEditorStore } from "@/lib/editor-state";
+import type { SiteConfig } from "@/lib/site-config";
+import { useEffect } from "react";
+
+export type EditorShellProps = {
+  siteId: string;
+  siteSlug: string;
+  workingVersionId: string;
+  initialConfig: SiteConfig;
+};
+
+export function EditorShell({
+  siteId,
+  siteSlug,
+  workingVersionId,
+  initialConfig,
+}: EditorShellProps) {
+  const hydrate = useEditorStore((s) => s.hydrate);
+
+  useEffect(() => {
+    hydrate({ siteId, siteSlug, workingVersionId, initialConfig });
+  }, [hydrate, siteId, siteSlug, workingVersionId, initialConfig]);
+
+  useAutosave();
+
+  return (
+    <div className="flex h-screen flex-col bg-zinc-950 text-zinc-100">
+      <TopBar />
+      <div className="flex flex-1 overflow-hidden">
+        <LeftSidebar />
+        <Canvas />
+        <RightSidebar />
+      </div>
+      <Toaster />
+    </div>
+  );
+}

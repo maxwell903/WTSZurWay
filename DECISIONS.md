@@ -650,3 +650,133 @@ deferring the fix.
 **Cross-sprint impact:** Sprint 13 (Vercel) and any later sprint that
 introduces a new required env var should update `.env.example` to keep
 the onboarding template current.
+
+
+## 2026-04-25 — Sprint 6 — Inline site/version load instead of `lib/sites/repo.ts`; drop `updated_at` from PATCH
+
+**Context:** Sprint 6's pre-flight check #3 required
+`apps/web/lib/sites/repo.ts` to export `getSiteBySlug` and
+`getLatestWorkingVersion`. The file does not exist on master — Sprint 4
+inlined that logic as a private `loadSiteAndVersion(siteSlug, versionId)`
+function inside `apps/web/app/[site]/preview/page.tsx`. Separately, the
+Sprint 6 CLAUDE.md's pre-flight wording lists `version_number` and
+`updated_at` columns on `site_versions`. Neither column exists in
+PROJECT_SPEC.md §12 nor in
+`supabase/migrations/20260425000007_create_sites_and_site_versions.sql`.
+The PATCH endpoint as described would have failed at runtime
+(`updated_at = NOW()` on a non-existent column) and smoke-test step 5's
+SQL also referenced `updated_at`.
+
+**Original plan:** Sprint 6's `[site]/edit/page.tsx` imports
+`getSiteBySlug` and `getLatestWorkingVersion` from
+`apps/web/lib/sites/repo.ts`. The PATCH endpoint sets `config = :new`
+**and `updated_at = NOW()`** on the matching `site_versions` row. The
+smoke test queries `select config->>'name', updated_at ... where
+is_working = true`.
+
+**What changed:**
+1. Sprint 6 inlines the same `loadSiteAndVersion` private helper in
+   `apps/web/app/[site]/edit/page.tsx`, matching the existing pattern
+   in `[site]/preview/page.tsx`. No new module under `lib/sites/`.
+2. The PATCH endpoint at `/api/sites/[siteId]/working-version` UPDATEs
+   only the `config` jsonb column on the `is_working = true` row.
+   No `updated_at` write.
+3. The smoke-test step 5 SQL drops the `updated_at` column from the
+   SELECT. Recency is implicit from the test sequence (the assertion
+   immediately follows a save).
+
+**Rationale:** The repo helper does not exist; creating it under
+`lib/sites/` would violate Sprint 6's file-scope ban on Sprint-4-owned
+modules. The duplicated `loadSiteAndVersion` body is small (~50 lines)
+and matches the shipped /preview pattern; future deduplication can
+happen under its own deviation. The `updated_at` column simply does
+not exist per the canonical spec; removing the write is the only
+correct option that keeps Sprint 6 inside the spec.
+
+**User approval (verbatim):** "Approved"
+
+**Trade-offs accepted:**
+- Gain: zero file-scope violations; the editor route loads its working
+  site exactly the way the already-quality-gated preview route does;
+  PATCH endpoint and smoke-test step 5 actually execute against the
+  real schema.
+- Lose: a small amount of duplicated Supabase calls between the
+  preview and edit pages (~50 lines).
+- Risk: very low. No new behavior, no new column, no new migration.
+
+**Affected files / modules:**
+- `apps/web/app/[site]/edit/page.tsx` (new — inlines
+  `loadSiteAndVersion`).
+- `apps/web/app/api/sites/[siteId]/working-version/route.ts` (new —
+  UPDATE writes only `config`).
+- Sprint 6 manual smoke test step 5 (interpreted with the
+  `updated_at` column dropped from the SELECT).
+
+**Cross-sprint impact:** Future editor sprints (7, 8, 10, 11) that need
+to load a site by slug or fetch its working version see the same
+inlined helper rather than a `lib/sites/repo.ts` import. They can either
+inline likewise or promote to a shared module under their own
+deviation. Sprint 13's deploy endpoint owns its own queries and is
+unaffected.
+
+
+## 2026-04-25 — Sprint 6 — Compose existing primitives instead of adding AlertDialog/Tabs/Tooltip packages
+
+**Context:** Sprint 6's plan asks for four shadcn primitives (Dialog,
+AlertDialog, Tabs, Tooltip). Only Dialog is installed. The matching
+Radix packages (`@radix-ui/react-alert-dialog`,
+`@radix-ui/react-tabs`, `@radix-ui/react-tooltip`) are absent from
+`apps/web/package.json`. The same plan caps new dependencies at
+`zustand` and forbids "rolling new primitives", so the three options
+(install, build wrappers, or do without) are all deviations from a
+literal reading of the plan.
+
+**Original plan:** Use shadcn AlertDialog for the delete-page
+confirm; use shadcn Tabs for the four-tab left sidebar; use shadcn
+Tooltip for the two disabled-home-page hover hints.
+
+**What changed:**
+1. **AlertDialog → Dialog.** `DeletePageConfirm` imports the
+   existing shadcn `Dialog` (already installed since Sprint 1c) and
+   renders a destructive "Are you sure?" modal. Functionally
+   equivalent for this single-button confirm use case.
+2. **Tabs → controlled buttons with ARIA tab semantics.** The
+   four-tab `LeftSidebar` renders four `<button role="tab">` elements
+   in a flex row plus a conditionally rendered panel; `aria-selected`
+   reflects the active tab. No reusable abstraction is exported.
+3. **Tooltip → native HTML `title` attribute.** The "The home page
+   cannot be deleted." and "The home page slug is fixed." hover
+   strings ride on the disabled buttons / inputs as their `title`
+   attribute. No keyboard-popover behavior is required by the
+   smoke test.
+
+**Rationale:** The strict zustand-only dependency rule is the binding
+constraint here; rolling a Radix-equivalent primitive would be
+genuinely "rolling a new primitive". Composing the existing Dialog
+and using native browser features sidesteps both prohibitions
+without sacrificing any smoke-test behavior.
+
+**User approval (verbatim):** "Approved"
+
+**Trade-offs accepted:**
+- Gain: zero new dependencies; no shadcn/Radix package bump days
+  before Sprints 7/8/10/11 rebase against this code.
+- Lose: small a11y delta — Dialog focus-trap is close to but not
+  identical to AlertDialog's; tabs lose Radix's keyboard-arrow
+  navigation (still keyboard-accessible via Tab); tooltips lose
+  Radix delay/animation.
+- Risk: very low. No new exported abstractions. Future sprints can
+  install richer primitives under their own deviation if needed.
+
+**Affected files / modules:**
+- `apps/web/components/editor/sidebar/pages-tab/DeletePageConfirm.tsx`
+  (uses Dialog).
+- `apps/web/components/editor/sidebar/LeftSidebar.tsx` (custom
+  ARIA-tab buttons; no shadcn Tabs primitive).
+- Tooltip-bearing rows in `pages-tab/PageRow.tsx` and
+  `pages-tab/RenamePageDialog.tsx` (use HTML `title`).
+
+**Cross-sprint impact:** Future sprints that need a richer Tabs or
+Tooltip behavior should install the matching shadcn primitive via
+`pnpm dlx shadcn@latest add ...` under their own deviation; Sprint 6
+intentionally leaves them off the dependency list.

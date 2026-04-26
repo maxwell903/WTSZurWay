@@ -1,32 +1,112 @@
-# CLAUDE.md — Sprint 4: Initial Generation Endpoint
+# CLAUDE.md — Sprint 6: Element 2 Layout Shell
 
 > Drop this file at the repo root of `WTSZurWay/` for the duration of Sprint
-> 4, replacing the master `CLAUDE.md`. Restore the master `CLAUDE.md` after
+> 6, replacing the master `CLAUDE.md`. Restore the master `CLAUDE.md` after
 > the sprint's quality gates pass and the Sprint Completion Report has been
 > emitted. Per the 2026-04-25 entry in `DECISIONS.md`, this project uses a
-> single-branch workflow on `master` — there is no `sprint/04` branch. Every
-> commit lands on `master` after the quality gates pass.
+> single-branch workflow on `master` — there is no `sprint/06` branch.
+> Every commit lands on `master` after the quality gates pass. Hosted
+> Supabase is in use (no Docker, no local Postgres).
 
 ## Mission
 
-Build the first AI surface end to end: a POST endpoint at
-`/api/generate-initial-site` that accepts the validated setup-form payload,
-calls the Anthropic API with a system prompt grounded in the locked
-`SiteConfig` schema, validates the model's JSON output, persists the new
-site and its version 1 to Supabase, and returns enough data for the Element
-1 preview iframe to load `/{slug}/preview?v={versionId}`. Build the
-`/{site}/preview/[v]` route that renders that version through the existing
-shared `Renderer` in `mode="preview"`. Build the rotating `LoadingNarration`
-component and the `PreviewPanel` that hosts the fake-browser chrome, the
-empty / generating / generated / error states, and the structured error UI
-from `PROJECT_SPEC.md` §9.6. Wire the existing `<SetupForm>` `onValid`
-callback through a small client coordinator on `/setup` so clicking **Save**
-triggers the generation and updates the panel's state.
+Build the visual chrome of Element 2 — the editor — at `/[site]/edit`.
+Specifically: a top bar (logo, editable site name, page selector with
+add/rename/delete and a "DETAIL" badge for detail pages, preview-mode
+toggle, decorative deploy button), a four-tab left sidebar (Site, Pages,
+Add, Data), a right-sidebar placeholder shell (Sprint 11 fills it with the
+AI chat), and a center canvas that renders the current page through the
+already-shipped shared `<Renderer>` in `mode="edit"` with click-to-select
+and hover highlighting. All editor state lives in a Zustand store at
+`apps/web/lib/editor-state/`. A debounced autosave persists the draft
+`SiteConfig` back to the working `site_versions` row through a new
+`PATCH /api/sites/[siteId]/working-version` endpoint.
 
-This sprint is the spine of Element 1 — every later AI surface (Sprint 11's
-AI Edit, Sprint 12's adjustment chat, Sprint 14's fallback fixtures) is
-built on the prompt assembly, validation, and error-categorization scaffold
-this sprint ships.
+This sprint ships the **shell**, not the editing surfaces. Drag-and-drop
+(Sprint 7), the right-click Element Edit panels (Sprint 8), Repeater data
+binding (Sprint 9), the Data tab's submission list (Sprint 10), the AI
+chat right sidebar (Sprint 11), and the Deploy flow (Sprint 13) are out of
+scope and must remain so. The Add tab cards are visible and selectable
+(visually) but **not draggable**. Right-click on the canvas does **nothing**
+(Sprint 8 wires it). The Data tab shows a "Coming soon" placeholder. The
+Right sidebar is an empty pane with a "Select a component to edit, or use
+the AI chat (coming soon)" placeholder. The Deploy button renders enabled
+but its `onClick` only opens a `Sonner` toast that says
+"Deploy is coming in a later sprint."
+
+This sprint is the spine of every later editor sprint. Get the Zustand
+store shape and the canvas → renderer wiring right; everything from
+Sprint 7 onward extends them.
+
+## Pre-flight check (MANDATORY — emit before reading or writing any non-spec file)
+
+Before reading or modifying any file other than the items listed below in
+"Spec sections in scope", run these six checks. If any fails, STOP and
+emit a Deviation Report per the protocol embedded in this file. Do not
+attempt to work around a failed check.
+
+1. **Spec amendment §8.12 is in place.** Read `PROJECT_SPEC.md` §8.12
+   ("Detail pages"). Confirm the section exists and describes:
+   - The `Page.kind: "static" | "detail"` field with default `"static"`.
+   - The `Page.detailDataSource: "properties" | "units"` field, required
+     iff `kind === "detail"`.
+   - The per-kind slug uniqueness rule (a static page and a detail page
+     may share a slug — the U2 same-slug coexistence pattern; two pages
+     of the same kind may not share a slug).
+   - The Pages-tab "Add page" modal exposes a `Page kind` dropdown and,
+     when `Detail` is selected, a `Detail data source` dropdown.
+   If §8.12 is missing or the prop shapes / rules differ, STOP and emit a
+   Deviation Report with failure reason "PROJECT_SPEC.md §8.12 has not
+   been amended; Sprint 6 cannot generate UI that contradicts the spec."
+
+2. **Sprint 3b schema landed.** Read `apps/web/lib/site-config/schema.ts`.
+   Confirm `pageSchema` contains the `kind` field
+   (`z.enum(["static", "detail"]).default("static")`) and the
+   `detailDataSource` field
+   (`z.enum(["properties", "units"]).optional()`), and that
+   `siteConfigSchema` has a `superRefine` enforcing per-kind slug
+   uniqueness AND the "detailDataSource required iff kind=detail" rule.
+   If any of these is missing, Sprint 3b has not landed against this
+   branch — STOP and emit a Deviation Report.
+
+3. **Sprint 4 sites + site_versions tables exist.** Read
+   `apps/web/lib/sites/repo.ts`. Confirm `getSiteBySlug` and
+   `getLatestWorkingVersion` are exported. Confirm the existing migration
+   under `supabase/migrations/` creates `sites` and `site_versions` with
+   columns `id`, `site_id`, `config jsonb`, `is_working boolean`,
+   `is_deployed boolean`, `version_number`, `created_at`, `updated_at`,
+   `created_by`, `source`, `parent_version_id`. If any of these is
+   missing, Sprint 4 has not landed against this branch — STOP and emit
+   a Deviation Report.
+
+4. **Renderer + components exist.** Read
+   `apps/web/components/renderer/Renderer.tsx`. Confirm it exports a
+   default or named `Renderer` accepting `RendererProps` with at minimum
+   `config`, `page` (slug), `mode: "edit" | "preview" | "public"`,
+   `selection?: ComponentId | null`, `onSelect?: (id) => void`, and
+   `onHover?: (id | null) => void`. If `onHover` is absent, that is
+   acceptable — Sprint 6 may select via the existing `onSelect` only and
+   render the hover overlay in pure CSS by detecting `:hover` on the
+   selection wrapper. Note this in your sprint output. If `onSelect` is
+   missing, STOP and emit a Deviation Report.
+
+5. **Component registry has all 20 entries.** Read
+   `apps/web/components/site-components/registry.ts`. Count distinct
+   keys. If the count is not 20 (Section, Heading, Paragraph, Image,
+   Spacer, Divider, Row, Column, Button, Logo, NavBar, Footer,
+   HeroBanner, PropertyCard, UnitCard, Repeater, InputField, Form,
+   MapEmbed, Gallery), STOP and emit a Deviation Report — Sprint 6's
+   Add tab catalog is keyed off the registry; mismatched entries break
+   the canvas.
+
+6. **Single-branch workflow.** Confirm the current git branch is
+   `master`. Run `git branch --show-current` and verify the output is
+   exactly `master`. If it is not, STOP and emit a Deviation Report —
+   the project workflow per `DECISIONS.md` 2026-04-25 is single-branch
+   on `master`; do NOT create a `sprint/06` branch and do NOT switch
+   branches.
+
+Only after all six checks pass may you proceed to write code.
 
 ## Spec sections in scope
 
@@ -35,429 +115,478 @@ authoritative source for everything below — when this file and the spec
 disagree, the spec wins; surface the conflict via the Deviation Protocol
 before proceeding.
 
-- `PROJECT_SPEC.md` §2.2 — Element 1 → Element 2 handoff (the iframe URL
-  shape, the version 1 contract, the slug-as-route guarantee).
-- `PROJECT_SPEC.md` §3.1 — Anthropic SDK and model selection
-  (`claude-sonnet-4-5`, server-side only).
-- `PROJECT_SPEC.md` §3.4 — Anthropic API key in env, server-side only,
-  never exposed to the client. (Per `DECISIONS.md` 2026-04-25, "Supabase
-  local via Docker" is superseded by hosted Supabase — this sprint runs
-  against the linked hosted project.)
-- `PROJECT_SPEC.md` §7.3 — the preview area's chrome (empty / generating /
-  generated states, "Pending"/"Live" pill, fake browser dots).
-- `PROJECT_SPEC.md` §7.4 — the Element 1 generate flow (validate → POST →
-  call Claude → insert site + version 1 → redirect iframe →
-  surface errors per §9.6).
-- `PROJECT_SPEC.md` §9.1 — the two AI surfaces; this sprint owns Initial
-  Generation.
-- `PROJECT_SPEC.md` §9.2 — Initial Generation system prompt requirements.
-- `PROJECT_SPEC.md` §9.5 — Initial Generation loading narration (the seven
-  strings, in order, rotating every 3–4 seconds).
-- `PROJECT_SPEC.md` §9.6 — error categories
-  (`network_error`, `timeout`, `model_clarification`, `invalid_output`,
-  `operation_invalid`, `over_quota`, `auth_error`) plus the **Copy details**
-  button.
-- `PROJECT_SPEC.md` §9.7 — model and API parameters
-  (`claude-sonnet-4-5`, `max_tokens: 16000`, `temperature: 0.4`, structured
-  JSON output, one automatic retry on parse failure with the schema in the
-  follow-up).
-- `PROJECT_SPEC.md` §9.8 — image inputs (max 4 per request, sent as image
-  content blocks, client-side already resizes to ≤ 1568px on the long edge).
-- `PROJECT_SPEC.md` §9.9 — cost guardrails. **This sprint does NOT enforce
-  the soft limit** (`20 generations and 200 edits per site`); §9.9
-  instrumentation is Sprint 14 territory. Document the deferral in code
-  comments.
-- `PROJECT_SPEC.md` §9.10 — the demo fallback path. **Out of scope here**:
-  Sprint 14 owns the `demo_fixtures` table and the silent-fallback wiring.
-  Sprint 4 surfaces real errors per §9.6 instead.
-- `PROJECT_SPEC.md` §10.1 — `RendererProps` (`config`, `page`, `mode`,
-  `selection?`, `onSelect?`, `onContextMenu?`). The `/preview` route uses
-  `mode: "preview"` and never passes `selection`/`onSelect`.
-- `PROJECT_SPEC.md` §11 — the `SiteConfig` schema in full, including the
-  `Page.kind` and `Page.detailDataSource` amendment from Sprint 3b
-  (already-shipped Zod refinement enforces the cross-field invariants).
-- `PROJECT_SPEC.md` §12 — the `sites` and `site_versions` table DDL. **Use
-  the DDL in §12 verbatim**; the migration this sprint adds is the first
-  use of these columns.
-- `PROJECT_SPEC.md` §15 — coding standards (binding; copied below).
-- `PROJECT_SPEC.md` §17 — Out of Scope (auth beyond placeholder; the
-  endpoint MUST NOT introduce real auth).
+- `PROJECT_SPEC.md` §6 — `SiteConfig` schema (canonical; you read it,
+  you do NOT modify it).
+- `PROJECT_SPEC.md` §6.4 — Shared style controls (palette + font binding
+  reads from this).
+- `PROJECT_SPEC.md` §8.1 — Editor route shape and the three renderer modes
+  (`edit` / `preview` / `public`).
+- `PROJECT_SPEC.md` §8.2 — Top bar (logo, site name, page selector,
+  preview toggle, deploy).
+- `PROJECT_SPEC.md` §8.3 — Left sidebar (the four tabs: Site, Pages, Add,
+  Data; their content; the "Add page" modal).
+- `PROJECT_SPEC.md` §8.4 — Right sidebar (Sprint 6 ships the shell only
+  — placeholder copy; Sprint 11 fills it).
+- `PROJECT_SPEC.md` §8.5 — Selection model (click to select; clicking the
+  canvas background deselects; `Esc` clears selection).
+- `PROJECT_SPEC.md` §8.6 — Canvas and the renderer in edit mode (selection
+  outline, hover highlight, breadcrumb).
+- `PROJECT_SPEC.md` §8.11 — Preview mode toggle in the top bar (clicking
+  it swaps the canvas renderer's `mode` from `edit` to `preview` and
+  hides the selection outline). Sprint 6 wires this toggle.
+- `PROJECT_SPEC.md` §8.12 — Detail pages (the Pages-tab kind picker, the
+  per-kind slug uniqueness rule, the page-selector "DETAIL" badge).
+- `PROJECT_SPEC.md` §10.1 — `RendererProps` (the canvas calls
+  `<Renderer mode="edit" selection={selectedId} onSelect={...} />`).
+- `PROJECT_SPEC.md` §11 — `SiteConfig` schema in full, including the
+  Sprint 3b detail-pages amendment.
+- `PROJECT_SPEC.md` §12 — `sites` and `site_versions` table DDL — Sprint 6
+  reads these tables and writes the working version's `config` jsonb.
+- `PROJECT_SPEC.md` §15 — Coding standards (binding; copied below).
 
-Detail-pages amendment from `docs/planning/SPRINT_SCHEDULE.md` Sprint 4
-entry: the system prompt MUST teach the model about `Page.kind` and
-`Page.detailDataSource` per the amended §11, AND any initial generation
-that contains a Repeater of units MUST include at least one `kind="detail"`
-page with `detailDataSource: "units"`, and any initial generation that
-contains a Repeater of properties MUST include at least one
-`kind="detail"` page with `detailDataSource: "properties"`. Sprint 9b will
-resolve `{{ row.* }}` tokens at render time; Sprint 4 only ensures the
-emitted config is valid against the (already amended) `siteConfigSchema`.
+## File scope
 
-## Pre-flight check (run BEFORE any other work)
+### Owned (this sprint may create or modify)
 
-Treat each of the following as an assertion. If any assertion fails,
-**STOP immediately** and emit a Deviation Report (see §"Deviation Protocol"
-below). Do not write a single line of new code until every assertion
-passes.
+- `apps/web/app/[site]/edit/page.tsx` — async server component; awaits
+  `params`, fetches the working version via the existing
+  `getSiteBySlug` + `getLatestWorkingVersion` helpers, and hands the
+  result to the `EditorShell` client component.
+- `apps/web/app/[site]/edit/EditorShell.tsx` — top-level client component;
+  receives the loaded site + working version, hydrates the Zustand store,
+  and composes `<TopBar />`, `<LeftSidebar />`, `<Canvas />`,
+  `<RightSidebar />`.
+- `apps/web/app/[site]/edit/loading.tsx` — Next.js loading UI (a
+  skeleton matching the editor layout: top bar bar, two side rails, a
+  blank canvas area).
+- `apps/web/app/[site]/edit/error.tsx` — Next.js error UI with a "Try
+  again" button (`reset()`) and a "Go back" link to `/setup`.
+- `apps/web/app/[site]/edit/not-found.tsx` — Next.js 404 UI shown when
+  the slug doesn't resolve to a site or the site has no working version.
+- `apps/web/app/api/sites/[siteId]/working-version/route.ts` — the
+  PATCH endpoint that accepts `{ config: SiteConfig }` and updates the
+  working `site_versions` row's `config` jsonb. Server-only,
+  `runtime = "nodejs"`, `dynamic = "force-dynamic"`,
+  `Cache-Control: no-store`.
+- `apps/web/components/editor/topbar/TopBar.tsx` — the top bar container.
+- `apps/web/components/editor/topbar/SiteNameInput.tsx` — inline editable
+  site name (Enter or blur commits; Esc cancels; max 100 chars).
+- `apps/web/components/editor/topbar/PageSelector.tsx` — page dropdown
+  showing the active page's name + a small "DETAIL" badge for
+  detail pages; opens to a list of all pages with the same per-row
+  badge; "+ Add page" entry at the bottom opens `AddPageDialog`.
+- `apps/web/components/editor/topbar/PreviewToggle.tsx` — a segmented
+  control (Edit / Preview) bound to the store's `previewMode`.
+- `apps/web/components/editor/topbar/DeployButton.tsx` — decorative
+  button that opens a Sonner toast on click ("Deploy is coming in a
+  later sprint.").
+- `apps/web/components/editor/topbar/SaveIndicator.tsx` — reads the
+  store's `saveState` and renders one of: "Saved 2s ago" /
+  "Saving…" / "Unsaved changes" / "Save failed — retry".
+- `apps/web/components/editor/sidebar/LeftSidebar.tsx` — the left rail
+  container with the four-tab tab list and the active tab's content
+  panel.
+- `apps/web/components/editor/sidebar/site-tab/SiteTab.tsx` — the Site
+  tab pane.
+- `apps/web/components/editor/sidebar/site-tab/PaletteSelector.tsx` —
+  six radio cards mirroring the Element 1 setup form's palette grid
+  (Ocean, Forest, Sunset, Violet, Monochrome, Rose). The data source
+  for the palette definitions is shared — the file imports the palettes
+  from `apps/web/lib/setup-form/palettes.ts` (Sprint 2 — read-only).
+- `apps/web/components/editor/sidebar/site-tab/FontSelector.tsx` —
+  two dropdowns: Heading font and Body font, each populated from a
+  small curated list of Google-Fonts-friendly names declared inline at
+  the top of this file (e.g. Inter, Manrope, Source Sans 3, Lora,
+  Merriweather, Playfair Display). Selection writes to whichever font
+  field exists in the schema's site-level theme block; if the schema
+  has separate `headingFont` and `bodyFont` fields, both are wired; if
+  the schema only has a single `fontFamily` field, the selector
+  collapses to a single dropdown and a header comment says so. Read
+  the schema first and adapt; do NOT modify the schema.
+- `apps/web/components/editor/sidebar/pages-tab/PagesTab.tsx` — the
+  Pages tab pane: list of pages with rename / delete buttons per row;
+  reorder via up/down arrows (drag-reorder is Sprint 7); an "Add page"
+  button at the bottom that opens `AddPageDialog`.
+- `apps/web/components/editor/sidebar/pages-tab/AddPageDialog.tsx` —
+  shadcn `Dialog`. Fields: Name (text, required, max 100), Slug (text,
+  required, lowercased, slug-validated regex `^[a-z0-9-]+$`, max 60),
+  Page kind (segmented control: Static / Detail; default Static),
+  Detail data source (dropdown shown only when kind = Detail; values
+  `properties`, `units`; required when shown). Submits via the store's
+  `addPage` action. Per-kind slug uniqueness validated client-side
+  against the current pages list; matches the §8.12 rule. The schema's
+  `superRefine` is the ultimate guard — server-side autosave will fail
+  the PATCH and show the SaveIndicator's "Save failed" state if the
+  client check is somehow bypassed.
+- `apps/web/components/editor/sidebar/pages-tab/RenamePageDialog.tsx` —
+  shadcn `Dialog` with Name + Slug fields; same validation rules as
+  `AddPageDialog`. The Home page (slug = `"home"`) cannot have its slug
+  changed — the slug field is disabled with a tooltip
+  "The home page slug is fixed." (Renaming the displayed name is
+  permitted.)
+- `apps/web/components/editor/sidebar/pages-tab/DeletePageConfirm.tsx`
+  — shadcn `AlertDialog` confirming page deletion. The Home page is
+  not deletable — the row's delete button is disabled with a tooltip
+  "The home page cannot be deleted."
+- `apps/web/components/editor/sidebar/pages-tab/PageRow.tsx` — single
+  row in the pages list with name + slug + DETAIL badge if applicable
+  + rename + delete + up/down buttons.
+- `apps/web/components/editor/sidebar/add-tab/AddTab.tsx` — the Add
+  tab pane: a grid of `<ComponentCard />`s grouped by section
+  (Layout, Content, Media, Data, Forms, Navigation). The cards are
+  visually styled and selectable (a click selects the card visually
+  for visual feedback) but **DO NOT** add the component to the canvas
+  — Sprint 7 wires drag-and-drop. A muted helper line at the bottom
+  reads "Drag-and-drop coming in the next update."
+- `apps/web/components/editor/sidebar/add-tab/ComponentCard.tsx` — a
+  single card with an icon (`lucide-react`), the component's display
+  name, and a one-line description. Card receives a
+  `ComponentCatalogEntry` prop.
+- `apps/web/components/editor/sidebar/add-tab/component-catalog.ts` —
+  the canonical list of 20 catalog entries
+  (`{ type: ComponentType; group: ComponentGroup; label: string;
+  icon: LucideIcon; description: string }`). The `type` strings MUST
+  match the keys in `apps/web/components/site-components/registry.ts`
+  exactly. The grouping: Layout = Section, Row, Column, Spacer,
+  Divider; Content = Heading, Paragraph, Button; Media = Image, Logo,
+  Gallery, MapEmbed; Data = Repeater, PropertyCard, UnitCard;
+  Forms = Form, InputField; Navigation = NavBar, Footer; HeroBanner =
+  Layout (a hero is a structural lead block).
+- `apps/web/components/editor/sidebar/data-tab/DataTab.tsx` —
+  placeholder pane: a centered `Database` icon (`lucide-react`) and
+  the copy "Form submissions will appear here once Sprint 10 ships."
+- `apps/web/components/editor/sidebar/RightSidebar.tsx` — placeholder
+  pane: a centered `MessageSquare` icon and the copy "Select a
+  component to edit it, or chat with the AI assistant (coming soon)."
+- `apps/web/components/editor/canvas/Canvas.tsx` — the canvas
+  container; reads the current page's `rootComponent` from the store's
+  `draftConfig`, calls `<Renderer config={draftConfig} page={currentPageSlug}
+  mode={previewMode ? "preview" : "edit"} selection={selectedComponentId}
+  onSelect={selectComponent} onHover={setHoveredComponent} />` (omitting
+  `onHover` if the renderer does not support it — pre-flight check #4).
+  Wraps the renderer in a scrollable area with a maximum width matching
+  a typical desktop canvas (1280px) and a subtle gridded background.
+  Wires a global `keydown` handler: `Esc` clears selection.
+- `apps/web/components/editor/canvas/SelectionBreadcrumb.tsx` —
+  small breadcrumb shown at the bottom of the canvas reading the
+  selection trail from `siteConfig` root → selected node. Reads the
+  store; pure rendering.
+- `apps/web/components/editor/index.ts` — barrel re-export.
+- `apps/web/components/editor/__tests__/` — Vitest tests for every
+  component above that has non-trivial logic. Bare placeholder
+  components (DataTab, RightSidebar, DeployButton) need only a single
+  smoke render test each.
+- `apps/web/lib/editor-state/index.ts` — public re-exports of the store
+  hook, selector helpers, action helpers, and the autosave hook.
+- `apps/web/lib/editor-state/types.ts` — `EditorState`,
+  `EditorActions`, `LeftSidebarTab`, `SaveState` type definitions.
+  Re-exports `SiteConfig`, `Page`, `ComponentId` from
+  `apps/web/lib/site-config/index.ts` for convenience.
+- `apps/web/lib/editor-state/store.ts` — the Zustand store
+  definition. Uses `zustand` and `zustand/middleware` (the `devtools`
+  middleware in dev only — read `process.env.NODE_ENV`). Default
+  `saveState` is `"idle"`; every mutator that touches `draftConfig`
+  flips it to `"dirty"` (centralised through a `mutate(updater)`
+  helper).
+- `apps/web/lib/editor-state/selectors.ts` — derived selectors:
+  `selectCurrentPage`, `selectSelectedComponentNode`,
+  `selectAllPagesForPicker`, `selectPaletteId`, `selectIsHomePage`.
+  Pure functions that take state, return derived values; tested in
+  isolation.
+- `apps/web/lib/editor-state/actions.ts` — page-level mutators:
+  `addPage`, `renamePage`, `deletePage`, `reorderPages`, plus
+  site-level `setSiteName`, `setPalette`, `setHeadingFont`,
+  `setBodyFont`. Each is a pure function `(state, args) =>
+  newDraftConfig`; the store wires them through `mutate()`. Page
+  mutators enforce: the home page cannot be deleted, the home page's
+  slug cannot change, slug must be `^[a-z0-9-]+$`, per-kind slug
+  uniqueness, and `detailDataSource` is required iff `kind ===
+  "detail"`. Failed validation throws a typed `EditorActionError`
+  which the calling component catches and surfaces via Sonner.
+- `apps/web/lib/editor-state/autosave.ts` — `useAutosave(siteId,
+  workingVersionId, options?)` hook. Subscribes to `draftConfig` +
+  `saveState`; when state flips to `"dirty"`, debounces by `1000ms`
+  (configurable via `options.debounceMs`), flips state to `"saving"`,
+  PATCHes `/api/sites/[siteId]/working-version` with the current
+  `draftConfig`. On 204, flips state to `"saved"` and stores
+  `lastSavedAt = Date.now()`. On non-2xx or fetch error, flips state
+  to `"error"`. Coalesces overlapping mutations: if `draftConfig`
+  changes during a save, queue exactly one follow-up save after the
+  in-flight one resolves. Aborts in-flight saves on unmount via
+  `AbortController`.
+- `apps/web/lib/editor-state/__tests__/store.test.ts` — store unit
+  tests (selection, hover, page-tab, preview-mode toggle).
+- `apps/web/lib/editor-state/__tests__/actions.test.ts` — page-action
+  unit tests (add static, add detail, add detail without
+  data-source rejected, slug uniqueness per-kind, home delete
+  rejected, home slug rename rejected, reorder, etc.).
+- `apps/web/lib/editor-state/__tests__/autosave.test.ts` — fake-timers
+  test of the debounce + coalesce + error path.
 
-1. `apps/web/lib/site-config/schema.ts` exports `pageKindSchema`,
-   `detailDataSourceSchema`, `pageSchema`, `siteConfigSchema`, and
-   `componentNodeSchema`. The `pageSchema` enforces "detailDataSource iff
-   kind='detail'" via `superRefine`. The `siteConfigSchema` enforces
-   per-`kind` slug uniqueness via `superRefine`.
-2. `apps/web/lib/site-config/index.ts` re-exports `parseSiteConfig`,
-   `safeParseSiteConfig`, `siteConfigSchema`, and `pageKindSchema`.
-3. `apps/web/components/site-components/registry.ts` exports
-   `componentRegistry` keyed by every type in `COMPONENT_TYPES`, with no
-   missing entries.
-4. `apps/web/types/rm.ts` exports `Company`, `Property`, `Unit`,
-   `PropertyType`, `PropertyFilters`, `UnitFilters`. (Used by the
-   data-source description block of the system prompt.)
-5. `apps/web/components/renderer/index.ts` exports `Renderer` and the
-   `RendererProps` type. The `Renderer` accepts `mode: "edit" | "preview" |
-   "public"`.
-6. `apps/web/lib/supabase/index.ts` exports
-   `createServiceSupabaseClient` and `createServerSupabaseClient`.
-7. `apps/web/lib/setup-form/schema.ts` exports `setupFormSchema` and
-   `apps/web/lib/setup-form/types.ts` exports `SetupFormValues`,
-   `PALETTE_IDS`, `TEMPLATE_STARTS`, `PROPERTY_TYPES_FEATURED`,
-   `PAGE_INCLUSIONS`, `TONES`, `PRIMARY_CTAS`. (The endpoint validates the
-   inbound payload with `setupFormSchema` server-side.)
-8. `apps/web/components/setup-form/setup-form.tsx` exports `SetupForm` and
-   accepts an `onValid?: (values: SetupFormValues) => void` prop. (Sprint 4
-   wires this without modifying the file.)
-9. `apps/web/package.json` lists `@anthropic-ai/sdk` (already pinned to
-   `0.91.1`). Do **not** add it again or bump the version.
-10. `supabase/migrations/` exists and contains at least one
-    `20260425*_create_rm_*.sql` file. Determine the highest existing
-    `YYYYMMDDNNNNNN` ordinal and use one greater than it for the new
-    migration filename.
-11. `.env.example` (or `apps/web/.env.example`) documents
-    `ANTHROPIC_API_KEY`. The Sprint 4 README amendment (see "User actions
-    required" in the Sprint Completion Report) reminds the user to set it
-    in `apps/web/.env.local`.
+### Shared (read-only this sprint)
 
-If any of those are missing, emit a Deviation Report naming the missing
-asset, and wait for explicit user approval before either (a) implementing
-the missing asset (likely outside this sprint's owned scope) or (b)
-narrowing the sprint.
+- `PROJECT_SPEC.md` (the authoritative spec — read, do not write).
+- `apps/web/lib/site-config/` (Sprint 3 + 3b — read-only; the schema is
+  the contract, do NOT extend it).
+- `apps/web/lib/setup-form/palettes.ts` (Sprint 2 — read-only; reused
+  by the Site tab's PaletteSelector).
+- `apps/web/lib/setup-form/types.ts` (Sprint 2 — read-only; reused for
+  the `PaletteId` type).
+- `apps/web/lib/sites/repo.ts` (Sprint 4 — read-only; Sprint 6 calls
+  `getSiteBySlug` and `getLatestWorkingVersion` from server components).
+- `apps/web/lib/supabase/` (Sprint 1 — read-only; the autosave
+  endpoint imports the service-role client from here).
+- `apps/web/components/renderer/` (Sprint 3 — read-only; the canvas
+  calls `<Renderer />`).
+- `apps/web/components/site-components/` (Sprints 3 + 5 + 5b — read-only;
+  the Add tab catalog references the registry's keys).
+- `apps/web/components/ui/` (shadcn primitives — read-only; reused for
+  Dialog, AlertDialog, Tabs, Tooltip, etc.).
+- `apps/web/types/database.ts` (Sprint 4 — read-only; the API route
+  uses the generated `Database` type for the Supabase client).
+
+### Forbidden (do not touch under any circumstance)
+
+- `PROJECT_SPEC.md` — read only. Spec amendments are a separate planning
+  workflow, not a sprint task.
+- `DECISIONS.md` — append-only. You may add new entries; you may NOT
+  edit existing entries.
+- `apps/web/lib/site-config/` — Sprint 3 + 3b ownership. The schema is
+  locked. If you discover a schema gap, raise a Deviation.
+- `apps/web/components/renderer/` — Sprint 3 ownership. If the renderer
+  needs a new prop (e.g. an `onHover` it doesn't already have), raise a
+  Deviation; do NOT modify it inline.
+- `apps/web/components/site-components/` — Sprints 3 + 5 + 5b
+  ownership. If a component card in the catalog needs an icon mapping,
+  declare it in the catalog file, not in the component itself.
+- `apps/web/lib/sites/repo.ts` — Sprint 4 ownership. Sprint 6's autosave
+  endpoint calls Supabase directly (via the existing service-role client
+  in `lib/supabase/`), not through `repo.ts`. If a `repo.ts` helper
+  feels needed, raise a Deviation; do NOT modify `repo.ts` inline.
+- `apps/web/components/setup-form/` — Sprint 2 ownership.
+- `apps/web/app/api/generate-initial-site/` — Sprint 4 ownership.
+- `apps/web/app/[site]/preview/` — Sprint 4 ownership.
+- `supabase/migrations/` — no migrations in this sprint. The autosave
+  endpoint UPDATES an existing column on an existing row; no DDL is
+  needed. If you find yourself wanting a migration, raise a Deviation.
+- Any file under `apps/web/components/editor/edit-panels/` — Sprint 8
+  ownership. The Right sidebar in this sprint is a placeholder, not a
+  panel host.
+- Any file under `apps/web/components/editor/canvas/dnd/` — Sprint 7
+  ownership.
+- Any file under `apps/web/components/editor/sidebar/data-tab/` other
+  than the placeholder `DataTab.tsx` — Sprint 10 ownership.
+- Any file under `apps/web/components/editor/ai-chat/` — Sprint 11
+  ownership.
+- The `package.json` `dependencies` block — only the additions explicitly
+  listed in this CLAUDE.md may be added (`zustand`). Adding any other
+  dependency is a Deviation.
+- Any test file outside `apps/web/components/editor/__tests__/` and
+  `apps/web/lib/editor-state/__tests__/`.
 
 ## Definition of Done
 
-Every box must be ticked before the Sprint Completion Report is emitted.
-Each item is a single observable outcome — do not collapse them.
+Treat each item as a hard requirement. The sprint is not done until ALL
+boxes are checked AND every quality gate in the "Definition of done
+gating" block at the bottom passes with zero warnings.
 
-- [ ] **Migration**: a new file at
-      `supabase/migrations/2026MMDDNNNNNN_create_sites_and_site_versions.sql`
-      creates the `sites` and `site_versions` tables exactly per
-      `PROJECT_SPEC.md` §12, enables RLS on both with a single permissive
-      `using (true) with check (true)` policy named consistently with the
-      existing `rm_*` migrations, and adds a partial unique index ensuring
-      "at most one `is_working = true` row per `site_id`" and "at most one
-      `is_deployed = true` row per `site_id`". The file uses the next
-      available `YYYYMMDDNNNNNN` ordinal greater than every existing
-      migration.
-- [ ] **Anthropic client wrapper**: `apps/web/lib/ai/client.ts` exports a
-      `createAnthropicClient()` factory that constructs an `Anthropic`
-      instance from the `ANTHROPIC_API_KEY` env var, throws a
-      `"createAnthropicClient called in browser"` error if `typeof window
-      !== "undefined"`, and throws a "Missing ANTHROPIC_API_KEY" error if
-      the key is unset (mirrors `lib/supabase/service.ts`).
-- [ ] **System-prompt builder**: `apps/web/lib/ai/prompts/initial-generation.ts`
-      exports a pure function
-      `buildInitialGenerationSystemPrompt(input: InitialGenerationInput): string`
-      whose output (a) explicitly references "SiteConfig", (b) embeds a
-      verbatim TypeScript-prose rendering of the schema produced by
-      `apps/web/lib/ai/prompts/snippets/schema-prose.ts` including
-      `Page.kind` and `Page.detailDataSource`, (c) embeds the registered
-      component catalog from `apps/web/lib/ai/prompts/snippets/component-catalog.ts`,
-      (d) embeds the data-source descriptions from
-      `apps/web/lib/ai/prompts/snippets/data-sources.ts` listing every
-      field on `Property`, `Unit`, and `Company`, (e) instructs strict JSON
-      output with no prose and no markdown fences, (f) instructs the model
-      to use only registered components, (g) instructs the model to apply
-      the chosen palette consistently, (h) instructs the model to bind
-      `UnitCard` / `PropertyCard` props to RM fields where appropriate,
-      (i) caps total components per page at 40, (j) instructs the model to
-      treat any attached inspiration screenshots as vibe references only,
-      (k) instructs the model that any page with a Repeater over `units`
-      MUST be paired with a `kind="detail"` page with
-      `detailDataSource: "units"`, and any page with a Repeater over
-      `properties` MUST be paired with a `kind="detail"` page with
-      `detailDataSource: "properties"`, and (l) restates the per-`kind`
-      slug uniqueness rule. The function is deterministic — no clock,
-      no randomness, no I/O.
-- [ ] **Generation orchestrator**:
-      `apps/web/lib/ai/generate-initial-site.ts` exports an async function
-      `generateInitialSite(input: InitialGenerationInput): Promise<GenerateInitialSiteResult>`
-      where `GenerateInitialSiteResult` is a discriminated union:
-      `{ kind: "ok"; config: SiteConfig }` or
-      `{ kind: "error"; error: AiError }`. The function (a) builds the
-      system prompt, (b) attaches up to 4 image content blocks from
-      `input.inspirationImages` (URL source per the SDK) capped at 4 even
-      if more are passed, (c) calls the SDK with `model:
-      "claude-sonnet-4-5"`, `max_tokens: 16000`, `temperature: 0.4`,
-      (d) extracts the first `text` content block, strips an optional
-      leading ```` ```json ```` fence and trailing ```` ``` ````, parses
-      JSON, and validates with `safeParseSiteConfig`; (e) on parse or
-      validation failure, retries ONCE with a second user message that
-      embeds the schema again and the previous output, prefixed with
-      "Your previous output failed validation. Re-emit a valid SiteConfig
-      JSON object. Validation errors:" and the Zod issue list; (f) maps
-      every failure to an `AiError` with one of the seven §9.6 categories;
-      (g) returns `{ kind: "ok", config }` on first success.
-- [ ] **Error categorizer**: `apps/web/lib/ai/errors.ts` exports an
-      `AiError` discriminated-union type with the seven §9.6 categories
-      and a `categorizeAiError(unknown): AiError` helper that maps SDK
-      errors to categories (HTTP 401/403 → `auth_error`, HTTP 429 →
-      `over_quota`, `AbortError` / fetch network failure →
-      `network_error`, request-timeout → `timeout`, ZodError after retry →
-      `invalid_output`, anything else → `auth_error` with the original
-      message in `details`). Includes a `formatErrorReport(error: AiError):
-      string` that produces the JSON blob the **Copy details** button
-      copies.
-- [ ] **API route**: `apps/web/app/api/generate-initial-site/route.ts`
-      exports a `POST(request: Request)` handler that (a) parses the body
-      against `setupFormSchema` (server-side) and returns `400` with a
-      structured error if invalid, (b) derives a unique `slug` (see next
-      DoD item), (c) calls `generateInitialSite`, (d) on `{ kind: "ok" }`
-      inserts a row into `sites` and a row into `site_versions` with
-      `is_working = true`, `is_deployed = false`, `created_by = "ai"`,
-      `source = "initial_generation"`, `parent_version_id = null`, the
-      validated config in `config`, (e) returns 200 with
-      `{ siteId, slug, versionId, previewUrl }` where `previewUrl` is
-      `/{slug}/preview?v={versionId}`; on `{ kind: "error" }` it returns
-      the appropriate HTTP status (`5xx` for `network_error`/`timeout`/
-      `auth_error`/`over_quota`, `502` for `invalid_output`) and a JSON
-      body `{ error: AiError }`. It uses the service-role Supabase client
-      (per the existing `rm-api/` pattern; auth is a placeholder for the
-      demo per §17). The route exports `runtime = "nodejs"` to keep the
-      Anthropic SDK happy.
-- [ ] **Slug generator**: `apps/web/lib/ai/slug.ts` exports
-      `deriveSiteSlug(input: { companyName: string; currentWebsiteUrl?: string }): string`
-      and a separate `async ensureUniqueSlug(slug: string): Promise<string>`
-      that consults `sites.slug` and appends `-2`, `-3`, … until it finds a
-      free one. Lowercase; ASCII; collapse whitespace and non
-      `[a-z0-9-]` characters into `-`; strip leading/trailing `-`; max 60
-      characters; falls back to `"site"` if input would yield empty.
-- [ ] **`/{site}/preview` route**:
-      `apps/web/app/[site]/preview/page.tsx` is an async server component
-      that reads `params.site` and `searchParams.v`, fetches the matching
-      `site_versions` row (by `id` if `v` is present, else the row with
-      `is_working = true` for the resolved site_id, else the most recent
-      row for that site), parses `config` with `parseSiteConfig`, and
-      renders `<Renderer config={config} page={searchParams.page ??
-      "home"} mode="preview" />`. Returns `notFound()` if the site or
-      version is missing. Sets `metadata` from `config.meta.siteName` and
-      `config.meta.description`. Uses the service-role Supabase client.
-- [ ] **`LoadingNarration` component**:
-      `apps/web/components/setup-form/LoadingNarration.tsx` is a `"use
-      client"` component that accepts an optional `messages: string[]`
-      prop (defaults to the seven §9.5 Initial Generation strings in the
-      documented order) and an optional `intervalMs: number` (default
-      `3500`), rotates through them with `setInterval`, fades between
-      them with a CSS transition (no Framer Motion — it's not in
-      `package.json`), cleans the interval on unmount, and respects
-      `prefers-reduced-motion` by snapping rather than fading.
-- [ ] **`PreviewPanel` component**:
-      `apps/web/components/setup-form/PreviewPanel.tsx` is a `"use client"`
-      component with a discriminated-union `state` prop:
-      `{ kind: "empty" } | { kind: "generating" } | { kind: "generated";
-      previewUrl: string; siteSlug: string } | { kind: "error"; error:
-      AiError }`. It renders the §7.3 fake-browser chrome (red/yellow/
-      green dots, inert back/forward/refresh, URL field showing
-      `https://www.{slug}.com` once known, "Pending"/"Live" pill that
-      flips on `kind: "generated"`), and inside the body: the empty state
-      (file icon + the §7.3 hint string), the generating state
-      (`<LoadingNarration />`), the generated state (`<iframe
-      src={previewUrl} title="Generated site preview" />` sized to fill
-      the chrome), or the error state (per the §9.6 user-facing copy keyed
-      on `error.kind`, plus a **Retry** button when `error.kind` is
-      `network_error`/`timeout`/`over_quota`, plus a **Copy details**
-      button that calls `navigator.clipboard.writeText` with the result of
-      `formatErrorReport(error)`).
-- [ ] **Element 1 wire-up**:
-      `apps/web/components/setup-form/SetupExperience.tsx` is a new `"use
-      client"` component that owns the local state for the panel
-      (`PanelState`), renders `<SetupForm onValid={handleSubmit} />`
-      followed by `<PreviewPanel state={panelState} />`, and `handleSubmit`
-      issues `fetch("/api/generate-initial-site", { method: "POST", body:
-      JSON.stringify(values) })`. The page at
-      `apps/web/app/(rmx)/setup/page.tsx` swaps its current
-      `<SetupForm />` usage for `<SetupExperience />`. Ownership of
-      `apps/web/app/(rmx)/setup/page.tsx` transfers from Sprint 2 to
-      Sprint 4 for this single edit (record this in the Sprint Completion
-      Report as a same-sprint scope expansion, not a Deviation, per the
-      "ownership transfers" pattern used in Sprint 5b).
-- [ ] **Type generation**: `apps/web/types/database.ts` is regenerated
-      with `pnpm db:types` AFTER the migration is applied. The orchestrator
-      and route handler import the `Database` type so the Supabase client
-      is fully typed for the new `sites` / `site_versions` tables. Commit
-      the regenerated `database.ts` as part of this sprint.
-- [ ] **Tests — pure functions**: Vitest unit tests cover
-      (a) `deriveSiteSlug` happy paths and edge cases (empty input,
-      diacritics, very long input, all-non-ASCII input → fallback), (b)
-      `buildInitialGenerationSystemPrompt` snapshot test asserting the
-      output mentions every required clause from §9.2 plus the
-      detail-pages amendment, (c) `categorizeAiError` mapping for each
-      §9.6 category (network, timeout, auth, over_quota, invalid_output,
-      operation_invalid, model_clarification — model_clarification is
-      reachable when the JSON-validated response shape includes a
-      `kind: "clarify"` field; for Sprint 4 the initial-generation
-      response shape does not include clarifications, so this case is
-      tested via direct construction), (d) `formatErrorReport` produces
-      JSON parseable back to the same `AiError`.
-- [ ] **Tests — orchestrator**: Vitest test for `generateInitialSite`
-      using `vi.mock("@anthropic-ai/sdk")` to inject a stub that returns
-      (i) a valid SiteConfig on first call → asserts `{ kind: "ok" }`,
-      (ii) an invalid JSON on first call + a valid SiteConfig on retry →
-      asserts retry happened and `{ kind: "ok" }`, (iii) invalid JSON
-      twice → asserts `{ kind: "error", error.kind: "invalid_output" }`
-      and the retry user-message contained "Your previous output failed
-      validation", (iv) network error → asserts `{ kind: "error",
-      error.kind: "network_error" }`, (v) HTTP 401 → `auth_error`, (vi)
-      HTTP 429 → `over_quota`. Image attachment passing is covered: a
-      call with 6 `inspirationImages` results in exactly 4 image content
-      blocks in the request payload.
-- [ ] **Tests — API route**: Vitest test for the route handler that
-      mocks both the Anthropic SDK and the Supabase client (a
-      `vi.mock("@/lib/supabase")` returning a fake builder), asserts
-      (a) invalid form payload → 400, (b) valid payload + ok generation →
-      200 with `{ siteId, slug, versionId, previewUrl }`, slug is unique
-      (collision test inserts a pre-existing `aurora-cincy` row and
-      verifies the next slug is `aurora-cincy-2`), (c) generation error →
-      correct HTTP status and `{ error }` body.
-- [ ] **Tests — UI**: React Testing Library tests for `LoadingNarration`
-      (rotates messages on a fake timer; respects custom messages;
-      cleans up interval on unmount) and `PreviewPanel` (each `state.kind`
-      renders the right chrome and body; Retry button is present iff
-      `error.kind` is retryable; Copy details copies the right blob using
-      a stubbed `navigator.clipboard`).
-- [ ] **Tests — `/preview` route**: Vitest test for the page component
-      with mocked Supabase client: returns `notFound()` for missing site,
-      returns `notFound()` for missing version, renders the `Renderer`
-      with the parsed config and the requested `page` slug.
-- [ ] **All pre-existing tests still pass.** No test renamed, deleted, or
-      `.skip`'d. If a Sprint-2 setup-form test breaks because the page now
-      mounts inside `<SetupExperience>` instead of directly, fix the test
-      so it still asserts what it was asserting (and document the change
-      in the Sprint Completion Report).
-- [ ] `pnpm test` (from the repo root) passes with zero failures and
-      zero skipped tests, except for the existing
-      `describe.skipIf(skipIntegration)` blocks in `lib/rm-api/__tests__/`
-      which remain conditional on Supabase env vars.
-- [ ] `pnpm build` succeeds with zero TypeScript errors and zero warnings.
-- [ ] `pnpm lint` (Biome) passes with zero warnings.
-- [ ] `pnpm typecheck` (`tsc --noEmit` from `apps/web`) passes.
-- [ ] No new dependencies added (the `@anthropic-ai/sdk` already pinned in
-      `apps/web/package.json` is used as-is). Adding a dependency is a
-      Deviation.
-- [ ] No file outside the "Files you may create or modify" list is
-      touched, with the explicit ownership transfer of
-      `apps/web/app/(rmx)/setup/page.tsx` recorded above.
-- [ ] `DECISIONS.md` is updated if any deviation was approved.
-- [ ] Manual smoke test (numbered, click-by-click below) passes on a
-      fresh `pnpm dev` with the user's real `ANTHROPIC_API_KEY` and
-      hosted-Supabase env vars set.
+- [ ] **Pre-flight check passed.** All six checks above succeeded; the
+  Sprint Completion Report records each as ✅ in its body.
 
-## Files you may create or modify
+- [ ] **Editor route loads a real site.** Navigating to
+  `/{slug}/edit` with a valid slug renders the editor shell and the
+  canvas displays the working version's home page through the shared
+  `<Renderer mode="edit">`. Navigating to a missing slug renders the
+  Next.js 404 page (`not-found.tsx`). Navigating to a slug whose site
+  has no `is_working` version also renders the 404 page (the same
+  page; no separate copy needed for this sprint).
 
-Use the exact paths below. Anything not listed is forbidden — adding to
-this list is a Deviation.
+- [ ] **Top bar renders and is fully wired.** The TopBar shows: a
+  static "Orion's Belt" wordmark on the far left; an inline-editable
+  site name input bound to `draftConfig.name` (Enter or blur commits;
+  Esc reverts); the page selector dropdown showing the active page
+  with a small "DETAIL" badge if the active page has `kind ===
+  "detail"`, opening to a list of all pages with the same per-row
+  badge and a footer "+ Add page" entry that opens `AddPageDialog`;
+  the preview toggle bound to the store's `previewMode`; the
+  SaveIndicator showing one of "Saved 2s ago" / "Saving…" /
+  "Unsaved changes" / "Save failed — retry"; the decorative Deploy
+  button.
 
-- `supabase/migrations/2026MMDDNNNNNN_create_sites_and_site_versions.sql`
-  (new — exact ordinal determined at creation time per the pre-flight
-  check rule).
-- `apps/web/types/database.ts` (regenerated by `pnpm db:types` after the
-  migration is pushed; commit the result).
-- `apps/web/lib/ai/client.ts` (new).
-- `apps/web/lib/ai/errors.ts` (new).
-- `apps/web/lib/ai/slug.ts` (new).
-- `apps/web/lib/ai/generate-initial-site.ts` (new).
-- `apps/web/lib/ai/prompts/initial-generation.ts` (new).
-- `apps/web/lib/ai/prompts/snippets/schema-prose.ts` (new).
-- `apps/web/lib/ai/prompts/snippets/component-catalog.ts` (new).
-- `apps/web/lib/ai/prompts/snippets/data-sources.ts` (new).
-- `apps/web/lib/ai/__tests__/slug.test.ts` (new).
-- `apps/web/lib/ai/__tests__/initial-generation.test.ts` (new — orchestrator
-  + system-prompt snapshot).
-- `apps/web/lib/ai/__tests__/errors.test.ts` (new).
-- `apps/web/app/api/generate-initial-site/route.ts` (new).
-- `apps/web/app/api/generate-initial-site/__tests__/route.test.ts` (new).
-- `apps/web/app/[site]/preview/page.tsx` (new).
-- `apps/web/app/[site]/preview/__tests__/page.test.tsx` (new).
-- `apps/web/components/setup-form/LoadingNarration.tsx` (new).
-- `apps/web/components/setup-form/PreviewPanel.tsx` (new).
-- `apps/web/components/setup-form/SetupExperience.tsx` (new).
-- `apps/web/components/setup-form/__tests__/loading-narration.test.tsx`
-  (new).
-- `apps/web/components/setup-form/__tests__/preview-panel.test.tsx` (new).
-- `apps/web/components/setup-form/__tests__/setup-experience.test.tsx`
-  (new).
-- `apps/web/app/(rmx)/setup/page.tsx` (**ownership transfer from Sprint 2
-  for this sprint** — the only change is replacing `<SetupForm />` with
-  `<SetupExperience />` and updating any imports).
-- `DECISIONS.md` (append-only; only if a deviation is approved).
+- [ ] **Left sidebar four-tab structure works.** The LeftSidebar
+  renders four tab triggers (Site, Pages, Add, Data); clicking a
+  trigger swaps the panel content and writes the active tab to the
+  store (`leftSidebarTab`); the active tab persists across re-renders
+  (it lives in the store, not in `useState`). Default tab is
+  `pages` — the user lands looking at the page list.
 
-## Files you MUST NOT modify
+- [ ] **Site tab edits palette and fonts.** The Site tab renders six
+  palette cards (using the same definitions as Sprint 2's setup form,
+  imported from `apps/web/lib/setup-form/palettes.ts`); clicking a card
+  fires `setPalette(paletteId)`, which updates `draftConfig` and flips
+  `saveState` to `"dirty"`. The currently selected palette is shown
+  with a 2px accent border. The font selectors (Heading + Body if the
+  schema supports both, or single Font if not) populate from the
+  inline curated list and update the schema's font fields when changed.
+  Changes are reflected in the canvas immediately (the renderer reads
+  the same `draftConfig`).
 
-- `PROJECT_SPEC.md`.
-- `docs/planning/SPRINT_SCHEDULE.md`, `docs/planning/Claude.md`,
-  `docs/planning/BUNDLE_README.md`.
-- The existing entries in `DECISIONS.md`.
-- Any existing migration in `supabase/migrations/` (timestamp-prefixed
-  immutability rule from the cross-sprint risk register).
-- `supabase/seed.sql` — Sprint 4 does NOT seed sites or versions; the
-  endpoint is the only writer.
-- `apps/web/lib/site-config/**` — schema is locked since Sprint 3b. A
-  schema change is a deviation.
-- `apps/web/lib/setup-form/**`, `apps/web/components/setup-form/setup-form.tsx`
-  and the existing per-section files (`brand-section.tsx`,
-  `general-section.tsx`, `color-scheme-section.tsx`,
-  `template-start-section.tsx`, `custom-instructions-section.tsx`,
-  `advanced-section.tsx`) — Sprint 2-locked.
-- `apps/web/components/site-components/**` — Sprint 3 / Sprint 5 / Sprint
-  5b territory. Sprint 4 calls into the registry but never edits a
-  component.
-- `apps/web/components/renderer/**` — Sprint 3.
-- `apps/web/components/rmx-shell/**`, `apps/web/lib/rm-api/**`,
-  `apps/web/lib/supabase/**` — Sprint 1 / 1a / 1b / 1c.
-- `apps/web/lib/storage/**` — Sprint 2c.
-- `apps/web/app/dev/preview/**`, `apps/web/app/dev/components/**` — Sprint
-  3 and Sprint 5b respectively.
-- `apps/web/app/page.tsx`, `apps/web/app/layout.tsx`, `apps/web/app/globals.css`
-  — Sprint 0 territory; not in scope here.
-- `package.json`, `pnpm-lock.yaml`, `apps/web/package.json`,
-  `apps/web/biome.json`, `apps/web/next.config.*`, `apps/web/tsconfig.json`,
-  `apps/web/vitest.config.*`, `apps/web/playwright.config.ts` — toolchain
-  is locked since Sprint 0; a change here is a Deviation.
+- [ ] **Pages tab supports add (static + detail), rename, delete, and
+  reorder.**
+  - Add: clicking "Add page" opens `AddPageDialog`. Filling the form
+    with kind = Static creates a static page (no `detailDataSource`).
+    Filling the form with kind = Detail requires choosing a
+    `detailDataSource` (`properties` or `units`) before Submit is
+    enabled. On submit, a new page is appended to `draftConfig.pages`
+    with a brand-new empty `Section` as `rootComponent` and the page
+    list updates.
+  - Rename: clicking the rename button on a page row opens
+    `RenamePageDialog`. Editing name + slug commits to the store on
+    submit. The home page's slug field is disabled (tooltip
+    "The home page slug is fixed.").
+  - Delete: clicking the delete button on a non-home page row opens
+    `DeletePageConfirm`. Confirming removes the page from
+    `draftConfig.pages` and, if the deleted page was the current
+    page, switches the current page to home. The home page's delete
+    button is disabled (tooltip "The home page cannot be deleted.").
+  - Reorder: each non-home page row has up/down arrow buttons that
+    move it within `draftConfig.pages`; the home page is locked at
+    index 0 and cannot be moved.
+  - Per-kind slug uniqueness: attempting to add or rename to a slug
+    that conflicts with another page **of the same kind** is blocked
+    with an inline error in the dialog. Adding a detail page with
+    `slug: "units"` when a static page with `slug: "units"` already
+    exists is **allowed** (the U2 same-slug coexistence pattern from
+    §8.12).
 
-## Coding standards (binding — copied from `PROJECT_SPEC.md` §15)
+- [ ] **Add tab shows all 20 component cards (non-draggable).** The Add
+  tab renders one `ComponentCard` per entry in
+  `component-catalog.ts`, grouped by `group` field (Layout, Content,
+  Media, Data, Forms, Navigation), each section labeled with a small
+  uppercase header. The card count is exactly 20 (asserted in a test).
+  Cards are clickable for visual feedback only — clicking a card sets
+  a transient `selectedAddCard` value in component-local state but does
+  NOT mutate `draftConfig`. The footer line "Drag-and-drop coming in
+  the next update." is visible.
 
-- TypeScript: `strict: true`, `noUncheckedIndexedAccess: true`,
-  `noImplicitAny: true`. No `any`. If you reach for it, use `unknown` and
-  narrow.
-- Prefer types over interfaces unless extending.
-- Branded types for IDs where helpful: `type SiteId = string & { __brand:
-  "SiteId" }`. Sprint 4 introduces `SiteId` and `VersionId` as branded
-  string aliases in `apps/web/lib/ai/types.ts` (or inline if not reused).
-- React: Server components by default. `"use client"` only where needed.
-  `LoadingNarration`, `PreviewPanel`, `SetupExperience` are client
-  components (they use state and effects). The `/preview` route page is a
-  server component; the `Renderer` it returns is already client-marked.
-- One component per file. File name `kebab-case.tsx`; export name
-  `PascalCase`. Match the existing per-section convention in
-  `components/setup-form/`.
-- API routes: `kebab-case` segments. `route.ts` exports `POST` as the
-  handler. Use `runtime = "nodejs"`.
-- Use `safeParse` + structured-error fallback in API code; never throw an
-  uncategorized error to the client.
-- No commented-out code; no `.skip` tests; no `TODO` without a sprint
-  reference. `// TODO(sprint-14): per-site soft-limit per §9.9` is the
-  acceptable shape.
-- Match the existing in-file comment style (header comments explain
-  *why*, not *what*; see `lib/supabase/service.ts` and
-  `components/site-components/Form/index.tsx` for examples).
+- [ ] **Data tab + Right sidebar are placeholder shells.** The Data tab
+  renders the `Database` icon and the placeholder copy. The Right
+  sidebar renders the `MessageSquare` icon and the placeholder copy.
+  Neither pane has interactive elements.
+
+- [ ] **Canvas wires selection + hover + Esc clears.** Clicking a
+  component in the canvas sets `selectedComponentId` to that node's
+  id and the renderer renders the selection outline (per Sprint 3's
+  edit-mode behavior). Clicking the canvas background (not on any
+  component) clears `selectedComponentId`. Pressing `Esc` while the
+  canvas is focused clears `selectedComponentId`. Hovering a component
+  highlights its outline (via the `onHover` callback if the renderer
+  supports it; otherwise via pure CSS). The breadcrumb at the bottom of
+  the canvas shows the selection trail (root → ... → selected); when
+  nothing is selected, the breadcrumb is hidden.
+
+- [ ] **Preview toggle swaps renderer mode.** Clicking the PreviewToggle
+  flips `previewMode`. When `previewMode === true`, the canvas calls
+  `<Renderer mode="preview" />` (no selection outlines, no hover
+  highlights, animations enabled per Sprint 3 behavior); when
+  `previewMode === false`, the canvas reverts to `mode="edit"`.
+
+- [ ] **Page selector switches the canvas page.** Selecting a different
+  page in the PageSelector writes `currentPageSlug` to the store and the
+  canvas re-renders with the new page's `rootComponent`.
+  `selectedComponentId` is cleared on page change.
+
+- [ ] **Zustand store is the single source of truth.** All editor state
+  (current page, selection, hover, sidebar tab, preview mode, draft
+  config, save state, last saved timestamp) lives in the store. No
+  editor component holds editor state in `useState` other than transient
+  UI state (form-input drafts inside dialogs, dialog open/closed
+  bindings local to a single dialog). The store is the only consumer of
+  `zustand` — the dependency is added in this sprint.
+
+- [ ] **Autosave debounces, coalesces, and surfaces failures.** A
+  mutation to `draftConfig` flips `saveState` to `"dirty"`; after
+  1000ms of quiet, the autosave hook PATCHes
+  `/api/sites/{siteId}/working-version` with the current `draftConfig`
+  body. On 204, the SaveIndicator displays "Saved Xs ago" with a
+  ticking time. On non-2xx, the SaveIndicator displays "Save failed —
+  retry" with a button that re-attempts the PATCH. Concurrent
+  mutations during an in-flight save coalesce into exactly one
+  follow-up save. The hook aborts in-flight saves on unmount via
+  `AbortController`.
+
+- [ ] **PATCH endpoint validates and persists.** `PATCH
+  /api/sites/[siteId]/working-version` parses the request body with
+  Zod (`{ config: siteConfigSchema }`), uses the service-role
+  Supabase client, and updates the row matching `site_id = :siteId
+  AND is_working = true`, setting `config = :newConfig` and
+  `updated_at = NOW()`. Returns 204 on success. Returns 400 with a
+  category-keyed JSON body `{ category: "validation_error", message,
+  details }` on Zod failure. Returns 404 if no working row exists.
+  Returns 500 with `{ category: "server_error", message }` on
+  Supabase failure (no stack traces, no service-role key in any
+  response body, ever).
+
+- [ ] **Coding standards (§15) honored.** No `any`. No `@ts-ignore`. No
+  `.skip` or `.only` in tests. No commented-out code. No `console.log`
+  in committed files (use the existing logger if one exists; otherwise
+  no logging in this sprint). Server-only files start with
+  `import "server-only";`. Client components start with `"use client";`
+  on line 1.
+
+- [ ] **Tests added.** ≥ 18 new Vitest tests across the editor-state
+  store, the editor-state actions, the autosave hook (with fake
+  timers), the PATCH endpoint (with a mocked Supabase client), the
+  AddPageDialog, the RenamePageDialog, the PageSelector (DETAIL
+  badge), the PaletteSelector, the FontSelector, and the Canvas
+  selection / hover / Esc behavior. No `.skip`, no `.only`.
+
+- [ ] **All quality gates pass.**
+  - `pnpm test` — zero failures, zero skipped.
+  - `pnpm build` — zero TypeScript errors.
+  - `pnpm biome check` — zero warnings.
+  - Manual smoke test (below) — every step PASS.
+
+- [ ] **No new files outside the Owned scope.** `git status` shows
+  changed files only inside the Owned list above. The only new
+  dependency added is `zustand` (and, if absent already,
+  `zustand`'s peer types).
+
+- [ ] **No deviations were silently absorbed.** Every deviation that
+  occurred during the sprint was reported and approved per the
+  protocol below. `DECISIONS.md` has one new entry per approved
+  deviation with the user's verbatim approval text.
+
+- [ ] **Sprint Completion Report emitted verbatim** in the format at
+  the bottom of this file, with a populated External Actions Required
+  block (Vercel: none; Supabase: none — no migrations; Anthropic:
+  none — no AI calls in this sprint; Local: install `zustand` via
+  `pnpm install`; Other: none unless approved deviations dictate
+  otherwise).
+
+## Coding standards (binding — copied from PROJECT_SPEC.md §15)
+
+- TypeScript strict mode is on (`strict`, `noUncheckedIndexedAccess`,
+  `noImplicitAny`). No `any`, no `@ts-ignore`, no `as unknown as` casts
+  except where unavoidable (and only with a one-line comment naming
+  the reason).
+- Runtime validation at trust boundaries uses Zod; never trust
+  unvalidated `unknown`.
+- Server-only modules (`lib/sites/`, the API route) start with
+  `import "server-only";`.
+- Client components start with `"use client";` as the first line.
+- Use `lucide-react` for icons. No alternative icon libraries.
+- Use `sonner` for toasts. No alternative toast libraries.
+- Use shadcn `Dialog` / `AlertDialog` / `Tabs` / `Tooltip` for the
+  obvious patterns; do NOT roll new primitives.
+- Use Tailwind utility classes for styling. No new CSS files. No
+  inline `style={...}` except for dynamic values that cannot be
+  expressed as Tailwind classes (gridded canvas backgrounds, etc.).
+- Tests use Vitest. No `.skip`, no `.only`, no `xdescribe`. Each test
+  has a clear name describing the behavior under test.
+- File naming: PascalCase for components and component files, camelCase
+  for non-component modules, kebab-case for routes (Next.js convention).
+- Comments explain *why*, not *what*. Lean on naming for *what*.
 
 ## Deviation Protocol (mandatory — do not modify)
 
@@ -502,303 +631,293 @@ different direction.
 
 After emitting the report, STOP. Do not write code. Do not edit files. Wait.
 
-### Approval handling
-
-- "Approved" → implement the proposed alternative as written.
-- "Approved with changes: [...]" → implement with the user's modifications.
-- "Rejected — [direction]" → discard the proposal; follow the new direction.
-- A clarifying question → answer it; do not start work yet.
-- Anything else → ask "Is that an approval to proceed?" Do not assume.
-
-After any approved deviation, append an entry to `/DECISIONS.md` with date,
-sprint, what was changed, and the user's approval message verbatim.
-
 ## Definition of "done" gating
 
-A sprint is not done until all of the following pass with zero warnings:
+A sprint is not done until all of the following pass with no warnings:
 
-- `pnpm test` (root) — Vitest, all suites green, no skipped tests beyond
-  the existing `skipIf(skipIntegration)` rm-api integration blocks.
-- `pnpm build` (root) — Next.js production build, zero TypeScript errors,
-  zero warnings.
-- `pnpm lint` (root) — Biome check, zero warnings.
-- `pnpm typecheck` (`pnpm --filter web typecheck`) — `tsc --noEmit`, no
-  errors.
-- The manual smoke test below passes against a fresh `pnpm dev` with all
-  five env vars set in `apps/web/.env.local`.
+- `pnpm test`
+- `pnpm build`
+- `pnpm biome check`
+- Manual smoke test from the sprint plan (see "Manual smoke test" below).
 
-If any of those fails, treat it as a Deviation. Do not commit. Do not
+If any check fails, treat it as a Deviation. Do not commit. Do not
 declare the sprint complete.
 
 ## Manual smoke test (numbered, click-by-click)
 
 Prerequisites: `apps/web/.env.local` is populated with
 `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-`SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_PROJECT_REF`, `ANTHROPIC_API_KEY`;
-the hosted Supabase project is linked (`supabase link --project-ref ...`);
-`pnpm db:push` has been run after the new migration was committed.
+`SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_PROJECT_REF`, and
+`ANTHROPIC_API_KEY` (the last one is required because the smoke test
+walks through Element 1 to create a site to edit). The hosted Supabase
+project is linked. At least one site has been generated through Element
+1 (or you can re-run step 1 to generate one fresh).
 
-1. From the repo root, run `pnpm dev`. Wait for the "Ready" line.
-2. Open a fresh browser tab at `http://localhost:3000/setup`. Confirm the
-   RMX shell renders and the setup form is visible.
-3. Confirm the **PreviewPanel** is visible below (or beside) the form,
-   showing the empty state: file icon and the §7.3 hint copy
-   ("Fill in your details above to see a live preview of your site.").
-4. In the form, type `Aurora Property Group` into the Company Name field.
-5. Click the **Ocean** palette card.
-6. Click **Save**. Confirm Save was enabled before clicking (it should
-   become enabled the moment both required fields are valid).
-7. Within 1–2 seconds, the PreviewPanel transitions to the **generating**
-   state. Confirm the LoadingNarration is visible and the first message
-   reads `Reading your brand details…`.
-8. Watch the narration rotate. Confirm at least three different §9.5
-   strings appear over the next 10 seconds.
-9. Within ~30 seconds, the PreviewPanel transitions to the **generated**
-   state. Confirm:
-    - The fake browser URL field shows `https://www.aurora-property-group.com`
-      (or whatever slug the deriver produced — record the actual slug).
-    - The pill on the right says **Live** (or **Pending** flipping to
-      **Live**).
-    - The iframe loads and the rendered site shows the company name,
-      uses Ocean palette colors, and contains at least one Section.
-10. Open the browser DevTools Network tab. Confirm the POST to
-    `/api/generate-initial-site` returned 200 with a JSON body containing
-    `siteId`, `slug`, `versionId`, and `previewUrl`. Confirm there is no
-    occurrence of `ANTHROPIC_API_KEY` or any `sk-ant-` substring in any
-    response body.
-11. Open the iframe URL directly in a new tab
-    (`http://localhost:3000/{slug}/preview?v={versionId}`). Confirm the
-    page renders the same content (no edit chrome).
-12. Open `http://localhost:3000/{slug}/preview` (no `?v=`). Confirm the
-    same site renders (resolved to the working version).
-13. Open `http://localhost:3000/no-such-site/preview`. Confirm Next.js
-    returns the 404 page.
-14. In Supabase Studio (or a SQL prompt against the linked project), run
-    `select id, slug, name from sites order by created_at desc limit 1;`
-    and `select id, site_id, source, created_by, is_working, is_deployed
-    from site_versions where site_id = '<the new id>';`. Confirm one
-    site row, one version row, `source = 'initial_generation'`,
-    `created_by = 'ai'`, `is_working = true`, `is_deployed = false`.
-15. **Error path — invalid key.** Stop the dev server. Set
-    `ANTHROPIC_API_KEY=invalid` in `apps/web/.env.local`. Restart `pnpm
-    dev`. Repeat steps 4–6. Confirm the PreviewPanel transitions to the
-    **error** state with the §9.6 `auth_error` user-facing copy
-    ("Service unavailable, please try again later.") and a **Copy
-    details** button that copies a JSON blob containing
-    `"kind":"auth_error"` to clipboard. Restore the real key when done.
-16. **Error path — network outage.** With the real key restored,
-    disconnect from the network (or block `api.anthropic.com` via
-    /etc/hosts), repeat steps 4–6, and confirm the **error** state shows
-    the `network_error` copy and a **Retry** button. Reconnect and
-    confirm the Retry succeeds.
-17. **Detail-page presence.** In the SiteConfig stored in `site_versions`
-    (run `select config from site_versions where id = '<the new id>';`
-    and inspect the JSON), confirm at least one page has `kind: "detail"`
-    with a valid `detailDataSource`, OR — if no Repeater of properties or
-    units appeared in the generation — confirm there are no Repeaters of
-    those types either. Either branch is valid; the assertion is the
-    invariant from the system-prompt clause (k).
+1. Run `pnpm dev` from the repo root. Wait for the "Ready" line.
+2. Open `http://localhost:3000/setup`. Fill the setup form with
+   Company Name `Aurora Property Group`, palette `Ocean`. Click
+   **Save**. Wait for the PreviewPanel to transition to "generated".
+   Note the slug shown in the fake browser URL field (e.g.
+   `aurora-property-group-x7k2pq`).
+3. Open `http://localhost:3000/{slug}/edit` directly in a new tab
+   (replacing `{slug}` with the slug from step 2). Confirm the editor
+   shell renders: TopBar across the top, LeftSidebar on the left
+   (Pages tab visible by default), Canvas in the center showing the
+   home page with selection wrappers, RightSidebar on the right with
+   the placeholder copy.
+4. In the TopBar, confirm the site name input shows "Aurora Property
+   Group". Click into it, type ` Demo` at the end, press Enter.
+   Confirm the SaveIndicator briefly shows "Saving…" and within ~1.5s
+   shows "Saved 1s ago".
+5. Open Supabase Studio (or a SQL prompt). Run
+   `select config->>'name' as name, updated_at from site_versions
+   where site_id = '<the new id>' and is_working = true;`. Confirm
+   the name reads "Aurora Property Group Demo" and `updated_at` is
+   within the last few seconds.
+6. Click the PageSelector. Confirm the dropdown opens and shows the
+   home page with NO "DETAIL" badge. Click "+ Add page" at the bottom.
+7. In the AddPageDialog, leave kind = Static. Type Name `Properties`,
+   Slug `properties`. Click Submit. Confirm the dialog closes, the
+   PageSelector shows "Properties" as the active page, and the Canvas
+   renders an empty page (an empty Section is the rootComponent).
+8. Click the PageSelector → "+ Add page". In the dialog, change kind
+   to **Detail**. Confirm a "Detail data source" dropdown appears.
+   Select `units`. Type Name `Unit Detail Template`, Slug `units`.
+   Confirm the dialog allows the slug `units` even though no static
+   page with that slug exists (the per-kind uniqueness rule). Click
+   Submit. Confirm the new page is added with the "DETAIL" badge in
+   the page selector and the canvas now shows it.
+9. Click the PageSelector → "+ Add page" again. In the dialog, leave
+   kind = Static. Type Name `Units`, Slug `units`. Click Submit.
+   Confirm the dialog accepts the slug `units` (the U2 same-slug
+   coexistence rule with the existing detail page).
+10. Click the PageSelector → "+ Add page" once more. In the dialog,
+    leave kind = Static. Type Name `Properties Duplicate`, Slug
+    `properties`. Confirm the dialog blocks Submit with an inline
+    error reading "Another static page already uses this slug." Close
+    the dialog without submitting.
+11. Switch back to the home page in the PageSelector. In the
+    LeftSidebar, click the **Site** tab. Confirm the six palette
+    cards render with Ocean selected. Click `Forest`. Confirm the
+    canvas re-themes within ~0.2s (text colors and accent change) and
+    SaveIndicator briefly shows "Saving…" then "Saved Xs ago".
+12. Click the **Pages** tab. Find the home page row; confirm its
+    delete button is disabled and its slug field (when rename dialog
+    is opened) is also disabled with the expected tooltip.
+13. Click the rename button on the `Properties` page row. Change Name
+    to `Our Properties`. Click Save. Confirm the PageSelector now
+    shows `Our Properties`.
+14. Click the delete button on the `Properties Duplicate` page row…
+    wait, you didn't add it because step 10 blocked. OK — click the
+    delete button on `Unit Detail Template` instead. Confirm the
+    AlertDialog opens; confirm; confirm the page disappears from the
+    page list and the Canvas reverts to the home page.
+15. Click the **Add** tab. Confirm the section headers render in this
+    order: Layout, Content, Media, Data, Forms, Navigation. Confirm
+    every component group has its expected cards. Confirm the total
+    card count is 20. Click any card; confirm a visual selection
+    indicator appears on the card; confirm the canvas does NOT
+    change (no component was added).
+16. Click the **Data** tab. Confirm the placeholder copy renders.
+17. In the canvas, click any component (e.g. the home page's
+    Heading). Confirm a selection outline appears around it and the
+    breadcrumb at the bottom of the canvas reads
+    "Section / Heading" or similar. Hover a sibling component;
+    confirm a hover highlight appears. Press `Esc`; confirm the
+    selection outline disappears and the breadcrumb hides.
+18. In the TopBar, click the PreviewToggle to switch to Preview mode.
+    Confirm the selection outlines and hover highlights vanish; the
+    canvas now looks like the deployed site would. Click the toggle
+    again to return to Edit mode.
+19. Click the Deploy button. Confirm a Sonner toast appears with the
+    text "Deploy is coming in a later sprint." Confirm clicking the
+    button does not navigate or mutate state.
+20. Open `http://localhost:3000/no-such-site/edit`. Confirm the
+    Next.js 404 page renders.
+21. Stop the dev server (`Ctrl+C`). Run `pnpm test`. Confirm zero
+    failures, zero skipped, ≥ 18 new tests added.
+22. Run `pnpm build`. Confirm zero TypeScript errors and the build
+    completes.
+23. Run `pnpm biome check`. Confirm zero warnings.
 
-If any step fails, treat it as a Deviation.
+Every step above must PASS before declaring the sprint complete. A
+FAIL on any step is a Deviation.
 
 ## Useful local commands
 
-- `pnpm dev` — local dev server.
-- `pnpm test` — Vitest run.
-- `pnpm test:watch` (from `apps/web`) — Vitest watch.
-- `pnpm test:e2e` — Playwright; not used by Sprint 4.
-- `pnpm build` — Next.js production build.
-- `pnpm lint` — Biome check.
-- `pnpm typecheck` — `tsc --noEmit`.
-- `pnpm db:push` — push pending migrations to the linked hosted Supabase
-  project.
-- `pnpm db:types` — regenerate `apps/web/types/database.ts` from the
-  linked project's schema.
-- `pnpm seed` — re-seed Supabase mock data (Sprint 1c). Sprint 4 does not
-  re-seed.
-
-## Known risks & failure modes
-
-- **Anthropic SDK version drift.** The pinned `@anthropic-ai/sdk@0.91.1`
-  may have a different content-block shape than older snippets you've
-  seen. Trust the SDK's published types over memory: pass image inputs
-  as `{ type: "image", source: { type: "url", url } }`. If the runtime
-  rejects URL sources, that is a Deviation — do **not** silently swap to
-  base64 fetch+upload without approval (it has cost and latency
-  consequences for the demo).
-- **Streaming vs. one-shot.** The §9.7 spec implies a one-shot
-  `messages.create({ stream: false })` call. Do not stream. Streaming
-  changes the response-handling code path and the test surface; it's a
-  Deviation if you pull it in.
-- **JSON-mode availability.** If the SDK exposes a strict-JSON output
-  mode for the chosen model, prefer it. If not, the prompt's "no prose,
-  no markdown fences" instruction plus the orchestrator's fence-stripping
-  + `safeParseSiteConfig` validation is the contract. Do not invent a
-  tool-use path — that's a Deviation.
-- **Slug collisions and case folding.** The unique constraint on
-  `sites.slug` will surface as a 23505 error from Postgres if
-  `ensureUniqueSlug` has a TOCTOU race (two simultaneous requests pick
-  the same suffix). For the demo this is acceptable; document the race
-  in a comment and surface it as `auth_error` (catch-all) if it occurs.
-- **`@/` path alias from `app/api/...`.** The route handler must use the
-  configured `@/` alias for `lib/ai`, `lib/supabase`, etc. The Sprint 0
-  `tsconfig.json` already aliases `@/*` to `apps/web/*` (or
-  `apps/web/src/*` — verify before importing). If the alias does not
-  resolve from inside `app/api/`, that's a Deviation; do not work around
-  it with relative paths.
-- **`searchParams` typing in Next.js 15.** In App Router, page components
-  receive `searchParams` as a `Promise<Record<string, string | string[]
-  | undefined>>`. Await it before reading. The route handler reads
-  `request.nextUrl.searchParams` which is sync.
-- **Test environment for the API route.** Vitest runs in jsdom by
-  default; the route test should add `// @vitest-environment node` at
-  the top, mirroring the rm-api integration tests. Mocks use `vi.mock`
-  hoisting — declare the Anthropic and Supabase mocks at the top of the
-  test file.
-- **`navigator.clipboard` in jsdom.** `navigator.clipboard.writeText` is
-  not implemented in jsdom by default. Stub it in the test setup with
-  `Object.assign(navigator, { clipboard: { writeText: vi.fn() } })`
-  before mounting the component.
-- **Render output cap.** Cap component count at 40 per page in the
-  prompt as required by §9.2; if Claude returns more, validate but do
-  not auto-truncate. The `siteConfigSchema` does not enforce 40-per-page;
-  this is a soft suggestion from the prompt. Sprint 4 does not need to
-  add a hard schema-level cap.
-- **`SetupForm` test mocks.** The Sprint 2 setup-form test for the
-  default Save handler (the one that asserts the "Sprint 4 will wire
-  the API" toast) will start to fail once `SetupExperience` is mounted
-  on `/setup`. The test exercises `<SetupForm />` directly so it is
-  independent of `/setup`'s wrapper — it will continue to pass. Do not
-  change that test.
+- `pnpm dev` — local dev server (port 3000)
+- `pnpm test` — Vitest in watch mode (use `pnpm test --run` for CI mode)
+- `pnpm test --run` — Vitest single-pass
+- `pnpm test --run -- editor-state` — run only the editor-state tests
+- `pnpm build` — Next.js production build
+- `pnpm biome check` — lint + format check
+- `pnpm biome check --write` — auto-fix
+- `pnpm db:types` — regenerate Supabase types (NOT needed this sprint
+  — no schema changes — but listed in case of a Deviation that adds a
+  migration)
 
 ## Notes & hints (non-binding)
 
-- The `@anthropic-ai/sdk` exposes `Anthropic.HUMAN_PROMPT` constants and
-  a `messages.create()` method. Sample call shape (verify against the
-  installed types before relying on this):
-  ```ts
-  const client = createAnthropicClient();
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-5",
-    max_tokens: 16000,
-    temperature: 0.4,
-    system: systemPrompt,
-    messages: [{ role: "user", content: [
-      { type: "text", text: userInstruction },
-      ...images.map((img) => ({ type: "image" as const, source: { type: "url" as const, url: img.url } })),
-    ]}],
-  });
-  ```
-- For the system-prompt assembly, prefer one large template-literal in
-  `initial-generation.ts` that calls into the snippet modules. Keep each
-  snippet under ~100 lines; the prompt will end up around 3–6 KB.
-- The `data-sources.ts` snippet should describe `properties`, `units`,
-  `units_with_property` (joined view — for Sprint 4's prompt we describe
-  it as a virtual data source even though the editor materializes it in
-  Sprint 9), and `company` (single — disables repeating).
-- Lucide icons available: `lucide-react` is already pinned. Use
-  `<File />` for the empty-state file icon, `<Loader2 className="animate-spin" />`
-  if you want a small spinner inside the LoadingNarration, `<Copy />` for
-  the Copy details button, `<RotateCcw />` for the Retry button.
-- For the iframe, set `sandbox="allow-scripts allow-same-origin"` so the
-  rendered React app inside `/preview` can hydrate. Set
-  `loading="eager"`.
-- For `setup-experience.tsx`, the simplest state is:
-  ```ts
-  type PanelState =
-    | { kind: "empty" }
-    | { kind: "generating" }
-    | { kind: "generated"; previewUrl: string; siteSlug: string }
-    | { kind: "error"; error: AiError };
-  ```
-  Use `useState<PanelState>({ kind: "empty" })` and update it in
-  `handleSubmit`.
-- For the `/preview` route, pass `searchParams.page` through unchanged
-  if present, else default `"home"`. The `Renderer` returns "Page not
-  found" for any unrecognized slug — that's intentional behavior, not a
-  Sprint-4 bug.
+- **Zustand v4 vs v5.** As of this sprint's planning, both are widely
+  used. v5 has a slightly cleaner API for slices. Pin to whichever is
+  current and stable; do NOT mix versions. If the install pulls in v5
+  and a peer dep complains, that is a Deviation, not a "let's downgrade
+  silently".
+- **Server / client split for the editor route.** The route's `page.tsx`
+  is async server, awaits `params`, calls `getSiteBySlug` and
+  `getLatestWorkingVersion`, then renders `<EditorShell />` (a client
+  component) with the result as a prop. The store hydrates from those
+  props on first render via a `useEffect` with a stable dependency
+  array (the `workingVersionId`). Do NOT call `getLatestWorkingVersion`
+  from the client.
+- **Page-selector "DETAIL" badge.** A small `Badge` from shadcn
+  (`variant="secondary"`) with the text `DETAIL` works. Keep it under
+  the page name in the dropdown row, not next to the dropdown trigger
+  — only the active page in the trigger gets the badge inline (because
+  space is tight there).
+- **Renderer onHover.** The Sprint 3 renderer's existing `RenderContext`
+  may not expose an `onHover` callback. If absent, pure CSS handles
+  hover (the selection wrapper has `:hover { outline: ... }`). Do NOT
+  modify the renderer to add a callback — that is a Deviation.
+- **Autosave debounce + coalesce.** The simplest correct implementation:
+  one `useEffect` watching `[draftConfig, saveState]`; when state is
+  `"dirty"` and not already saving, set a 1000ms timer; on timer fire,
+  flip to `"saving"` and PATCH; on response, flip to `"saved"` /
+  `"error"`. Keep a ref to the latest `draftConfig` so the in-flight
+  save sees the snapshot it intended to send. If a new mutation lands
+  while saving, set a flag and re-trigger the effect after the response.
+- **Avoid storing computed values.** The selected component node is a
+  derived value — compute it via `selectSelectedComponentNode(state)`,
+  do NOT store the node itself. Same for the current page's
+  `rootComponent`. The single source of truth is the `draftConfig`
+  tree plus the `selectedComponentId` and `currentPageSlug` ids.
+- **Esc handler.** Attach the global `keydown` listener inside
+  `EditorShell` (or `Canvas`) via `useEffect` with proper cleanup. Use
+  `event.key === "Escape"`. Bail out if the active element is an
+  `<input>` or `<textarea>` (don't hijack Esc inside the AddPageDialog).
+- **AddPageDialog form lib.** Use `react-hook-form` + Zod (already in
+  the repo for the setup form). Do NOT introduce a second forms lib.
+- **Saving copy time format.** "Saved Xs ago" — use a simple
+  `setInterval(1000)` driven from a `useTime` hook local to
+  `SaveIndicator`. After 60s, switch to "Saved Xm ago".
+- **Catalog icons.** Reasonable defaults: Section → `LayoutPanelTop`,
+  Row → `Rows3`, Column → `Columns3`, Spacer → `Space`, Divider →
+  `Minus`, Heading → `Heading1`, Paragraph → `Pilcrow`, Button →
+  `RectangleHorizontal`, Image → `Image`, Logo → `BadgePlus`, Gallery
+  → `Images`, MapEmbed → `MapPin`, Repeater → `Repeat`, PropertyCard
+  → `Building2`, UnitCard → `DoorOpen`, Form → `ClipboardList`,
+  InputField → `TextCursorInput`, NavBar → `Menu`, Footer → `Square`,
+  HeroBanner → `LayoutTemplate`. None of these is binding — pick what
+  reads well; document choices inline.
 
 ## Sprint Completion Report (emit verbatim when finished)
 
 ```
-✅ SPRINT 4 COMPLETE
+✅ SPRINT 6 COMPLETE
+
+Pre-flight check:
+- [x] PROJECT_SPEC.md §8.12 present and correct
+- [x] apps/web/lib/site-config/schema.ts has Page.kind / detailDataSource / superRefine
+- [x] sites + site_versions tables exist; lib/sites/repo.ts has getSiteBySlug + getLatestWorkingVersion
+- [x] components/renderer/Renderer.tsx exports Renderer with onSelect (and onHover or pure-CSS fallback)
+- [x] components/site-components/registry.ts has 20 entries
+- [x] git branch is master
 
 Definition of Done:
-- [x] Migration: supabase/migrations/2026MMDDNNNNNN_create_sites_and_site_versions.sql
-- [x] Anthropic client wrapper: apps/web/lib/ai/client.ts
-- [x] System-prompt builder: apps/web/lib/ai/prompts/initial-generation.ts
-- [x] Generation orchestrator: apps/web/lib/ai/generate-initial-site.ts
-- [x] Error categorizer: apps/web/lib/ai/errors.ts
-- [x] API route: apps/web/app/api/generate-initial-site/route.ts
-- [x] Slug generator: apps/web/lib/ai/slug.ts
-- [x] /{site}/preview route: apps/web/app/[site]/preview/page.tsx
-- [x] LoadingNarration component
-- [x] PreviewPanel component
-- [x] Element 1 wire-up: SetupExperience + setup/page.tsx edit
-- [x] Type generation: apps/web/types/database.ts regenerated
-- [x] Tests — pure functions, orchestrator, API route, UI, /preview route
-- [x] All pre-existing tests still pass
-- [x] pnpm test passes
-- [x] pnpm build succeeds
-- [x] pnpm lint passes
-- [x] pnpm typecheck passes
-- [x] No new dependencies
-- [x] No files outside scope (with the recorded ownership transfer)
-- [x] DECISIONS.md updated if any deviation was approved
-- [x] Manual smoke test: PASS
+- [x] Editor route loads a real site
+- [x] Top bar renders and is fully wired
+- [x] Left sidebar four-tab structure works
+- [x] Site tab edits palette and fonts
+- [x] Pages tab supports add (static + detail), rename, delete, reorder
+- [x] Add tab shows all 20 component cards (non-draggable)
+- [x] Data tab + Right sidebar are placeholder shells
+- [x] Canvas wires selection + hover + Esc clears
+- [x] Preview toggle swaps renderer mode
+- [x] Page selector switches the canvas page
+- [x] Zustand store is the single source of truth
+- [x] Autosave debounces, coalesces, and surfaces failures
+- [x] PATCH endpoint validates and persists
+- [x] Coding standards honored
+- [x] Tests added (count: N)
+- [x] All quality gates pass
+- [x] No new files outside the Owned scope
+- [x] No deviations were silently absorbed
+- [x] Sprint Completion Report emitted verbatim
 
 Files created:
-- supabase/migrations/2026MMDDNNNNNN_create_sites_and_site_versions.sql (X lines)
-- apps/web/lib/ai/client.ts (X lines)
-- apps/web/lib/ai/errors.ts (X lines)
-- apps/web/lib/ai/slug.ts (X lines)
-- apps/web/lib/ai/generate-initial-site.ts (X lines)
-- apps/web/lib/ai/prompts/initial-generation.ts (X lines)
-- apps/web/lib/ai/prompts/snippets/schema-prose.ts (X lines)
-- apps/web/lib/ai/prompts/snippets/component-catalog.ts (X lines)
-- apps/web/lib/ai/prompts/snippets/data-sources.ts (X lines)
-- apps/web/lib/ai/__tests__/slug.test.ts (X lines)
-- apps/web/lib/ai/__tests__/initial-generation.test.ts (X lines)
-- apps/web/lib/ai/__tests__/errors.test.ts (X lines)
-- apps/web/app/api/generate-initial-site/route.ts (X lines)
-- apps/web/app/api/generate-initial-site/__tests__/route.test.ts (X lines)
-- apps/web/app/[site]/preview/page.tsx (X lines)
-- apps/web/app/[site]/preview/__tests__/page.test.tsx (X lines)
-- apps/web/components/setup-form/LoadingNarration.tsx (X lines)
-- apps/web/components/setup-form/PreviewPanel.tsx (X lines)
-- apps/web/components/setup-form/SetupExperience.tsx (X lines)
-- apps/web/components/setup-form/__tests__/loading-narration.test.tsx (X lines)
-- apps/web/components/setup-form/__tests__/preview-panel.test.tsx (X lines)
-- apps/web/components/setup-form/__tests__/setup-experience.test.tsx (X lines)
+- apps/web/app/[site]/edit/page.tsx (X lines)
+- apps/web/app/[site]/edit/EditorShell.tsx (X lines)
+- apps/web/app/[site]/edit/loading.tsx (X lines)
+- apps/web/app/[site]/edit/error.tsx (X lines)
+- apps/web/app/[site]/edit/not-found.tsx (X lines)
+- apps/web/app/api/sites/[siteId]/working-version/route.ts (X lines)
+- apps/web/components/editor/topbar/TopBar.tsx (X lines)
+- apps/web/components/editor/topbar/SiteNameInput.tsx (X lines)
+- apps/web/components/editor/topbar/PageSelector.tsx (X lines)
+- apps/web/components/editor/topbar/PreviewToggle.tsx (X lines)
+- apps/web/components/editor/topbar/DeployButton.tsx (X lines)
+- apps/web/components/editor/topbar/SaveIndicator.tsx (X lines)
+- apps/web/components/editor/sidebar/LeftSidebar.tsx (X lines)
+- apps/web/components/editor/sidebar/site-tab/SiteTab.tsx (X lines)
+- apps/web/components/editor/sidebar/site-tab/PaletteSelector.tsx (X lines)
+- apps/web/components/editor/sidebar/site-tab/FontSelector.tsx (X lines)
+- apps/web/components/editor/sidebar/pages-tab/PagesTab.tsx (X lines)
+- apps/web/components/editor/sidebar/pages-tab/AddPageDialog.tsx (X lines)
+- apps/web/components/editor/sidebar/pages-tab/RenamePageDialog.tsx (X lines)
+- apps/web/components/editor/sidebar/pages-tab/DeletePageConfirm.tsx (X lines)
+- apps/web/components/editor/sidebar/pages-tab/PageRow.tsx (X lines)
+- apps/web/components/editor/sidebar/add-tab/AddTab.tsx (X lines)
+- apps/web/components/editor/sidebar/add-tab/ComponentCard.tsx (X lines)
+- apps/web/components/editor/sidebar/add-tab/component-catalog.ts (X lines)
+- apps/web/components/editor/sidebar/data-tab/DataTab.tsx (X lines)
+- apps/web/components/editor/sidebar/RightSidebar.tsx (X lines)
+- apps/web/components/editor/canvas/Canvas.tsx (X lines)
+- apps/web/components/editor/canvas/SelectionBreadcrumb.tsx (X lines)
+- apps/web/components/editor/index.ts (X lines)
+- apps/web/lib/editor-state/index.ts (X lines)
+- apps/web/lib/editor-state/types.ts (X lines)
+- apps/web/lib/editor-state/store.ts (X lines)
+- apps/web/lib/editor-state/selectors.ts (X lines)
+- apps/web/lib/editor-state/actions.ts (X lines)
+- apps/web/lib/editor-state/autosave.ts (X lines)
+- (test files under both __tests__ directories)
 
 Files modified:
-- apps/web/app/(rmx)/setup/page.tsx (+A −B)         [Sprint-2 ownership transferred for this edit only]
-- apps/web/types/database.ts (+A −B)                [regenerated by pnpm db:types]
-- DECISIONS.md (+A −0)                              [only if a deviation was approved]
+- package.json (+1 dep: zustand)
+- pnpm-lock.yaml (regenerated)
 
 Tests added: N (all passing)
-Test command output: [paste last 5 lines of pnpm test]
-Build output: [paste the "Compiled successfully" / "✓ Compiled" line]
+Test command output (last 5 lines):
+[paste]
 
-Deviations approved during sprint: [list, or "None"]
+Build output (the "Compiled successfully" line and adjacent context):
+[paste]
 
-Manual smoke test result: [PASS / FAIL with details]
+Biome output:
+[paste]
 
-External Actions Required (for the user):
-- Confirm `ANTHROPIC_API_KEY` is set in `apps/web/.env.local`. Get one
-  from <https://console.anthropic.com> if you haven't.
-- Run `pnpm db:push` to apply the new migration to the linked hosted
-  Supabase project.
-- Run `pnpm db:types` to refresh the typed Supabase client (already done
-  by Claude Code; re-run if Claude Code couldn't reach the project from
-  its sandbox).
-- Verify the new `sites` and `site_versions` tables exist in Supabase
-  Studio.
-- (Optional) In Supabase Studio, confirm the permissive RLS policies on
-  the new tables — they should match the `rm_*` migrations' pattern.
+Deviations approved during sprint: [list with one-line summaries, or "None"]
 
-Recommended next steps: Sprint 6 (Element 2 layout shell). Per
-`docs/planning/SPRINT_SCHEDULE.md` recommended order
-(`… → 5 → 4 → 6 → …`), Sprint 6 is the next step. Sprints 5 components are
-already in the registry from earlier work.
+Manual smoke test result: PASS (steps 1–23 all green) [or FAIL with the
+specific step that failed and the exact failure mode]
+
+External Actions Required:
+- Vercel: none.
+- Supabase: none. No new migrations. The autosave endpoint UPDATEs an
+  existing column on an existing row.
+- Anthropic: none. No AI calls in this sprint.
+- Local: run `pnpm install` once to pull in the new `zustand` dependency
+  (already done by Claude Code as part of the sprint, but mentioned in
+  case the user wants to re-verify on a clean clone).
+- Other: none.
+
+Recommended next steps:
+- Sprint 8 (Element edit mode — manual). Sprint 8 fills the right
+  sidebar's "Element Edit" mode (Content / Style / Animation / Visibility
+  / Advanced tabs) when a component is right-clicked. The Canvas already
+  surfaces selection — Sprint 8 wires the contextmenu handler to swap
+  the LeftSidebar from Site/Pages/Add/Data into Element Edit mode and
+  populate the Style controls per PROJECT_SPEC.md §6.4. Sprint 7
+  (Drag-and-drop) follows Sprint 8 per the recommended sequential order
+  in SPRINT_SCHEDULE.md.
 ```
