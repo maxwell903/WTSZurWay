@@ -9,7 +9,6 @@ export function PreviewToggle() {
 
   return (
     <div
-      role="group"
       aria-label="Editor mode"
       className="inline-flex h-9 items-center rounded-md border border-zinc-700 bg-transparent p-0.5 text-xs"
     >

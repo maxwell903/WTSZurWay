@@ -1,7 +1,7 @@
 "use client";
 
-import { PALETTE_LIST } from "@/lib/setup-form/palettes";
 import { useEditorStore } from "@/lib/editor-state";
+import { PALETTE_LIST } from "@/lib/setup-form/palettes";
 import { cn } from "@/lib/utils";
 
 export function PaletteSelector() {
@@ -13,15 +13,14 @@ export function PaletteSelector() {
       <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
         Color palette
       </h3>
-      <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Color palette">
+      <div className="grid grid-cols-2 gap-2" aria-label="Color palette">
         {PALETTE_LIST.map((p) => {
           const selected = p.id === palette;
           return (
             <button
               key={p.id}
               type="button"
-              role="radio"
-              aria-checked={selected}
+              aria-pressed={selected}
               data-testid={`palette-card-${p.id}`}
               className={cn(
                 "flex flex-col gap-1 rounded-md border p-2 text-left transition-colors",

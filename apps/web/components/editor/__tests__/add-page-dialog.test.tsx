@@ -53,9 +53,7 @@ describe("<AddPageDialog>", () => {
 
   it("blocks Submit when the slug conflicts with an existing same-kind page", () => {
     // Pre-populate a "properties" static page in the store.
-    useEditorStore
-      .getState()
-      .addPage({ name: "Properties", slug: "properties", kind: "static" });
+    useEditorStore.getState().addPage({ name: "Properties", slug: "properties", kind: "static" });
     render(<AddPageDialog open={true} onOpenChange={() => {}} />);
     fireEvent.change(screen.getByTestId("add-page-name"), { target: { value: "Dup" } });
     fireEvent.change(screen.getByTestId("add-page-slug"), { target: { value: "properties" } });

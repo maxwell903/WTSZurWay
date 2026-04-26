@@ -51,7 +51,10 @@ export function AddPageDialog({ open, onOpenChange }: AddPageDialogProps) {
   const slugConflict = pages.some((p) => p.kind === kind && p.slug === slug);
 
   const canSubmit =
-    trimmedName.length > 0 && slugValid && !slugConflict && (kind === "static" || !!detailDataSource);
+    trimmedName.length > 0 &&
+    slugValid &&
+    !slugConflict &&
+    (kind === "static" || !!detailDataSource);
 
   const submit = () => {
     setError(null);
@@ -122,14 +125,12 @@ export function AddPageDialog({ open, onOpenChange }: AddPageDialogProps) {
           <div className="space-y-1.5">
             <Label>Page kind</Label>
             <div
-              role="radiogroup"
               aria-label="Page kind"
               className="inline-flex h-9 items-center rounded-md border bg-background p-0.5 text-xs"
             >
               <button
                 type="button"
-                role="radio"
-                aria-checked={kind === "static"}
+                aria-pressed={kind === "static"}
                 data-testid="add-page-kind-static"
                 className={cn(
                   "rounded px-3 py-1 text-foreground transition-colors",
@@ -141,8 +142,7 @@ export function AddPageDialog({ open, onOpenChange }: AddPageDialogProps) {
               </button>
               <button
                 type="button"
-                role="radio"
-                aria-checked={kind === "detail"}
+                aria-pressed={kind === "detail"}
                 data-testid="add-page-kind-detail"
                 className={cn(
                   "rounded px-3 py-1 text-foreground transition-colors",
@@ -178,11 +178,7 @@ export function AddPageDialog({ open, onOpenChange }: AddPageDialogProps) {
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            data-testid="add-page-submit"
-            disabled={!canSubmit}
-            onClick={submit}
-          >
+          <Button data-testid="add-page-submit" disabled={!canSubmit} onClick={submit}>
             Add page
           </Button>
         </DialogFooter>

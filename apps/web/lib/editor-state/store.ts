@@ -1,5 +1,5 @@
 import type { ComponentNode, SiteConfig } from "@/lib/site-config";
-import { create, type StateCreator } from "zustand";
+import { type StateCreator, create } from "zustand";
 import {
   applyAddPage,
   applyDeletePage,
@@ -164,10 +164,7 @@ export function findComponentById(
   return null;
 }
 
-export function findComponentTrail(
-  root: ComponentNode | undefined,
-  id: string,
-): ComponentNode[] {
+export function findComponentTrail(root: ComponentNode | undefined, id: string): ComponentNode[] {
   if (!root) return [];
   if (root.id === id) return [root];
   if (!root.children) return [];

@@ -1,13 +1,9 @@
 "use client";
 
+import { AddPageDialog } from "@/components/editor/sidebar/pages-tab/AddPageDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { AddPageDialog } from "@/components/editor/sidebar/pages-tab/AddPageDialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useEditorStore } from "@/lib/editor-state";
 import { ChevronDown, Plus } from "lucide-react";
 import { useState } from "react";
@@ -50,17 +46,16 @@ export function PageSelector() {
           align="start"
           className="w-72 border-zinc-700 bg-zinc-900 p-1 text-sm text-zinc-100"
         >
-          <ul role="listbox" className="max-h-72 overflow-y-auto py-1">
+          <ul className="max-h-72 overflow-y-auto py-1">
             {pages.map((page) => {
               const selected = page.slug === currentPageSlug && page.kind === activePage?.kind;
               return (
                 <li key={page.id}>
                   <button
                     type="button"
-                    role="option"
-                    aria-selected={selected}
+                    aria-pressed={selected}
                     data-testid={`page-selector-option-${page.kind}-${page.slug}`}
-                    className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-zinc-800 aria-[selected=true]:bg-zinc-800"
+                    className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-zinc-800 aria-[pressed=true]:bg-zinc-800"
                     onClick={() => {
                       setCurrentPageSlug(page.slug);
                       setOpen(false);

@@ -83,9 +83,9 @@ describe("applyAddPage", () => {
       slug: "properties",
       kind: "static",
     });
-    expect(() =>
-      applyAddPage(cfg, { name: "Dup", slug: "properties", kind: "static" }),
-    ).toThrow(/static page already uses this slug/);
+    expect(() => applyAddPage(cfg, { name: "Dup", slug: "properties", kind: "static" })).toThrow(
+      /static page already uses this slug/,
+    );
   });
 
   it("allows the U2 cross-kind same-slug coexistence", () => {
@@ -208,9 +208,9 @@ describe("applyReorderPages", () => {
       slug: "a",
       kind: "static",
     });
-    expect(() =>
-      applyReorderPages(cfg, { slug: "a", kind: "static", direction: "up" }),
-    ).toThrow(/home page must remain at the top/);
+    expect(() => applyReorderPages(cfg, { slug: "a", kind: "static", direction: "up" })).toThrow(
+      /home page must remain at the top/,
+    );
   });
 });
 

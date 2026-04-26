@@ -29,7 +29,8 @@ function validateSlug(slug: string): void {
 function validateName(name: string): void {
   const trimmed = name.trim();
   if (!trimmed) fail("invalid_name", "Name is required.");
-  if (trimmed.length > NAME_MAX) fail("invalid_name", `Name must be at most ${NAME_MAX} characters.`);
+  if (trimmed.length > NAME_MAX)
+    fail("invalid_name", `Name must be at most ${NAME_MAX} characters.`);
 }
 
 function makeEmptySection(): ComponentNode {
@@ -69,10 +70,7 @@ export function applyAddPage(config: SiteConfig, input: AddPageInput): SiteConfi
   }
   const conflict = config.pages.some((p) => p.kind === input.kind && p.slug === input.slug);
   if (conflict) {
-    fail(
-      "slug_already_used",
-      `Another ${input.kind} page already uses this slug.`,
-    );
+    fail("slug_already_used", `Another ${input.kind} page already uses this slug.`);
   }
   return {
     ...config,
@@ -111,11 +109,7 @@ export function applyRenamePage(config: SiteConfig, input: RenamePageInput): Sit
   return { ...config, pages: nextPages };
 }
 
-export function applyDeletePage(
-  config: SiteConfig,
-  slug: string,
-  kind: PageKind,
-): SiteConfig {
+export function applyDeletePage(config: SiteConfig, slug: string, kind: PageKind): SiteConfig {
   if (slug === HOME_SLUG && kind === "static") {
     fail("home_page_locked", "The home page cannot be deleted.");
   }
@@ -160,7 +154,10 @@ export function applySetSiteName(config: SiteConfig, name: string): SiteConfig {
   };
 }
 
-export function applySetPalette(config: SiteConfig, paletteId: SiteConfig["brand"]["palette"]): SiteConfig {
+export function applySetPalette(
+  config: SiteConfig,
+  paletteId: SiteConfig["brand"]["palette"],
+): SiteConfig {
   return {
     ...config,
     brand: { ...config.brand, palette: paletteId },

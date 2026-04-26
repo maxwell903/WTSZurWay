@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
+import type { SiteConfig } from "@/lib/site-config";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutosave } from "../autosave";
 import { __resetEditorStoreForTests, useEditorStore } from "../store";
-import type { SiteConfig } from "@/lib/site-config";
 
 function makeFixtureConfig(): SiteConfig {
   return {

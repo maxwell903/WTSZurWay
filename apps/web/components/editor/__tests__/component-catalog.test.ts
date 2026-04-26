@@ -1,5 +1,5 @@
-import { COMPONENT_TYPES } from "@/lib/site-config";
 import { componentRegistry } from "@/components/site-components/registry";
+import { COMPONENT_TYPES } from "@/lib/site-config";
 import { describe, expect, it } from "vitest";
 import {
   COMPONENT_CATALOG,

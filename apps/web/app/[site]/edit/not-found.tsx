@@ -7,8 +7,8 @@ export default function EditNotFound() {
       <div className="max-w-md space-y-4 text-center">
         <h1 className="text-2xl font-semibold">Site not found</h1>
         <p className="text-sm text-zinc-400">
-          We couldn&apos;t find a working version for this site. Generate one from the setup form, or
-          double-check the URL slug.
+          We couldn&apos;t find a working version for this site. Generate one from the setup form,
+          or double-check the URL slug.
         </p>
         <Button asChild>
           <Link href="/setup">Go to setup</Link>

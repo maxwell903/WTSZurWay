@@ -3,8 +3,10 @@ import { findComponentById, findComponentTrail } from "./store";
 import type { EditorState } from "./types";
 
 export function selectCurrentPage(state: EditorState): Page | undefined {
-  return state.draftConfig.pages.find((p) => p.slug === state.currentPageSlug && p.kind === "static")
-    ?? state.draftConfig.pages.find((p) => p.slug === state.currentPageSlug);
+  return (
+    state.draftConfig.pages.find((p) => p.slug === state.currentPageSlug && p.kind === "static") ??
+    state.draftConfig.pages.find((p) => p.slug === state.currentPageSlug)
+  );
 }
 
 export function selectSelectedComponentNode(state: EditorState): ComponentNode | null {

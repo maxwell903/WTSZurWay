@@ -1,5 +1,5 @@
-import { DataTab } from "@/components/editor/sidebar/data-tab/DataTab";
 import { RightSidebar } from "@/components/editor/sidebar/RightSidebar";
+import { DataTab } from "@/components/editor/sidebar/data-tab/DataTab";
 import { DeployButton } from "@/components/editor/topbar/DeployButton";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -20,7 +20,9 @@ describe("placeholder shells", () => {
 
   it("Data tab renders the Sprint 10 placeholder copy", () => {
     render(<DataTab />);
-    expect(screen.getByText(/Form submissions will appear here once Sprint 10 ships\./)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Form submissions will appear here once Sprint 10 ships\./),
+    ).toBeInTheDocument();
   });
 
   it("Right sidebar renders the Sprint 11 placeholder copy", () => {

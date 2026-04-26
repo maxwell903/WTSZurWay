@@ -38,16 +38,23 @@ export function Canvas() {
     );
   }
 
+  // The canvas-background onClick is a mouse-only convenience; the
+  // keyboard-equivalent deselect is the global Esc handler in the
+  // useEffect above. We add an onKeyDown that mirrors the click for
+  // Space/Enter to satisfy a11y/useKeyWithClickEvents.
   return (
     <main
       data-testid="editor-canvas"
       className="relative flex-1 overflow-y-auto bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.04)_1px,transparent_0)] [background-size:16px_16px]"
       onClick={(e) => {
-        // Click on empty canvas background deselects. Children that handle
-        // their own clicks (the renderer's wrappers) call stopPropagation
-        // through the selection-aware shell, so this only fires for actual
-        // background clicks.
         if (e.target === e.currentTarget) {
+          selectComponent(null);
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === " " || e.key === "Enter") {
+          e.preventDefault();
           selectComponent(null);
         }
       }}

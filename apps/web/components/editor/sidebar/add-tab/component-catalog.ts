@@ -23,13 +23,7 @@ import {
   TextCursorInput,
 } from "lucide-react";
 
-export type ComponentGroup =
-  | "Layout"
-  | "Content"
-  | "Media"
-  | "Data"
-  | "Forms"
-  | "Navigation";
+export type ComponentGroup = "Layout" | "Content" | "Media" | "Data" | "Forms" | "Navigation";
 
 export const COMPONENT_GROUP_ORDER: ComponentGroup[] = [
   "Layout",

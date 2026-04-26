@@ -29,7 +29,11 @@ export function LeftSidebar() {
       data-testid="left-sidebar"
       className="flex w-72 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950"
     >
-      <div role="tablist" aria-label="Editor sidebar" className="grid grid-cols-4 border-b border-zinc-800">
+      <div
+        role="tablist"
+        aria-label="Editor sidebar"
+        className="grid grid-cols-4 border-b border-zinc-800"
+      >
         {TAB_TRIGGERS.map((t) => {
           const selected = tab === t.id;
           const Icon = t.icon;

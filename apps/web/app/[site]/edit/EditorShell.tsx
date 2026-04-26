@@ -1,10 +1,10 @@
 "use client";
 
-import { Toaster } from "@/components/ui/sonner";
 import { Canvas } from "@/components/editor/canvas/Canvas";
 import { LeftSidebar } from "@/components/editor/sidebar/LeftSidebar";
 import { RightSidebar } from "@/components/editor/sidebar/RightSidebar";
 import { TopBar } from "@/components/editor/topbar/TopBar";
+import { Toaster } from "@/components/ui/sonner";
 import { useAutosave, useEditorStore } from "@/lib/editor-state";
 import type { SiteConfig } from "@/lib/site-config";
 import { useEffect } from "react";

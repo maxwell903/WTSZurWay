@@ -55,11 +55,7 @@ export function DeletePageConfirm({ page, onClose }: DeletePageConfirmProps) {
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            data-testid="delete-page-confirm"
-            variant="destructive"
-            onClick={submit}
-          >
+          <Button data-testid="delete-page-confirm" variant="destructive" onClick={submit}>
             Delete page
           </Button>
         </DialogFooter>
