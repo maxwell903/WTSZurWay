@@ -18,6 +18,7 @@ export {
   applySetFontFamily,
   applySetPalette,
   applySetSiteName,
+  getMaxAllowedDimension,
 } from "./actions";
 export {
   selectAllPagesForPicker,

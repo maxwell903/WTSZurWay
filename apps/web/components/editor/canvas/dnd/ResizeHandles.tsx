@@ -21,6 +21,7 @@
 import {
   findComponentById,
   findComponentParentId,
+  getMaxAllowedDimension,
   selectCurrentPage,
   selectSelectedComponentNode,
   useEditorStore,
@@ -156,11 +157,21 @@ function RightEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRe
       try {
         if (node.type === "Column" && !drag.shiftHeld) {
           // Legacy Column-grid snap (1/12). Shift escapes to free percent.
+          // Column span is implicitly bounded to 1..12 — no parent clamp needed.
           setComponentSpan(node.id, snapSpan(clampedFraction));
         } else {
           // 5% snap for free-percent storage.
           const percent = Math.max(5, Math.round((clampedFraction * 100) / 5) * 5);
-          setComponentDimensionWithCascade(node.id, "width", `${percent}%`);
+          // Task 3.5: cap at the parent's remaining headroom (siblings' explicit widths
+          // already consumed). Snap the cap DOWN to the nearest 5% grid step so the
+          // bounded value sits on the same grid as the drag.
+          const max = getMaxAllowedDimension(useEditorStore.getState().draftConfig, node.id, "width");
+          let bounded = percent;
+          if (max !== null) {
+            const cappedAtSnap = Math.floor(max / 5) * 5;
+            bounded = Math.min(bounded, Math.max(5, cappedAtSnap));
+          }
+          setComponentDimensionWithCascade(node.id, "width", `${bounded}%`);
         }
       } catch {
         // Apply layer rejected (e.g. node disappeared mid-drag); silent no-op.
@@ -240,8 +251,15 @@ function CornerHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect 
         ? Math.max(0.04, Math.min(1, newW / drag.parentRect.width))
         : 1;
       const percent = Math.max(5, Math.round((fraction * 100) / 5) * 5);
+      // Task 3.5: cap width at the parent's remaining headroom.
+      const max = getMaxAllowedDimension(useEditorStore.getState().draftConfig, node.id, "width");
+      let bounded = percent;
+      if (max !== null) {
+        const cappedAtSnap = Math.floor(max / 5) * 5;
+        bounded = Math.min(bounded, Math.max(5, cappedAtSnap));
+      }
       try {
-        setComponentDimensionWithCascade(node.id, "width", `${percent}%`);
+        setComponentDimensionWithCascade(node.id, "width", `${bounded}%`);
         if (node.type !== "Spacer") {
           setComponentDimension(node.id, "height", `${newH}px`);
         }

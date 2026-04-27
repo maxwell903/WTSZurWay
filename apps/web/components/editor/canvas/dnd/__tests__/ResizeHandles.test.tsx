@@ -468,3 +468,168 @@ describe("CornerHandle — Task 3.4 cascade integration", () => {
     expect(widthCalls).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Task 3.5 — parent-bound clamp on pointer release
+// ---------------------------------------------------------------------------
+//
+// Fixture: Section parent "p" 600px wide. Two children:
+//   - child A (cmp_sibling): style.width = "80%" (consumes 80% of parent)
+//   - child B (cmp_child): selected, no explicit width (cap = 100 - 80 = 20%)
+//
+// getMaxAllowedDimension returns 20. After floor-to-5% snap: cap = 20%.
+// Dragging far past the right edge produces a raw percent > 20 (e.g. 95%);
+// the clamp must cap the written value at 20%.
+
+function makeClampFixture(): SiteConfig {
+  return {
+    meta: { siteName: "Test", siteSlug: "test" },
+    brand: { palette: "ocean", fontFamily: "Inter" },
+    global: {
+      navBar: { links: [], logoPlacement: "left", sticky: false },
+      footer: { columns: [], copyright: "" },
+    },
+    pages: [
+      {
+        id: "p_home",
+        slug: "home",
+        name: "Home",
+        kind: "static",
+        rootComponent: {
+          id: "cmp_root",
+          type: "Section",
+          props: {},
+          style: {},
+          children: [
+            {
+              id: "cmp_parent",
+              type: "Section",
+              props: {},
+              style: {},
+              children: [
+                {
+                  // sibling consuming 80% of parent
+                  id: "cmp_sibling",
+                  type: "Heading",
+                  props: { text: "Sibling" },
+                  style: { width: "80%" },
+                  children: [],
+                },
+                {
+                  // selected child with no explicit width — max allowed = 20%
+                  id: "cmp_child",
+                  type: "Heading",
+                  props: { text: "Child" },
+                  style: {},
+                  children: [],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ],
+    forms: [],
+  };
+}
+
+describe("RightEdgeHandle — Task 3.5 parent-bound clamp", () => {
+  beforeEach(() => {
+    __resetEditorStoreForTests();
+    useEditorStore.getState().hydrate({
+      siteId: "s",
+      siteSlug: "test",
+      workingVersionId: "v",
+      initialConfig: makeClampFixture(),
+    });
+  });
+
+  afterEach(() => {
+    for (const el of document.querySelectorAll("[data-edit-id]")) {
+      el.parentNode?.removeChild(el);
+    }
+  });
+
+  it("clamps to parent's max-allowed width when child would overflow", () => {
+    // Parent 600px wide; drag release at x=570 → raw fraction ≈ 0.95 → raw percent = 95%
+    // Cap = 20% (sibling uses 80%). After floor-to-5%: cap = 20%.
+    // Expected written value: "20%"
+    plantElement("cmp_parent", { left: 0, width: 600 });
+    plantElement("cmp_child", { left: 0, top: 0, width: 60, height: 50 });
+
+    act(() => {
+      useEditorStore.getState().selectComponent("cmp_child");
+    });
+
+    const { getByTestId } = render(<ResizeHandles />);
+    const handle = getByTestId("resize-handle-right-cmp_child");
+
+    act(() => {
+      dispatchPointerDown(handle, { clientX: 60, clientY: 25 });
+    });
+    act(() => {
+      // Release near the far right edge → raw would be ~95% without the clamp
+      dispatchPointerUp(570);
+    });
+
+    const state = useEditorStore.getState();
+    const page = state.draftConfig.pages[0];
+    const parent = page?.rootComponent.children?.find((c) => c.id === "cmp_parent");
+    const child = parent?.children?.find((c) => c.id === "cmp_child");
+    const widthStr = child?.style.width ?? "";
+    const widthNum = Number.parseFloat(widthStr);
+    // Must be clamped at or below 20%
+    expect(widthStr).toMatch(/^\d+(?:\.\d+)?%$/);
+    expect(widthNum).toBeLessThanOrEqual(20);
+  });
+});
+
+describe("CornerHandle — Task 3.5 parent-bound clamp", () => {
+  beforeEach(() => {
+    __resetEditorStoreForTests();
+    useEditorStore.getState().hydrate({
+      siteId: "s",
+      siteSlug: "test",
+      workingVersionId: "v",
+      initialConfig: makeClampFixture(),
+    });
+  });
+
+  afterEach(() => {
+    for (const el of document.querySelectorAll("[data-edit-id]")) {
+      el.parentNode?.removeChild(el);
+    }
+  });
+
+  it("clamps width on corner drag at parent's max-allowed", () => {
+    // Same arrangement; drag corner far right and down.
+    // Width cap = 20%. Height is unclamped (not part of this task).
+    plantElement("cmp_parent", { left: 0, top: 0, width: 600, height: 800 });
+    plantElement("cmp_child", { left: 0, top: 0, width: 60, height: 50 });
+
+    act(() => {
+      useEditorStore.getState().selectComponent("cmp_child");
+    });
+
+    const { getByTestId } = render(<ResizeHandles />);
+    const handle = getByTestId("resize-handle-corner-cmp_child");
+
+    act(() => {
+      dispatchPointerDown(handle, { clientX: 60, clientY: 50 });
+    });
+    act(() => {
+      // Drag far right (570) and slightly down (100)
+      dispatchPointerUpXY(570, 100);
+    });
+
+    const state = useEditorStore.getState();
+    const page = state.draftConfig.pages[0];
+    const parent = page?.rootComponent.children?.find((c) => c.id === "cmp_parent");
+    const child = parent?.children?.find((c) => c.id === "cmp_child");
+    const widthStr = child?.style.width ?? "";
+    const widthNum = Number.parseFloat(widthStr);
+    // Must be clamped at or below 20%
+    expect(widthStr).toMatch(/^\d+(?:\.\d+)?%$/);
+    expect(widthNum).toBeLessThanOrEqual(20);
+  });
+});
