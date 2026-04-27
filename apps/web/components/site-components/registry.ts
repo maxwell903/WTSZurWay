@@ -3,6 +3,7 @@ import type { CSSProperties, ComponentType as ReactComponentType, ReactNode } fr
 import { Button } from "./Button";
 import { Column } from "./Column";
 import { Divider } from "./Divider";
+import { FlowGroup } from "./FlowGroup";
 import { Footer } from "./Footer";
 import { Form } from "./Form";
 import { Gallery } from "./Gallery";
@@ -53,6 +54,7 @@ const placeholderMeta: Record<
   Exclude<ComponentType, "Section" | "Heading" | "Paragraph" | "Image" | "Spacer" | "Divider">,
   { displayName: string; category: SiteComponentCategory; childrenPolicy: ChildrenPolicy }
 > = {
+  FlowGroup: { displayName: "Flow Group", category: "Layout", childrenPolicy: "many" },
   Row: { displayName: "Row", category: "Layout", childrenPolicy: "many" },
   Column: { displayName: "Column", category: "Layout", childrenPolicy: "many" },
   Button: { displayName: "Button", category: "Content", childrenPolicy: "none" },
@@ -99,6 +101,7 @@ export const componentRegistry: Record<ComponentType, RegistryEntry> = {
   Button: { Component: Button, meta: placeholderMeta.Button },
   Logo: { Component: Logo, meta: placeholderMeta.Logo },
   NavBar: { Component: NavBar, meta: placeholderMeta.NavBar },
+  FlowGroup: { Component: FlowGroup, meta: placeholderMeta.FlowGroup },
   Footer: { Component: Footer, meta: placeholderMeta.Footer },
   HeroBanner: { Component: HeroBanner, meta: placeholderMeta.HeroBanner },
   PropertyCard: { Component: PropertyCard, meta: placeholderMeta.PropertyCard },

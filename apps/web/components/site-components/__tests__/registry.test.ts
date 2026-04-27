@@ -64,3 +64,17 @@ describe("isRegisteredType", () => {
     expect(isRegisteredType("Banana")).toBe(false);
   });
 });
+
+describe("FlowGroup registry entry", () => {
+  it("registers FlowGroup", () => {
+    expect(componentRegistry.FlowGroup).toBeDefined();
+  });
+
+  it("FlowGroup childrenPolicy is many", () => {
+    expect(componentRegistry.FlowGroup.meta.childrenPolicy).toBe("many");
+  });
+
+  it("FlowGroup category is Layout", () => {
+    expect(componentRegistry.FlowGroup.meta.category).toBe("Layout");
+  });
+});
