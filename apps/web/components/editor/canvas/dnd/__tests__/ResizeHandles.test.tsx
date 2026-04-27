@@ -413,7 +413,11 @@ describe("RightEdgeHandle — Task 3.4 cascade integration", () => {
       dispatchPointerUp(300);
     });
 
-    expect(cascadeSpy).toHaveBeenCalledWith("cmp_heading", "width", expect.stringMatching(/^\d+%$/));
+    expect(cascadeSpy).toHaveBeenCalledWith(
+      "cmp_heading",
+      "width",
+      expect.stringMatching(/^\d+%$/),
+    );
     // Plain setComponentDimension must NOT be called for the width write.
     const widthCalls = plainSpy.mock.calls.filter((args) => args[1] === "width");
     expect(widthCalls).toHaveLength(0);
@@ -460,9 +464,17 @@ describe("CornerHandle — Task 3.4 cascade integration", () => {
     });
 
     // Width write must go through cascade action.
-    expect(cascadeSpy).toHaveBeenCalledWith("cmp_heading", "width", expect.stringMatching(/^\d+%$/));
+    expect(cascadeSpy).toHaveBeenCalledWith(
+      "cmp_heading",
+      "width",
+      expect.stringMatching(/^\d+%$/),
+    );
     // Height write must stay on the plain action (height cascade not implemented).
-    expect(plainSpy).toHaveBeenCalledWith("cmp_heading", "height", expect.stringMatching(/^\d+px$/));
+    expect(plainSpy).toHaveBeenCalledWith(
+      "cmp_heading",
+      "height",
+      expect.stringMatching(/^\d+px$/),
+    );
     // Plain action must NOT be called for width.
     const widthCalls = plainSpy.mock.calls.filter((args) => args[1] === "width");
     expect(widthCalls).toHaveLength(0);

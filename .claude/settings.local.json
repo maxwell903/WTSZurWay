@@ -39,7 +39,32 @@
       "Bash(pnpm --filter web test --run -t \"<Renderer>\")",
       "Bash(pnpm --filter web test --run -t \"Button\")",
       "Bash(pnpm --filter web test --run -t \"detail href under row context\")",
-      "Bash(pnpm dev *)"
+      "Bash(pnpm dev *)",
+      "Bash(pnpm --filter web test \"components/editor/canvas/dnd/__tests__/ResizeHandles.test.tsx\")",
+      "Bash(pnpm --filter web typecheck)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"const p = require\\('C:/Users/maxwa/WTSZurWay/node_modules/jsdom/package.json'\\); console.log\\(p.version\\)\")",
+      "Bash(cp /tmp/pointertest.test.ts C:/Users/maxwa/WTSZurWay/apps/web/components/editor/canvas/dnd/__tests__/pointer-probe.test.ts)",
+      "Bash(rm C:/Users/maxwa/WTSZurWay/apps/web/components/editor/canvas/dnd/__tests__/pointer-probe.test.ts)",
+      "Bash(pnpm --filter web test components/editor/canvas/dnd/__tests__/ResizeHandles.test.tsx)",
+      "Bash(pnpm --filter web biome check \"components/editor/canvas/dnd/ResizeHandles.tsx\" \"components/editor/canvas/dnd/__tests__/ResizeHandles.test.tsx\")",
+      "Bash(pnpm --filter web test lib/editor-state/__tests__/actions.test.ts -t \"getMaxAllowedDimension\")",
+      "Bash(pnpm --filter web test lib/editor-state/__tests__/actions.test.ts)",
+      "Bash(git add *)",
+      "Bash(pnpm --filter web test lib/editor-state/__tests__/actions.test.ts -t \"applyResizeWithCascade\")",
+      "Bash(pnpm --filter web test \"lib/editor-state/__tests__/actions.test.ts\")",
+      "Bash(pnpm --filter web test components/editor/canvas/dnd/__tests__/ResizeHandles.test.tsx -t \"Task 3.5\")",
+      "Bash(git -C /c/Users/maxwa/WTSZurWay add apps/web/components/editor/canvas/dnd/ResizeHandles.tsx apps/web/components/editor/canvas/dnd/__tests__/ResizeHandles.test.tsx apps/web/lib/editor-state/index.ts)",
+      "Bash(git -C /c/Users/maxwa/WTSZurWay commit -m ' *)",
+      "Bash(pnpm --filter web test components/editor/canvas/dnd/__tests__/BoundedByParentTooltip.test.tsx --reporter=verbose)",
+      "Bash(pnpm --filter web test components/editor/canvas/dnd/__tests__/ --reporter=verbose)",
+      "Bash(pnpm --filter web lint)",
+      "Bash(pnpm --filter web exec biome format --write apps/web/components/editor/canvas/dnd/BoundedByParentTooltip.tsx apps/web/components/editor/canvas/dnd/ResizeHandles.tsx apps/web/components/editor/canvas/dnd/__tests__/BoundedByParentTooltip.test.tsx)",
+      "Bash(pnpm exec *)",
+      "Bash(pnpm --filter web test lib/editor-state/__tests__/)",
+      "Bash(pnpm --filter web test \"components/editor/canvas/dnd/__tests__/BetweenDropZone.test.tsx\")",
+      "Bash(pnpm --filter web test components/editor/canvas/dnd/__tests__/DropZoneIndicator -t \"post-overlay-system\")",
+      "Bash(pnpm --filter web test components/editor/canvas/dnd/)"
     ]
   }
 }
