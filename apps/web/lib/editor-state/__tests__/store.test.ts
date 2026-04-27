@@ -273,6 +273,68 @@ describe("editor store -- component-level mutators", () => {
   });
 });
 
+describe("setComponentDimensionWithCascade", () => {
+  it("flips saveState to dirty and clamps descendant px-widths", () => {
+    __resetEditorStoreForTests();
+    // Build a fixture: root > "p" Section width 600px > "h" Heading width 500px
+    const initialConfig: SiteConfig = {
+      meta: { siteName: "Test Site", siteSlug: "test-site" },
+      brand: { palette: "ocean", fontFamily: "Inter" },
+      global: {
+        navBar: { links: [], logoPlacement: "left", sticky: false },
+        footer: { columns: [], copyright: "" },
+      },
+      pages: [
+        {
+          id: "p_home",
+          slug: "home",
+          name: "Home",
+          kind: "static" as const,
+          rootComponent: {
+            id: "cmp_root",
+            type: "Section" as const,
+            props: {},
+            style: {},
+            children: [
+              {
+                id: "p",
+                type: "Section" as const,
+                props: {},
+                style: { width: "600px" },
+                children: [
+                  {
+                    id: "h",
+                    type: "Heading" as const,
+                    props: {},
+                    style: { width: "500px" },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+      forms: [],
+    };
+    useEditorStore.getState().hydrate({
+      siteId: "s",
+      siteSlug: "x",
+      workingVersionId: "v",
+      initialConfig,
+    });
+
+    useEditorStore.getState().setComponentDimensionWithCascade("p", "width", "400px");
+
+    const state = useEditorStore.getState();
+    expect(state.saveState).toBe("dirty");
+    const root = state.draftConfig.pages[0]!.rootComponent;
+    const p = root.children![0]!;
+    const h = p.children![0]!;
+    expect(p.style.width).toBe("400px");
+    expect(h.style.width).toBe("400px"); // clamped
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Sprint 7 -- drag-and-drop and resize action wrappers
 // ---------------------------------------------------------------------------

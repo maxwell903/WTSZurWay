@@ -106,6 +106,11 @@ export type EditorActions = {
     axis: "width" | "height",
     value: string | undefined,
   ) => void;
+  setComponentDimensionWithCascade: (
+    id: ComponentId,
+    axis: "width" | "height",
+    value: string,
+  ) => void;
   markSaving: () => void;
   markSaved: (at: number) => void;
   markError: (message: string) => void;

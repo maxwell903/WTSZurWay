@@ -13,6 +13,7 @@ import {
   applyReorderPages,
   applySetComponentAnimation,
   applySetComponentDataBinding,
+  applyResizeWithCascade,
   applySetComponentDimension,
   applySetComponentProps,
   applySetComponentSpan,
@@ -269,6 +270,12 @@ const creator: StateCreator<EditorStore> = (set) => ({
   setComponentDimension: (id, axis, value) =>
     set((state) => ({
       draftConfig: applySetComponentDimension(state.draftConfig, id, axis, value),
+      saveState: "dirty",
+    })),
+
+  setComponentDimensionWithCascade: (id, axis, value) =>
+    set((state) => ({
+      draftConfig: applyResizeWithCascade(state.draftConfig, id, axis, value),
       saveState: "dirty",
     })),
 });
