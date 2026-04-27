@@ -3,24 +3,44 @@
 import { DropZoneIndicator } from "@/components/editor/canvas/dnd/DropZoneIndicator";
 import { useNodeSortable } from "@/components/editor/canvas/dnd/SortableNodeContext";
 import { SideDropZones } from "@/components/editor/canvas/dnd/sideDropZones";
+import { componentRegistry } from "@/components/site-components/registry";
+import { useEditorStore } from "@/lib/editor-state";
+import type { ComponentType } from "@/lib/site-config";
 import { cn } from "@/lib/utils";
 import { CSS } from "@dnd-kit/utilities";
 import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from "react";
 
 type Props = {
   id: string;
+  type: ComponentType;
+  mode: "edit" | "preview" | "public";
   selected?: boolean;
   onSelect?: (id: string) => void;
   onContextMenu?: (id: string) => void;
   children: ReactNode;
 };
 
-export function EditModeWrapper({ id, selected, onSelect, onContextMenu, children }: Props) {
+export function EditModeWrapper({
+  id,
+  type,
+  mode,
+  selected,
+  onSelect,
+  onContextMenu,
+  children,
+}: Props) {
   // Sprint 7: when wrapped in a DndCanvasProvider, this returns dnd-kit's
   // sortable state for this node id. Otherwise (preview mode, standalone
   // tests, public site) it returns null and the wrapper behaves exactly
   // as it did in Sprints 6 and 8.
   const sortable = useNodeSortable(id);
+  const showComponentTypes = useEditorStore((s) => s.showComponentTypes);
+
+  // Show the dashed outline + type label when: edit mode, overlay toggled on,
+  // and the component is not FlowGroup (engine-internal, invisible to users).
+  // Uses CSS outline (not border) so toggling never shifts layout.
+  // When the component is selected, the blue selection outline takes priority.
+  const showOverlay = mode === "edit" && showComponentTypes && type !== "FlowGroup";
 
   const handleClick = (e: MouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
@@ -84,8 +104,19 @@ export function EditModeWrapper({ id, selected, onSelect, onContextMenu, childre
         selected
           ? "outline outline-2 outline-blue-500"
           : "hover:outline hover:outline-1 hover:outline-blue-300",
+        // Show Component Types overlay — outline wins over hover-outline but
+        // blue selection outline takes highest priority (gated on !selected).
+        showOverlay && !selected && "outline outline-1 outline-dashed outline-zinc-400/70",
       )}
     >
+      {showOverlay ? (
+        <span
+          data-testid={`type-label-${id}`}
+          className="pointer-events-none absolute -top-4 left-1/2 z-40 -translate-x-1/2 rounded-sm bg-zinc-800/90 px-1.5 py-0.5 text-[10px] text-white"
+        >
+          {componentRegistry[type].meta.displayName}
+        </span>
+      ) : null}
       {/* Sprint 7: 4-px accent bar drawn while a drag is in progress and this
           wrapper's id is the current drop target. Self-renders to null when
           no DndCanvasProvider is in scope, so existing Sprint 5/6/8 callers

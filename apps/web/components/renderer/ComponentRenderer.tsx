@@ -183,6 +183,8 @@ function ComponentRendererInner({
     mode === "edit" ? (
       <EditModeWrapper
         id={node.id}
+        type={node.type}
+        mode={mode}
         selected={isSelected}
         onSelect={onSelect}
         onContextMenu={onContextMenu}

@@ -1,4 +1,5 @@
 import { useNodeSortable } from "@/components/editor/canvas/dnd/SortableNodeContext";
+import { __resetEditorStoreForTests } from "@/lib/editor-state/store";
 import { fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditModeWrapper } from "../EditModeWrapper";
@@ -15,6 +16,7 @@ const mockedUseNodeSortable = vi.mocked(useNodeSortable);
 describe("<EditModeWrapper> — Sprint 5/6/8 behavior (no provider)", () => {
   beforeEach(() => {
     mockedUseNodeSortable.mockReturnValue(null);
+    __resetEditorStoreForTests();
   });
   afterEach(() => {
     mockedUseNodeSortable.mockReset();
@@ -22,7 +24,7 @@ describe("<EditModeWrapper> — Sprint 5/6/8 behavior (no provider)", () => {
 
   it("renders its children inside a div with data-edit-id", () => {
     const { getByText, container } = render(
-      <EditModeWrapper id="cmp_x">
+      <EditModeWrapper id="cmp_x" type="Heading" mode="edit">
         <span>inner</span>
       </EditModeWrapper>,
     );
@@ -32,7 +34,7 @@ describe("<EditModeWrapper> — Sprint 5/6/8 behavior (no provider)", () => {
 
   it("marks itself selected when the selected prop is true", () => {
     const { container } = render(
-      <EditModeWrapper id="cmp_x" selected>
+      <EditModeWrapper id="cmp_x" type="Heading" mode="edit" selected>
         <span>x</span>
       </EditModeWrapper>,
     );
@@ -42,7 +44,7 @@ describe("<EditModeWrapper> — Sprint 5/6/8 behavior (no provider)", () => {
   it("invokes onSelect with the id on click", () => {
     const onSelect = vi.fn();
     const { container } = render(
-      <EditModeWrapper id="cmp_x" onSelect={onSelect}>
+      <EditModeWrapper id="cmp_x" type="Heading" mode="edit" onSelect={onSelect}>
         <span>x</span>
       </EditModeWrapper>,
     );
@@ -57,7 +59,7 @@ describe("<EditModeWrapper> — Sprint 5/6/8 behavior (no provider)", () => {
   it("invokes onContextMenu with the id on right-click and prevents the default", () => {
     const onContextMenu = vi.fn();
     const { container } = render(
-      <EditModeWrapper id="cmp_x" onContextMenu={onContextMenu}>
+      <EditModeWrapper id="cmp_x" type="Heading" mode="edit" onContextMenu={onContextMenu}>
         <span>x</span>
       </EditModeWrapper>,
     );
@@ -71,6 +73,9 @@ describe("<EditModeWrapper> — Sprint 5/6/8 behavior (no provider)", () => {
 });
 
 describe("<EditModeWrapper> — Sprint 7 dnd-kit integration", () => {
+  beforeEach(() => {
+    __resetEditorStoreForTests();
+  });
   afterEach(() => {
     mockedUseNodeSortable.mockReset();
   });
@@ -88,7 +93,7 @@ describe("<EditModeWrapper> — Sprint 7 dnd-kit integration", () => {
       // biome-ignore lint/suspicious/noExplicitAny: synthetic fixture for the mocked hook return shape.
     } as any);
     render(
-      <EditModeWrapper id="cmp_x">
+      <EditModeWrapper id="cmp_x" type="Heading" mode="edit">
         <span>x</span>
       </EditModeWrapper>,
     );
@@ -106,7 +111,7 @@ describe("<EditModeWrapper> — Sprint 7 dnd-kit integration", () => {
       // biome-ignore lint/suspicious/noExplicitAny: synthetic fixture.
     } as any);
     const { container } = render(
-      <EditModeWrapper id="cmp_x">
+      <EditModeWrapper id="cmp_x" type="Heading" mode="edit">
         <span>x</span>
       </EditModeWrapper>,
     );
@@ -125,7 +130,7 @@ describe("<EditModeWrapper> — Sprint 7 dnd-kit integration", () => {
       // biome-ignore lint/suspicious/noExplicitAny: synthetic fixture.
     } as any);
     const { container } = render(
-      <EditModeWrapper id="cmp_x">
+      <EditModeWrapper id="cmp_x" type="Heading" mode="edit">
         <span>x</span>
       </EditModeWrapper>,
     );
@@ -147,7 +152,7 @@ describe("<EditModeWrapper> — Sprint 7 dnd-kit integration", () => {
       // biome-ignore lint/suspicious/noExplicitAny: synthetic fixture.
     } as any);
     const { container } = render(
-      <EditModeWrapper id="cmp_x" onSelect={onSelect}>
+      <EditModeWrapper id="cmp_x" type="Heading" mode="edit" onSelect={onSelect}>
         <span>x</span>
       </EditModeWrapper>,
     );
