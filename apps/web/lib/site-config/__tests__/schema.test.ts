@@ -20,11 +20,12 @@ import {
 } from "../schema";
 
 describe("componentTypeSchema", () => {
-  it("contains exactly the 20 demo-spec component types in the documented order", () => {
+  it("contains exactly the 21 component types in the documented order", () => {
     expect([...COMPONENT_TYPES]).toEqual([
       "Section",
       "Row",
       "Column",
+      "FlowGroup",
       "Heading",
       "Paragraph",
       "Button",
@@ -453,5 +454,30 @@ describe("siteConfigSchema (per-kind slug uniqueness, U2 routing)", () => {
       expect(issue).toBeDefined();
       expect(issue?.path).toEqual(["pages", 1, "slug"]);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 1.1 — FlowGroup layout primitive (2026-04-26-x-axis-resize-and-edit-overlays)
+// ---------------------------------------------------------------------------
+
+describe("FlowGroup component type", () => {
+  it("includes FlowGroup in COMPONENT_TYPES", () => {
+    expect(COMPONENT_TYPES).toContain("FlowGroup");
+  });
+
+  it("accepts FlowGroup via componentTypeSchema", () => {
+    expect(componentTypeSchema.safeParse("FlowGroup").success).toBe(true);
+  });
+
+  it("parses a minimal FlowGroup ComponentNode", () => {
+    const node = {
+      id: "cmp_fg1",
+      type: "FlowGroup",
+      props: {},
+      style: {},
+      children: [],
+    };
+    expect(componentNodeSchema.safeParse(node).success).toBe(true);
   });
 });

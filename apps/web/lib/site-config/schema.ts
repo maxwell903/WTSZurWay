@@ -7,6 +7,7 @@ export const COMPONENT_TYPES = [
   "Section",
   "Row",
   "Column",
+  "FlowGroup",
   "Heading",
   "Paragraph",
   "Button",
