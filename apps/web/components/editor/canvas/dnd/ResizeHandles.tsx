@@ -1,7 +1,7 @@
 "use client";
 
 // Sprint 7 ResizeHandles — overlays a right-edge and/or bottom-edge handle on
-// the selected component when its type is in the binding resize matrix.
+// the selected component based on the registry-driven isResizableOnAxis rule.
 //
 // Coordinate model: each handle reads `getBoundingClientRect()` for its
 // target element (and for Column, its parent Row) and positions itself in
@@ -35,35 +35,17 @@ type ResizeMatrixEntry = {
   bottom: boolean;
 };
 
-// PROJECT_SPEC.md §8.6 + Sprint 7 CLAUDE.md "Resizable component matrix":
-//   - Section / Row / Column / Image / Spacer / PropertyCard / UnitCard
-//     all expose a bottom-edge height handle.
-//   - Column also exposes a right-edge span handle.
-//   - All other types render no handles.
-export const RESIZE_MATRIX: Readonly<Record<ComponentType, ResizeMatrixEntry | null>> = {
-  Section: { right: false, bottom: true },
-  Row: { right: false, bottom: true },
-  Column: { right: true, bottom: true },
-  Image: { right: false, bottom: true },
-  Spacer: { right: false, bottom: true },
-  PropertyCard: { right: false, bottom: true },
-  UnitCard: { right: false, bottom: true },
-  // FlowGroup is invisible to the user (inherits container width); no resize handles.
-  FlowGroup: null,
-  Heading: null,
-  Paragraph: null,
-  Button: null,
-  Logo: null,
-  Divider: null,
-  NavBar: null,
-  Footer: null,
-  HeroBanner: null,
-  Repeater: null,
-  InputField: null,
-  Form: null,
-  MapEmbed: null,
-  Gallery: null,
-};
+// Every registered component is resizable on both axes by default.
+// Components that must opt out can do so via this set; today, none do.
+const NON_RESIZABLE_TYPES: ReadonlySet<ComponentType> = new Set();
+
+export function isResizableOnAxis(
+  type: ComponentType,
+  _axis: "width" | "height",
+): boolean {
+  if (NON_RESIZABLE_TYPES.has(type)) return false;
+  return true;
+}
 
 const HEIGHT_SNAP = 8;
 const HEIGHT_MIN_DEFAULT = 8;
@@ -100,10 +82,11 @@ export function ResizeHandles() {
   const selectedNode = useEditorStore(selectSelectedComponentNode);
 
   if (previewMode || !selectedNode) return null;
-  const matrix = RESIZE_MATRIX[selectedNode.type];
-  if (!matrix) return null;
+  const right = isResizableOnAxis(selectedNode.type, "width");
+  const bottom = isResizableOnAxis(selectedNode.type, "height");
+  if (!right && !bottom) return null;
 
-  return <ResizeHandlesActive node={selectedNode} matrix={matrix} />;
+  return <ResizeHandlesActive node={selectedNode} matrix={{ right, bottom }} />;
 }
 
 function ResizeHandlesActive({

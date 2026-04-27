@@ -17,7 +17,7 @@ export {
   parseDropZoneId,
   parseNodeId,
   parsePaletteId,
-  RESIZE_MATRIX,
+  isResizableOnAxis,
   ResizeHandles,
   SortableProviderActive,
   useDragState,

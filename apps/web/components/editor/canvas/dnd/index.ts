@@ -24,7 +24,7 @@ export {
   getChildrenPolicy,
 } from "./dropTargetPolicy";
 export { PaletteDraggable } from "./PaletteDraggable";
-export { RESIZE_MATRIX, ResizeHandles } from "./ResizeHandles";
+export { isResizableOnAxis, ResizeHandles } from "./ResizeHandles";
 export {
   SortableProviderActive,
   useNodeSortable,
