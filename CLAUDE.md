@@ -177,6 +177,24 @@ sprint, what was changed, and the user's approval message verbatim.
 
 ---
 
+## Token economy: when to run which gate
+
+The §15.7 quality gates are binding **at sprint completion**. Mid-task they
+are not -- running them speculatively burns Claude tokens on output the user
+does not need. Default to the lightest verification that covers the change:
+
+- **Type-only / structural edits** (annotations, import reorders, moving a
+  provider up the tree, renames): `pnpm typecheck` + `pnpm biome check`.
+  Skip `pnpm test` and `pnpm build`.
+- **Logic edits** (state mutations, parsers, async flows, store actions):
+  run the *targeted* test file (`pnpm test path/to/file.test.ts`), not the
+  whole suite.
+- **Sprint completion or explicit user request**: run the full §15.7 gate
+  (`pnpm test`, `pnpm build`, `pnpm biome check`, smoke test).
+
+When uncertain whether a heavier gate is warranted, ask the user instead of
+running speculatively.
+
 ## Useful local commands
 
 - `pnpm dev` -- Next.js dev server at http://localhost:3000

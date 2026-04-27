@@ -1,6 +1,7 @@
 "use client";
 
 import { Canvas } from "@/components/editor/canvas/Canvas";
+import { DndCanvasProvider } from "@/components/editor/canvas/dnd/DndCanvasProvider";
 import { LeftSidebar } from "@/components/editor/sidebar/LeftSidebar";
 import { RightSidebar } from "@/components/editor/sidebar/RightSidebar";
 import { TopBar } from "@/components/editor/topbar/TopBar";
@@ -33,11 +34,13 @@ export function EditorShell({
   return (
     <div className="flex h-screen flex-col bg-zinc-950 text-zinc-100">
       <TopBar />
-      <div className="flex flex-1 overflow-hidden">
-        <LeftSidebar />
-        <Canvas />
-        <RightSidebar />
-      </div>
+      <DndCanvasProvider>
+        <div className="flex flex-1 overflow-hidden">
+          <LeftSidebar />
+          <Canvas />
+          <RightSidebar />
+        </div>
+      </DndCanvasProvider>
       <Toaster />
     </div>
   );

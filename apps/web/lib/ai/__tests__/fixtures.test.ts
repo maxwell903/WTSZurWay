@@ -37,7 +37,7 @@ import {
   recordGenerationFixture,
 } from "../fixtures";
 
-const VALID_CONFIG = {
+const VALID_CONFIG: SiteConfig = {
   meta: { siteName: "Aurora", siteSlug: "aurora" },
   brand: { palette: "ocean", fontFamily: "Inter" },
   global: {
