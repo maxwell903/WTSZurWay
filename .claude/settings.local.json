@@ -88,7 +88,11 @@
       "Bash(pnpm --filter web test components/editor/topbar/)",
       "Bash(pnpm --filter web test components/editor/__tests__/canvas.test.tsx)",
       "Bash(pnpm --filter web test components/renderer/__tests__/EditModeWrapper.test.tsx)",
-      "Bash(pnpm --filter web test components/editor/ components/renderer/ lib/editor-state/)"
+      "Bash(pnpm --filter web test components/editor/ components/renderer/ lib/editor-state/)",
+      "Bash(pnpm --filter web test components/editor/__tests__/canvas)",
+      "Bash(pnpm --filter web test \"components/editor/canvas/dnd/__tests__/ResizeHandles.test.tsx\" --reporter=verbose)",
+      "Bash(pnpm --filter web test \"components/editor/canvas/dnd/__tests__/sideDropZones.test.tsx\" --reporter=verbose)",
+      "Bash(./node_modules/.bin/biome format *)"
     ]
   }
 }
