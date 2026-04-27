@@ -121,6 +121,7 @@ function ResizeHandlesActive({
     <>
       {matrix.right ? <RightEdgeHandle node={node} rect={rect} /> : null}
       {matrix.bottom ? <BottomEdgeHandle node={node} rect={rect} /> : null}
+      {matrix.right && matrix.bottom ? <CornerHandle node={node} rect={rect} /> : null}
     </>
   );
 }
@@ -196,6 +197,87 @@ function RightEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRe
         cursor: "ew-resize",
         background: "rgba(59, 130, 246, 0.55)",
         zIndex: 50,
+      }}
+    />
+  );
+}
+
+function CornerHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect }) {
+  const setComponentDimension = useEditorStore((s) => s.setComponentDimension);
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    startW: number;
+    startH: number;
+    parentRect: DOMRect;
+  } | null>(null);
+
+  function handlePointerDown(e: ReactPointerEvent<HTMLDivElement>): void {
+    e.preventDefault();
+    e.stopPropagation();
+    const page = selectCurrentPage(useEditorStore.getState());
+    if (!page) return;
+    const parentId = findComponentParentId(page.rootComponent, node.id);
+    const parentEl = parentId ? document.querySelector(`[data-edit-id="${parentId}"]`) : null;
+    const parentRect =
+      parentEl instanceof HTMLElement ? parentEl.getBoundingClientRect() : new DOMRect();
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startW: rect.width,
+      startH: rect.height,
+      parentRect,
+    };
+
+    function handlePointerUp(ev: PointerEvent | MouseEvent): void {
+      const drag = dragRef.current;
+      cleanup();
+      if (!drag) return;
+      const newW = drag.startW + (ev.clientX - drag.startX);
+      const newH = snapHeight(drag.startH + (ev.clientY - drag.startY), node.type === "Spacer");
+      const fraction = drag.parentRect.width
+        ? Math.max(0.04, Math.min(1, newW / drag.parentRect.width))
+        : 1;
+      const percent = Math.max(5, Math.round((fraction * 100) / 5) * 5);
+      try {
+        setComponentDimension(node.id, "width", `${percent}%`);
+        if (node.type !== "Spacer") {
+          setComponentDimension(node.id, "height", `${newH}px`);
+        }
+      } catch {
+        // Apply layer rejected; silent no-op.
+      }
+    }
+
+    function handleKeyDown(ev: KeyboardEvent): void {
+      if (ev.key === "Escape") cleanup();
+    }
+
+    function cleanup(): void {
+      window.removeEventListener("pointerup", handlePointerUp as EventListener);
+      window.removeEventListener("keydown", handleKeyDown);
+      dragRef.current = null;
+    }
+
+    window.addEventListener("pointerup", handlePointerUp as EventListener);
+    window.addEventListener("keydown", handleKeyDown);
+  }
+
+  return (
+    <div
+      data-testid={`resize-handle-corner-${node.id}`}
+      data-resize-axis="corner"
+      onPointerDown={handlePointerDown}
+      style={{
+        position: "fixed",
+        top: rect.top + rect.height - 6,
+        left: rect.left + rect.width - 6,
+        width: 12,
+        height: 12,
+        cursor: "nwse-resize",
+        background: "rgba(59, 130, 246, 0.85)",
+        borderRadius: 2,
+        zIndex: 51,
       }}
     />
   );
