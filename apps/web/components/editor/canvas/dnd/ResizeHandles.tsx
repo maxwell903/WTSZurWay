@@ -28,6 +28,7 @@ import {
 } from "@/lib/editor-state";
 import type { ComponentNode, ComponentType } from "@/lib/site-config";
 import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
+import { BoundedByParentTooltip } from "./BoundedByParentTooltip";
 
 type ResizeMatrixEntry = {
   // Whether the right-edge handle renders (Column.span only).
@@ -129,9 +130,18 @@ function ResizeHandlesActive({
 
 function RightEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect }) {
   const setComponentSpan = useEditorStore((s) => s.setComponentSpan);
-  const setComponentDimensionWithCascade = useEditorStore((s) => s.setComponentDimensionWithCascade);
+  const setComponentDimensionWithCascade = useEditorStore(
+    (s) => s.setComponentDimensionWithCascade,
+  );
   // parentRect generalises the old rowRect — the parent could be any container.
   const dragRef = useRef<{ parentRect: DOMRect; shiftHeld: boolean } | null>(null);
+  const showTimerRef = useRef<number | null>(null);
+  const hideTimerRef = useRef<number | null>(null);
+  const [tooltip, setTooltip] = useState<{ visible: boolean; top: number; left: number }>({
+    visible: false,
+    top: rect.top + rect.height / 2,
+    left: rect.left + rect.width,
+  });
 
   function handlePointerDown(e: ReactPointerEvent<HTMLDivElement>): void {
     e.preventDefault();
@@ -146,6 +156,54 @@ function RightEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRe
     const parentRect = (parentEl as HTMLElement).getBoundingClientRect();
 
     dragRef.current = { parentRect, shiftHeld: e.shiftKey };
+
+    function handlePointerMove(ev: PointerEvent | MouseEvent): void {
+      const drag = dragRef.current;
+      if (!drag) return;
+      // Column-grid drag has no "past the cap" semantic for the user — skip tooltip.
+      if (node.type === "Column" && !drag.shiftHeld) return;
+      const max = getMaxAllowedDimension(useEditorStore.getState().draftConfig, node.id, "width");
+      if (max === null) return;
+      const fraction = (ev.clientX - drag.parentRect.left) / drag.parentRect.width;
+      const percent = fraction * 100;
+      // Tiny epsilon prevents tooltip flickering at the exact cap boundary.
+      const pushingPast = percent > max + 0.5;
+      if (pushingPast) {
+        if (hideTimerRef.current !== null) {
+          window.clearTimeout(hideTimerRef.current);
+          hideTimerRef.current = null;
+        }
+        // Use a functional read of tooltip.visible via the ref pattern — we
+        // intentionally read the live state via setTooltip's updater instead.
+        setTooltip((current) => {
+          if (!current.visible && showTimerRef.current === null) {
+            // Arm the 150ms show-delay only once per "push past" entry.
+            showTimerRef.current = window.setTimeout(() => {
+              setTooltip({ visible: true, top: ev.clientY, left: ev.clientX });
+              showTimerRef.current = null;
+            }, 150);
+          } else if (current.visible) {
+            // Already visible — keep position fresh.
+            return { visible: true, top: ev.clientY, left: ev.clientX };
+          }
+          return current;
+        });
+      } else {
+        if (showTimerRef.current !== null) {
+          window.clearTimeout(showTimerRef.current);
+          showTimerRef.current = null;
+        }
+        setTooltip((current) => {
+          if (current.visible && hideTimerRef.current === null) {
+            hideTimerRef.current = window.setTimeout(() => {
+              setTooltip((t) => ({ ...t, visible: false }));
+              hideTimerRef.current = null;
+            }, 800);
+          }
+          return current;
+        });
+      }
+    }
 
     function handlePointerUp(ev: PointerEvent): void {
       const drag = dragRef.current;
@@ -165,7 +223,11 @@ function RightEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRe
           // Task 3.5: cap at the parent's remaining headroom (siblings' explicit widths
           // already consumed). Snap the cap DOWN to the nearest 5% grid step so the
           // bounded value sits on the same grid as the drag.
-          const max = getMaxAllowedDimension(useEditorStore.getState().draftConfig, node.id, "width");
+          const max = getMaxAllowedDimension(
+            useEditorStore.getState().draftConfig,
+            node.id,
+            "width",
+          );
           let bounded = percent;
           if (max !== null) {
             const cappedAtSnap = Math.floor(max / 5) * 5;
@@ -185,37 +247,54 @@ function RightEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRe
     }
 
     function cleanup(): void {
+      window.removeEventListener("pointermove", handlePointerMove as EventListener);
       window.removeEventListener("pointerup", handlePointerUp);
       window.removeEventListener("keydown", handleKeyDown);
+      if (showTimerRef.current !== null) {
+        window.clearTimeout(showTimerRef.current);
+        showTimerRef.current = null;
+      }
+      if (hideTimerRef.current !== null) {
+        window.clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = null;
+      }
+      // Hide the tooltip on release.
+      setTooltip((t) => ({ ...t, visible: false }));
       dragRef.current = null;
     }
 
+    window.addEventListener("pointermove", handlePointerMove as EventListener);
     window.addEventListener("pointerup", handlePointerUp);
     window.addEventListener("keydown", handleKeyDown);
   }
 
   return (
-    <div
-      data-testid={`resize-handle-right-${node.id}`}
-      data-resize-axis="right"
-      onPointerDown={handlePointerDown}
-      style={{
-        position: "fixed",
-        top: rect.top,
-        left: rect.left + rect.width - 4,
-        width: 8,
-        height: rect.height,
-        cursor: "ew-resize",
-        background: "rgba(59, 130, 246, 0.55)",
-        zIndex: 50,
-      }}
-    />
+    <>
+      <div
+        data-testid={`resize-handle-right-${node.id}`}
+        data-resize-axis="right"
+        onPointerDown={handlePointerDown}
+        style={{
+          position: "fixed",
+          top: rect.top,
+          left: rect.left + rect.width - 4,
+          width: 8,
+          height: rect.height,
+          cursor: "ew-resize",
+          background: "rgba(59, 130, 246, 0.55)",
+          zIndex: 50,
+        }}
+      />
+      <BoundedByParentTooltip visible={tooltip.visible} top={tooltip.top} left={tooltip.left} />
+    </>
   );
 }
 
 function CornerHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect }) {
   const setComponentDimension = useEditorStore((s) => s.setComponentDimension);
-  const setComponentDimensionWithCascade = useEditorStore((s) => s.setComponentDimensionWithCascade);
+  const setComponentDimensionWithCascade = useEditorStore(
+    (s) => s.setComponentDimensionWithCascade,
+  );
   const dragRef = useRef<{
     startX: number;
     startY: number;
@@ -223,6 +302,13 @@ function CornerHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect 
     startH: number;
     parentRect: DOMRect;
   } | null>(null);
+  const showTimerRef = useRef<number | null>(null);
+  const hideTimerRef = useRef<number | null>(null);
+  const [tooltip, setTooltip] = useState<{ visible: boolean; top: number; left: number }>({
+    visible: false,
+    top: rect.top + rect.height,
+    left: rect.left + rect.width,
+  });
 
   function handlePointerDown(e: ReactPointerEvent<HTMLDivElement>): void {
     e.preventDefault();
@@ -240,6 +326,49 @@ function CornerHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect 
       startH: rect.height,
       parentRect,
     };
+
+    function handlePointerMove(ev: PointerEvent | MouseEvent): void {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const max = getMaxAllowedDimension(useEditorStore.getState().draftConfig, node.id, "width");
+      if (max === null) return;
+      const newW = drag.startW + (ev.clientX - drag.startX);
+      const fraction = drag.parentRect.width ? newW / drag.parentRect.width : 0;
+      const percent = fraction * 100;
+      // Tiny epsilon prevents tooltip flickering at the exact cap boundary.
+      const pushingPast = percent > max + 0.5;
+      if (pushingPast) {
+        if (hideTimerRef.current !== null) {
+          window.clearTimeout(hideTimerRef.current);
+          hideTimerRef.current = null;
+        }
+        setTooltip((current) => {
+          if (!current.visible && showTimerRef.current === null) {
+            showTimerRef.current = window.setTimeout(() => {
+              setTooltip({ visible: true, top: ev.clientY, left: ev.clientX });
+              showTimerRef.current = null;
+            }, 150);
+          } else if (current.visible) {
+            return { visible: true, top: ev.clientY, left: ev.clientX };
+          }
+          return current;
+        });
+      } else {
+        if (showTimerRef.current !== null) {
+          window.clearTimeout(showTimerRef.current);
+          showTimerRef.current = null;
+        }
+        setTooltip((current) => {
+          if (current.visible && hideTimerRef.current === null) {
+            hideTimerRef.current = window.setTimeout(() => {
+              setTooltip((t) => ({ ...t, visible: false }));
+              hideTimerRef.current = null;
+            }, 800);
+          }
+          return current;
+        });
+      }
+    }
 
     function handlePointerUp(ev: PointerEvent | MouseEvent): void {
       const drag = dragRef.current;
@@ -273,32 +402,47 @@ function CornerHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect 
     }
 
     function cleanup(): void {
+      window.removeEventListener("pointermove", handlePointerMove as EventListener);
       window.removeEventListener("pointerup", handlePointerUp as EventListener);
       window.removeEventListener("keydown", handleKeyDown);
+      if (showTimerRef.current !== null) {
+        window.clearTimeout(showTimerRef.current);
+        showTimerRef.current = null;
+      }
+      if (hideTimerRef.current !== null) {
+        window.clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = null;
+      }
+      // Hide the tooltip on release.
+      setTooltip((t) => ({ ...t, visible: false }));
       dragRef.current = null;
     }
 
+    window.addEventListener("pointermove", handlePointerMove as EventListener);
     window.addEventListener("pointerup", handlePointerUp as EventListener);
     window.addEventListener("keydown", handleKeyDown);
   }
 
   return (
-    <div
-      data-testid={`resize-handle-corner-${node.id}`}
-      data-resize-axis="corner"
-      onPointerDown={handlePointerDown}
-      style={{
-        position: "fixed",
-        top: rect.top + rect.height - 6,
-        left: rect.left + rect.width - 6,
-        width: 12,
-        height: 12,
-        cursor: "nwse-resize",
-        background: "rgba(59, 130, 246, 0.85)",
-        borderRadius: 2,
-        zIndex: 51,
-      }}
-    />
+    <>
+      <div
+        data-testid={`resize-handle-corner-${node.id}`}
+        data-resize-axis="corner"
+        onPointerDown={handlePointerDown}
+        style={{
+          position: "fixed",
+          top: rect.top + rect.height - 6,
+          left: rect.left + rect.width - 6,
+          width: 12,
+          height: 12,
+          cursor: "nwse-resize",
+          background: "rgba(59, 130, 246, 0.85)",
+          borderRadius: 2,
+          zIndex: 51,
+        }}
+      />
+      <BoundedByParentTooltip visible={tooltip.visible} top={tooltip.top} left={tooltip.left} />
+    </>
   );
 }
 
