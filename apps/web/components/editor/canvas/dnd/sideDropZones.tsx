@@ -5,11 +5,14 @@ import { useDroppable } from "@dnd-kit/core";
 import { useDragState } from "./DropZoneIndicator";
 import { type Side, sideId } from "./dnd-ids";
 
+// Position outside the wrapper edges (negative offsets) so the inside of
+// the component is free for clicks, hover, and the resize handles. The
+// SideDropZones live in a thin "halo" around each component in edit mode.
 const SIDE_GEOMETRY: Record<Side, string> = {
-  left: "absolute inset-y-0 left-0 w-3",
-  right: "absolute inset-y-0 right-0 w-3",
-  top: "absolute inset-x-0 top-0 h-3",
-  bottom: "absolute inset-x-0 bottom-0 h-3",
+  left: "absolute inset-y-0 -left-2 w-2",
+  right: "absolute inset-y-0 -right-2 w-2",
+  top: "absolute inset-x-0 -top-2 h-2",
+  bottom: "absolute inset-x-0 -bottom-2 h-2",
 };
 
 // 4 thin overlays anchored to a component's edges. Top/bottom add a

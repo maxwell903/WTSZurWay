@@ -645,3 +645,89 @@ describe("CornerHandle — Task 3.5 parent-bound clamp", () => {
     expect(widthNum).toBeLessThanOrEqual(20);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Live preview — width writes on pointermove (not just pointerup)
+// ---------------------------------------------------------------------------
+//
+// After pointerdown + a single pointermove (no pointerup), the store must
+// already hold a style.width value. jsdom's rAF fires asynchronously so we
+// use waitFor to let the animation frame flush before asserting.
+
+describe("RightEdgeHandle live preview during drag", () => {
+  beforeEach(() => {
+    __resetEditorStoreForTests();
+    useEditorStore.getState().hydrate({
+      siteId: "s",
+      siteSlug: "test",
+      workingVersionId: "v",
+      initialConfig: makeFixture(),
+    });
+  });
+
+  afterEach(() => {
+    for (const el of document.querySelectorAll("[data-edit-id]")) {
+      el.parentNode?.removeChild(el);
+    }
+    vi.restoreAllMocks();
+    // Clean up any lingering pointermove/pointerup listeners from a failed test.
+    window.dispatchEvent(new MouseEvent("pointerup", { clientX: 0, bubbles: true }));
+  });
+
+  it("writes width on pointermove (not just pointerup)", async () => {
+    // Stub requestAnimationFrame to be synchronous so the rAF callback fires
+    // immediately without waiting for the next paint tick in jsdom.
+    let rafCallback: FrameRequestCallback | null = null;
+    const rafSpy = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      rafCallback = cb;
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {
+      rafCallback = null;
+    });
+
+    // Parent section: 0..400px. Move to x=300 → fraction=0.75 → snapped to 75%.
+    plantElement("cmp_sec", { left: 0, width: 400 });
+    plantElement("cmp_heading", { left: 0, top: 0, width: 200, height: 50 });
+
+    act(() => {
+      useEditorStore.getState().selectComponent("cmp_heading");
+    });
+
+    const { getByTestId } = render(<ResizeHandles />);
+    const handle = getByTestId("resize-handle-right-cmp_heading");
+
+    // Start the drag.
+    act(() => {
+      dispatchPointerDown(handle, { clientX: 200, clientY: 25 });
+    });
+
+    // Fire pointermove — no pointerup yet. The RAF stub captures the callback.
+    act(() => {
+      window.dispatchEvent(
+        new MouseEvent("pointermove", { clientX: 300, clientY: 25, bubbles: true }),
+      );
+    });
+
+    // Flush the captured rAF callback synchronously.
+    act(() => {
+      if (rafCallback) {
+        rafCallback(performance.now());
+        rafCallback = null;
+      }
+    });
+
+    // Store should now have the live width written via pointermove.
+    const page = useEditorStore.getState().draftConfig.pages[0];
+    const sec = page?.rootComponent.children?.find((c) => c.id === "cmp_sec");
+    const heading = sec?.children?.find((c) => c.id === "cmp_heading");
+    expect(heading?.style.width).toMatch(/^\d+(?:\.\d+)?%$/);
+
+    // Clean up: release the drag so window listeners are removed.
+    act(() => {
+      dispatchPointerUp(300);
+    });
+
+    rafSpy.mockRestore();
+  });
+});

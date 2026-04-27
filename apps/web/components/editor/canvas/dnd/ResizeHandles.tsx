@@ -135,6 +135,7 @@ function RightEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRe
   );
   // parentRect generalises the old rowRect — the parent could be any container.
   const dragRef = useRef<{ parentRect: DOMRect; shiftHeld: boolean } | null>(null);
+  const rafRef = useRef<number | null>(null);
   const showTimerRef = useRef<number | null>(null);
   const hideTimerRef = useRef<number | null>(null);
   const [tooltip, setTooltip] = useState<{ visible: boolean; top: number; left: number }>({
@@ -157,9 +158,43 @@ function RightEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRe
 
     dragRef.current = { parentRect, shiftHeld: e.shiftKey };
 
+    // Shared width computation and write — called on both pointermove and pointerup.
+    function computeAndWrite(clientX: number, shiftHeld: boolean): void {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const fraction = (clientX - drag.parentRect.left) / drag.parentRect.width;
+      const clampedFraction = Math.max(0.04, Math.min(1, fraction));
+      if (node.type === "Column" && !shiftHeld) {
+        try {
+          setComponentSpan(node.id, snapSpan(clampedFraction));
+        } catch {
+          // Apply layer rejected; silent no-op.
+        }
+        return;
+      }
+      const max = getMaxAllowedDimension(useEditorStore.getState().draftConfig, node.id, "width");
+      let percent = Math.max(5, Math.round((clampedFraction * 100) / 5) * 5);
+      if (max !== null) {
+        const cap = Math.max(5, Math.floor(max / 5) * 5);
+        percent = Math.min(percent, cap);
+      }
+      try {
+        setComponentDimensionWithCascade(node.id, "width", `${percent}%`);
+      } catch {
+        // Apply layer rejected; silent no-op.
+      }
+    }
+
     function handlePointerMove(ev: PointerEvent | MouseEvent): void {
       const drag = dragRef.current;
       if (!drag) return;
+      // Live preview, throttled to animation frames.
+      if (rafRef.current === null) {
+        rafRef.current = window.requestAnimationFrame(() => {
+          rafRef.current = null;
+          computeAndWrite(ev.clientX, drag.shiftHeld);
+        });
+      }
       // Column-grid drag has no "past the cap" semantic for the user — skip tooltip.
       if (node.type === "Column" && !drag.shiftHeld) return;
       const max = getMaxAllowedDimension(useEditorStore.getState().draftConfig, node.id, "width");
@@ -205,39 +240,13 @@ function RightEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRe
       }
     }
 
-    function handlePointerUp(ev: PointerEvent): void {
-      const drag = dragRef.current;
+    function handlePointerUp(ev: PointerEvent | MouseEvent): void {
+      if (!dragRef.current) return;
+      // Capture shiftHeld before cleanup nulls dragRef.
+      const { shiftHeld } = dragRef.current;
+      // Final write at exact cursor position (no rAF throttle on release).
+      computeAndWrite(ev.clientX, shiftHeld);
       cleanup();
-      if (!drag) return;
-      const fraction = (ev.clientX - drag.parentRect.left) / drag.parentRect.width;
-      const clampedFraction = Math.max(0.04, Math.min(1, fraction));
-
-      try {
-        if (node.type === "Column" && !drag.shiftHeld) {
-          // Legacy Column-grid snap (1/12). Shift escapes to free percent.
-          // Column span is implicitly bounded to 1..12 — no parent clamp needed.
-          setComponentSpan(node.id, snapSpan(clampedFraction));
-        } else {
-          // 5% snap for free-percent storage.
-          const percent = Math.max(5, Math.round((clampedFraction * 100) / 5) * 5);
-          // Task 3.5: cap at the parent's remaining headroom (siblings' explicit widths
-          // already consumed). Snap the cap DOWN to the nearest 5% grid step so the
-          // bounded value sits on the same grid as the drag.
-          const max = getMaxAllowedDimension(
-            useEditorStore.getState().draftConfig,
-            node.id,
-            "width",
-          );
-          let bounded = percent;
-          if (max !== null) {
-            const cappedAtSnap = Math.floor(max / 5) * 5;
-            bounded = Math.min(bounded, Math.max(5, cappedAtSnap));
-          }
-          setComponentDimensionWithCascade(node.id, "width", `${bounded}%`);
-        }
-      } catch {
-        // Apply layer rejected (e.g. node disappeared mid-drag); silent no-op.
-      }
     }
 
     function handleKeyDown(ev: KeyboardEvent): void {
@@ -248,8 +257,12 @@ function RightEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRe
 
     function cleanup(): void {
       window.removeEventListener("pointermove", handlePointerMove as EventListener);
-      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointerup", handlePointerUp as EventListener);
       window.removeEventListener("keydown", handleKeyDown);
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
       if (showTimerRef.current !== null) {
         window.clearTimeout(showTimerRef.current);
         showTimerRef.current = null;
@@ -264,7 +277,7 @@ function RightEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRe
     }
 
     window.addEventListener("pointermove", handlePointerMove as EventListener);
-    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointerup", handlePointerUp as EventListener);
     window.addEventListener("keydown", handleKeyDown);
   }
 
@@ -302,6 +315,7 @@ function CornerHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect 
     startH: number;
     parentRect: DOMRect;
   } | null>(null);
+  const rafRef = useRef<number | null>(null);
   const showTimerRef = useRef<number | null>(null);
   const hideTimerRef = useRef<number | null>(null);
   const [tooltip, setTooltip] = useState<{ visible: boolean; top: number; left: number }>({
@@ -327,9 +341,43 @@ function CornerHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect 
       parentRect,
     };
 
+    // Shared width+height computation and write — called on both pointermove and pointerup.
+    function computeAndWrite(clientX: number, clientY: number): void {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const newW = drag.startW + (clientX - drag.startX);
+      const newH = snapHeight(drag.startH + (clientY - drag.startY), node.type === "Spacer");
+      const fraction = drag.parentRect.width
+        ? Math.max(0.04, Math.min(1, newW / drag.parentRect.width))
+        : 1;
+      const percent = Math.max(5, Math.round((fraction * 100) / 5) * 5);
+      // Task 3.5: cap width at the parent's remaining headroom.
+      const max = getMaxAllowedDimension(useEditorStore.getState().draftConfig, node.id, "width");
+      let bounded = percent;
+      if (max !== null) {
+        const cappedAtSnap = Math.floor(max / 5) * 5;
+        bounded = Math.min(bounded, Math.max(5, cappedAtSnap));
+      }
+      try {
+        setComponentDimensionWithCascade(node.id, "width", `${bounded}%`);
+        if (node.type !== "Spacer") {
+          setComponentDimension(node.id, "height", `${newH}px`);
+        }
+      } catch {
+        // Apply layer rejected; silent no-op.
+      }
+    }
+
     function handlePointerMove(ev: PointerEvent | MouseEvent): void {
       const drag = dragRef.current;
       if (!drag) return;
+      // Live preview, throttled to animation frames.
+      if (rafRef.current === null) {
+        rafRef.current = window.requestAnimationFrame(() => {
+          rafRef.current = null;
+          computeAndWrite(ev.clientX, ev.clientY);
+        });
+      }
       const max = getMaxAllowedDimension(useEditorStore.getState().draftConfig, node.id, "width");
       if (max === null) return;
       const newW = drag.startW + (ev.clientX - drag.startX);
@@ -371,30 +419,10 @@ function CornerHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect 
     }
 
     function handlePointerUp(ev: PointerEvent | MouseEvent): void {
-      const drag = dragRef.current;
+      if (!dragRef.current) return;
+      // Final write at exact cursor position (no rAF throttle on release).
+      computeAndWrite(ev.clientX, ev.clientY);
       cleanup();
-      if (!drag) return;
-      const newW = drag.startW + (ev.clientX - drag.startX);
-      const newH = snapHeight(drag.startH + (ev.clientY - drag.startY), node.type === "Spacer");
-      const fraction = drag.parentRect.width
-        ? Math.max(0.04, Math.min(1, newW / drag.parentRect.width))
-        : 1;
-      const percent = Math.max(5, Math.round((fraction * 100) / 5) * 5);
-      // Task 3.5: cap width at the parent's remaining headroom.
-      const max = getMaxAllowedDimension(useEditorStore.getState().draftConfig, node.id, "width");
-      let bounded = percent;
-      if (max !== null) {
-        const cappedAtSnap = Math.floor(max / 5) * 5;
-        bounded = Math.min(bounded, Math.max(5, cappedAtSnap));
-      }
-      try {
-        setComponentDimensionWithCascade(node.id, "width", `${bounded}%`);
-        if (node.type !== "Spacer") {
-          setComponentDimension(node.id, "height", `${newH}px`);
-        }
-      } catch {
-        // Apply layer rejected; silent no-op.
-      }
     }
 
     function handleKeyDown(ev: KeyboardEvent): void {
@@ -405,6 +433,10 @@ function CornerHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect 
       window.removeEventListener("pointermove", handlePointerMove as EventListener);
       window.removeEventListener("pointerup", handlePointerUp as EventListener);
       window.removeEventListener("keydown", handleKeyDown);
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
       if (showTimerRef.current !== null) {
         window.clearTimeout(showTimerRef.current);
         showTimerRef.current = null;
@@ -450,6 +482,7 @@ function BottomEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportR
   const setComponentDimension = useEditorStore((s) => s.setComponentDimension);
   const setComponentProps = useEditorStore((s) => s.setComponentProps);
   const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  const rafRef = useRef<number | null>(null);
   const isSpacer = node.type === "Spacer";
 
   function handlePointerDown(e: ReactPointerEvent<HTMLDivElement>): void {
@@ -457,11 +490,11 @@ function BottomEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportR
     e.stopPropagation();
     dragRef.current = { startY: e.clientY, startHeight: rect.height };
 
-    function handlePointerUp(ev: PointerEvent): void {
+    // Shared height computation and write — called on both pointermove and pointerup.
+    function computeAndWrite(clientY: number): void {
       const drag = dragRef.current;
-      cleanup();
       if (!drag) return;
-      const delta = ev.clientY - drag.startY;
+      const delta = clientY - drag.startY;
       const newHeight = snapHeight(drag.startHeight + delta, isSpacer);
       try {
         if (isSpacer) {
@@ -480,6 +513,24 @@ function BottomEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportR
       }
     }
 
+    function handlePointerMove(ev: PointerEvent | MouseEvent): void {
+      if (!dragRef.current) return;
+      // Live preview, throttled to animation frames.
+      if (rafRef.current === null) {
+        rafRef.current = window.requestAnimationFrame(() => {
+          rafRef.current = null;
+          computeAndWrite(ev.clientY);
+        });
+      }
+    }
+
+    function handlePointerUp(ev: PointerEvent | MouseEvent): void {
+      if (!dragRef.current) return;
+      // Final write at exact cursor position (no rAF throttle on release).
+      computeAndWrite(ev.clientY);
+      cleanup();
+    }
+
     function handleKeyDown(ev: KeyboardEvent): void {
       if (ev.key === "Escape") {
         cleanup();
@@ -487,12 +538,18 @@ function BottomEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportR
     }
 
     function cleanup(): void {
-      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointermove", handlePointerMove as EventListener);
+      window.removeEventListener("pointerup", handlePointerUp as EventListener);
       window.removeEventListener("keydown", handleKeyDown);
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
       dragRef.current = null;
     }
 
-    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointermove", handlePointerMove as EventListener);
+    window.addEventListener("pointerup", handlePointerUp as EventListener);
     window.addEventListener("keydown", handleKeyDown);
   }
 
