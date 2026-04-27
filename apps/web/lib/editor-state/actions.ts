@@ -703,6 +703,79 @@ export function applyWrapInFlowGroupMove(
   return applyWrapInFlowGroup(removed, targetId, draggedNode, side);
 }
 
+// ---------------------------------------------------------------------------
+// Side-edge horizontal sibling helpers (replaces FlowGroup wrap intent)
+//
+// Drop on left/right side of a component inserts the new sibling at the
+// target's parent's children list and sets BOTH the target and new sibling
+// to width:50%. Section's flex-row-wrap layout (shipped earlier) makes them
+// sit side-by-side automatically. Top/bottom drops continue to use
+// applyAddComponentChild / applyMoveComponent directly from the provider.
+// ---------------------------------------------------------------------------
+
+// Inserts `newSibling` as a sibling of `targetId` at `targetId`'s parent
+// at the given direction's index, AND sets both targetId and newSibling
+// to `width: 50%`. Single store transition so undo is one step.
+//
+// `direction` is the side-edge drop direction: "left" places the new
+// sibling BEFORE the target; "right" places it AFTER. (Top/bottom go
+// through applyAddComponentChild instead — no width change.)
+export function applyAddSiblingHorizontal(
+  config: SiteConfig,
+  targetId: ComponentId,
+  newSibling: ComponentNode,
+  direction: "left" | "right",
+): SiteConfig {
+  for (let i = 0; i < config.pages.length; i++) {
+    const page = config.pages[i];
+    if (!page) continue;
+    const parentId = findComponentParentId(page.rootComponent, targetId);
+    if (!parentId) continue;
+    const res = mapNodeById(page.rootComponent, parentId, (parent) => {
+      const children = (parent.children ?? []).slice();
+      const idx = children.findIndex((c) => c.id === targetId);
+      if (idx < 0) return parent;
+      const target = children[idx];
+      if (!target) return parent;
+      const sizedTarget: ComponentNode = {
+        ...target,
+        style: { ...target.style, width: "50%" },
+      };
+      const sizedNewSibling: ComponentNode = {
+        ...newSibling,
+        style: { ...newSibling.style, width: "50%" },
+      };
+      // Replace target with width-updated version first, then insert new sibling.
+      children.splice(idx, 1, sizedTarget);
+      const insertAt = direction === "right" ? idx + 1 : idx;
+      children.splice(insertAt, 0, sizedNewSibling);
+      return { ...parent, children };
+    });
+    if (!res.found) continue;
+    const nextPages = config.pages.slice();
+    nextPages[i] = { ...page, rootComponent: res.node };
+    return { ...config, pages: nextPages };
+  }
+  fail("component_not_found", `Component "${targetId}" not found in any page.`);
+}
+
+// Variant for moving an EXISTING node onto a side overlay (single undo step).
+// Removes `draggedId` from its current parent first, then runs the same
+// "insert sibling + set both widths to 50%" mutation against the target.
+export function applyAddSiblingHorizontalMove(
+  config: SiteConfig,
+  draggedId: ComponentId,
+  targetId: ComponentId,
+  direction: "left" | "right",
+): SiteConfig {
+  const draggedNode = findNodeAcrossPages(config, draggedId);
+  if (!draggedNode) {
+    fail("component_not_found", `Component "${draggedId}" not found in any page.`);
+  }
+  const removed = applyRemoveComponent(config, draggedId);
+  return applyAddSiblingHorizontal(removed, targetId, draggedNode, direction);
+}
+
 // After any tree mutation that could leave a FlowGroup with <=1 children,
 // walk every page's tree and dissolve those wrappers in one pass. Iterates
 // because dissolving one FlowGroup could leave its parent (also a FlowGroup,

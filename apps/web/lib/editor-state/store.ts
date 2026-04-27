@@ -4,6 +4,8 @@ import { type StateCreator, create } from "zustand";
 import {
   applyAddComponentChild,
   applyAddPage,
+  applyAddSiblingHorizontal,
+  applyAddSiblingHorizontalMove,
   applyCommitAiEditOperations,
   applyDeletePage,
   applyMoveComponent,
@@ -297,6 +299,22 @@ const creator: StateCreator<EditorStore> = (set) => ({
   wrapInFlowGroupMove: (draggedId, targetId, side) =>
     set((state) => ({
       draftConfig: applyWrapInFlowGroupMove(state.draftConfig, draggedId, targetId, side),
+      saveState: "dirty",
+    })),
+
+  // Side-edge horizontal sibling actions (replaces FlowGroup wrap for drop handler).
+  // Selects the new sibling so the user immediately sees what they dropped.
+  addSiblingHorizontal: (targetId, newSibling, direction) =>
+    set((state) => ({
+      draftConfig: applyAddSiblingHorizontal(state.draftConfig, targetId, newSibling, direction),
+      selectedComponentId: newSibling.id,
+      saveState: "dirty",
+    })),
+
+  // Does not change selection (the dragged node was already selected before the drag).
+  addSiblingHorizontalMove: (draggedId, targetId, direction) =>
+    set((state) => ({
+      draftConfig: applyAddSiblingHorizontalMove(state.draftConfig, draggedId, targetId, direction),
       saveState: "dirty",
     })),
 

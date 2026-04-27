@@ -370,43 +370,51 @@ describe("<DndCanvasProvider>", () => {
   });
 
   describe("side-zone drop intent (Task 5.6)", () => {
-    it("palette drop on side:cmp_x:right wraps target + new in a FlowGroup", () => {
+    it("palette drop on side:cmp_x:right inserts new node as sibling AFTER target, both at width:50%", () => {
       render(
         <DndCanvasProvider>
           <div />
         </DndCanvasProvider>,
       );
-      // Arrange: root Section containing cmp_h1 (inside cmp_secA).
+      // Arrange: cmp_secA > [cmp_h1, cmp_h2].
       // Drop palette:Button on side:cmp_h1:right.
-      // The side branch should call wrapInFlowGroup, creating a FlowGroup > [h1, new Button].
+      // Result: cmp_secA > [cmp_h1(50%), new Button(50%), cmp_h2]. No FlowGroup.
       const beforeConfig = useEditorStore.getState().draftConfig;
       captured.onDragEnd?.(dragEnd("palette:Button", "side:cmp_h1:right"));
       const root = getRoot();
       const secA = findById(root, "cmp_secA");
-      // cmp_h1 should now be inside a FlowGroup alongside a new Button
-      const flowGroup = secA?.children?.find((c) => c.type === "FlowGroup");
-      expect(flowGroup).toBeDefined();
-      expect(flowGroup?.children?.length).toBe(2);
-      expect(flowGroup?.children?.[0]?.id).toBe("cmp_h1");
-      expect(flowGroup?.children?.[1]?.type).toBe("Button");
+      // No FlowGroup created.
+      expect(secA?.children?.find((c) => c.type === "FlowGroup")).toBeUndefined();
+      // cmp_h1 stays at index 0 with width:50%, new Button at index 1 with width:50%.
+      expect(secA?.children?.[0]?.id).toBe("cmp_h1");
+      expect(secA?.children?.[0]?.style.width).toBe("50%");
+      expect(secA?.children?.[1]?.type).toBe("Button");
+      expect(secA?.children?.[1]?.style.width).toBe("50%");
+      // cmp_h2 shifts to index 2, unchanged.
+      expect(secA?.children?.[2]?.id).toBe("cmp_h2");
       expect(useEditorStore.getState().draftConfig).not.toBe(beforeConfig);
       expect(useEditorStore.getState().saveState).toBe("dirty");
     });
 
-    it("palette drop on side:cmp_x:left wraps with new on the LEFT", () => {
+    it("palette drop on side:cmp_x:left inserts new node as sibling BEFORE target, both at width:50%", () => {
       render(
         <DndCanvasProvider>
           <div />
         </DndCanvasProvider>,
       );
+      // cmp_h1 is at index 0; left means new Button inserted at index 0 (before h1).
       captured.onDragEnd?.(dragEnd("palette:Button", "side:cmp_h1:left"));
       const root = getRoot();
       const secA = findById(root, "cmp_secA");
-      const flowGroup = secA?.children?.find((c) => c.type === "FlowGroup");
-      expect(flowGroup).toBeDefined();
-      expect(flowGroup?.children?.length).toBe(2);
-      expect(flowGroup?.children?.[0]?.type).toBe("Button");
-      expect(flowGroup?.children?.[1]?.id).toBe("cmp_h1");
+      // No FlowGroup created.
+      expect(secA?.children?.find((c) => c.type === "FlowGroup")).toBeUndefined();
+      // New Button at index 0 with width:50%, cmp_h1 at index 1 with width:50%.
+      expect(secA?.children?.[0]?.type).toBe("Button");
+      expect(secA?.children?.[0]?.style.width).toBe("50%");
+      expect(secA?.children?.[1]?.id).toBe("cmp_h1");
+      expect(secA?.children?.[1]?.style.width).toBe("50%");
+      // cmp_h2 shifts to index 2, unchanged.
+      expect(secA?.children?.[2]?.id).toBe("cmp_h2");
     });
 
     it("palette drop on side:cmp_x:bottom inserts as vertical sibling AFTER target", () => {
@@ -445,23 +453,25 @@ describe("<DndCanvasProvider>", () => {
       expect(secA?.children?.[2]?.id).toBe("cmp_h2");
     });
 
-    it("node drop on side:cmp_x:right moves dragged node + wraps with target", () => {
+    it("node drop on side:cmp_x:right moves dragged node as flat sibling, both at width:50%", () => {
       render(
         <DndCanvasProvider>
           <div />
         </DndCanvasProvider>,
       );
-      // Arrange: root Section > cmp_secA > [cmp_h1, cmp_h2].
+      // Arrange: cmp_secA > [cmp_h1, cmp_h2].
       // Drop node:cmp_h2 on side:cmp_h1:right.
-      // Result: cmp_secA > [FlowGroup > [cmp_h1, cmp_h2]].
+      // Result: cmp_secA > [cmp_h1(50%), cmp_h2(50%)]. No FlowGroup.
       captured.onDragEnd?.(dragEnd("node:cmp_h2", "side:cmp_h1:right"));
       const root = getRoot();
       const secA = findById(root, "cmp_secA");
-      const flowGroup = secA?.children?.find((c) => c.type === "FlowGroup");
-      expect(flowGroup).toBeDefined();
-      expect(flowGroup?.children?.length).toBe(2);
-      expect(flowGroup?.children?.[0]?.id).toBe("cmp_h1");
-      expect(flowGroup?.children?.[1]?.id).toBe("cmp_h2");
+      // No FlowGroup created.
+      expect(secA?.children?.find((c) => c.type === "FlowGroup")).toBeUndefined();
+      expect(secA?.children).toHaveLength(2);
+      expect(secA?.children?.[0]?.id).toBe("cmp_h1");
+      expect(secA?.children?.[0]?.style.width).toBe("50%");
+      expect(secA?.children?.[1]?.id).toBe("cmp_h2");
+      expect(secA?.children?.[1]?.style.width).toBe("50%");
       expect(useEditorStore.getState().saveState).toBe("dirty");
     });
   });

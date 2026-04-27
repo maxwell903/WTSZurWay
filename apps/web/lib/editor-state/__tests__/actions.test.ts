@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   applyAddComponentChild,
   applyAddPage,
+  applyAddSiblingHorizontal,
+  applyAddSiblingHorizontalMove,
   applyDeletePage,
   applyDissolveFlowGroup,
   applyMoveComponent,
@@ -1241,5 +1243,137 @@ describe("auto-dissolve FlowGroups (Task 5.3)", () => {
     const fg = root?.children?.[0];
     expect(fg?.type).toBe("FlowGroup");
     expect(fg?.children?.map((c) => c.id)).toEqual(["a", "b"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Side-edge horizontal sibling helpers (replaces FlowGroup wrap intent)
+// ---------------------------------------------------------------------------
+
+describe("applyAddSiblingHorizontal", () => {
+  function makeRootWith(rootChildren: ComponentNode[]): SiteConfig {
+    const base = makeFixtureConfig();
+    const firstPage = base.pages[0];
+    if (!firstPage) throw new Error("fixture missing first page");
+    return {
+      ...base,
+      pages: [
+        {
+          ...firstPage,
+          rootComponent: {
+            id: "cmp_root",
+            type: "Section",
+            props: {},
+            style: {},
+            children: rootChildren,
+          },
+        },
+      ],
+    };
+  }
+
+  it("right places new sibling AFTER target, both at width:50%", () => {
+    const config = makeRootWith([
+      { id: "a", type: "Section", props: {}, style: {}, children: [] },
+      { id: "b", type: "Section", props: {}, style: {}, children: [] },
+    ]);
+    const newNode: ComponentNode = { id: "n", type: "Heading", props: {}, style: {} };
+    const next = applyAddSiblingHorizontal(config, "a", newNode, "right");
+    const root = next.pages[0]?.rootComponent;
+    // No FlowGroup — flat children: [a(50%), n(50%), b].
+    expect(root?.children?.find((c) => c.type === "FlowGroup")).toBeUndefined();
+    expect(root?.children).toHaveLength(3);
+    expect(root?.children?.[0]?.id).toBe("a");
+    expect(root?.children?.[0]?.style.width).toBe("50%");
+    expect(root?.children?.[1]?.id).toBe("n");
+    expect(root?.children?.[1]?.style.width).toBe("50%");
+    expect(root?.children?.[2]?.id).toBe("b");
+  });
+
+  it("left places new sibling BEFORE target, both at width:50%", () => {
+    const config = makeRootWith([
+      { id: "a", type: "Section", props: {}, style: {}, children: [] },
+      { id: "b", type: "Section", props: {}, style: {}, children: [] },
+    ]);
+    const newNode: ComponentNode = { id: "n", type: "Heading", props: {}, style: {} };
+    const next = applyAddSiblingHorizontal(config, "a", newNode, "left");
+    const root = next.pages[0]?.rootComponent;
+    expect(root?.children).toHaveLength(3);
+    expect(root?.children?.[0]?.id).toBe("n");
+    expect(root?.children?.[0]?.style.width).toBe("50%");
+    expect(root?.children?.[1]?.id).toBe("a");
+    expect(root?.children?.[1]?.style.width).toBe("50%");
+    expect(root?.children?.[2]?.id).toBe("b");
+  });
+
+  it("preserves any existing non-width style fields on the target (spread)", () => {
+    const config = makeRootWith([
+      { id: "a", type: "Section", props: {}, style: { textColor: "#ff0000" }, children: [] },
+    ]);
+    const newNode: ComponentNode = { id: "n", type: "Heading", props: {}, style: {} };
+    const next = applyAddSiblingHorizontal(config, "a", newNode, "right");
+    const root = next.pages[0]?.rootComponent;
+    const target = root?.children?.[0];
+    expect(target?.style.textColor).toBe("#ff0000");
+    expect(target?.style.width).toBe("50%");
+  });
+
+  it("throws component_not_found when target id is missing", () => {
+    const config = makeRootWith([]);
+    expect(() =>
+      applyAddSiblingHorizontal(
+        config,
+        "missing",
+        { id: "n", type: "Heading", props: {}, style: {} },
+        "right",
+      ),
+    ).toThrow(EditorActionError);
+  });
+});
+
+describe("applyAddSiblingHorizontalMove", () => {
+  function makeRootWith(rootChildren: ComponentNode[]): SiteConfig {
+    const base = makeFixtureConfig();
+    const firstPage = base.pages[0];
+    if (!firstPage) throw new Error("fixture missing first page");
+    return {
+      ...base,
+      pages: [
+        {
+          ...firstPage,
+          rootComponent: {
+            id: "cmp_root",
+            type: "Section",
+            props: {},
+            style: {},
+            children: rootChildren,
+          },
+        },
+      ],
+    };
+  }
+
+  it("removes dragged node from old parent and places it as target's sibling at width:50%", () => {
+    const config = makeRootWith([
+      { id: "a", type: "Section", props: {}, style: {}, children: [] },
+      { id: "b", type: "Section", props: {}, style: {}, children: [] },
+    ]);
+    // Move "b" to the right of "a".
+    const next = applyAddSiblingHorizontalMove(config, "b", "a", "right");
+    const root = next.pages[0]?.rootComponent;
+    // b removed from its old position (index 1), re-inserted after a.
+    // Net: [a(50%), b(50%)] — same order but both now have width:50%.
+    expect(root?.children).toHaveLength(2);
+    expect(root?.children?.[0]?.id).toBe("a");
+    expect(root?.children?.[0]?.style.width).toBe("50%");
+    expect(root?.children?.[1]?.id).toBe("b");
+    expect(root?.children?.[1]?.style.width).toBe("50%");
+  });
+
+  it("throws when dragged node does not exist", () => {
+    const config = makeRootWith([{ id: "a", type: "Section", props: {}, style: {}, children: [] }]);
+    expect(() => applyAddSiblingHorizontalMove(config, "missing", "a", "right")).toThrow(
+      EditorActionError,
+    );
   });
 });

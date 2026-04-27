@@ -109,8 +109,8 @@ function DndCanvasProviderInner({ children }: { children: ReactNode }) {
   const addComponentChild = useEditorStore((s) => s.addComponentChild);
   const moveComponent = useEditorStore((s) => s.moveComponent);
   const reorderChildren = useEditorStore((s) => s.reorderChildren);
-  const wrapInFlowGroup = useEditorStore((s) => s.wrapInFlowGroup);
-  const wrapInFlowGroupMove = useEditorStore((s) => s.wrapInFlowGroupMove);
+  const addSiblingHorizontal = useEditorStore((s) => s.addSiblingHorizontal);
+  const addSiblingHorizontalMove = useEditorStore((s) => s.addSiblingHorizontalMove);
 
   const [dragState, setDragState] = useState<DragStateValue>({
     activeId: null,
@@ -164,10 +164,13 @@ function DndCanvasProviderInner({ children }: { children: ReactNode }) {
         if (!parentNode) return false;
         return canAcceptChild(parentNode, candidateType);
       }
-      // For left/right, the eventual parent is a fresh FlowGroup (or an
-      // existing one if the target's parent is already a FlowGroup), which
-      // accepts any non-FlowGroup type — already gated above.
-      return true;
+      // For left/right, the eventual parent is the target's existing parent
+      // (no FlowGroup wrapper). Check that parent accepts the candidate type.
+      const parentId = findComponentParentId(currentPage.rootComponent, sideTargetAccept.targetId);
+      if (!parentId) return false;
+      const parentNode = findNodeInTree(currentPage.rootComponent, parentId);
+      if (!parentNode) return false;
+      return canAcceptChild(parentNode, candidateType);
     }
 
     // Dropzone target: the empty-container overlay registered by EmptyContainerOverlay.
@@ -320,17 +323,40 @@ function DndCanvasProviderInner({ children }: { children: ReactNode }) {
         return;
       }
 
-      // === Left/Right: FlowGroup wrap ===
+      // === Left/Right: horizontal sibling insertion (Section flex-row-wrap lays them out) ===
+      // Left/Right → new node becomes target's sibling at the parent level;
+      // both target and new node get style.width:"50%". No FlowGroup created.
       const paletteType = parsePaletteId(activeIdRaw);
       if (paletteType) {
         if (paletteType === "FlowGroup") {
           devWarn("[side] palette FlowGroup drop rejected (engine-managed)");
           return;
         }
+        // Validate the parent of the target accepts the candidate type.
+        const parentId = findComponentParentId(currentPage.rootComponent, sideTarget.targetId);
+        if (!parentId) {
+          devWarn("[side] horizontal drop rejected: target has no parent");
+          return;
+        }
+        const parentNode = findNodeInTree(currentPage.rootComponent, parentId);
+        if (!parentNode) return;
+        if (!canAcceptChild(parentNode, paletteType)) {
+          devWarn(
+            "[side] palette horizontal drop rejected:",
+            parentNode.type,
+            "cannot accept",
+            paletteType,
+          );
+          return;
+        }
         try {
-          wrapInFlowGroup(sideTarget.targetId, createDefaultNode(paletteType), sideTarget.side);
+          addSiblingHorizontal(
+            sideTarget.targetId,
+            createDefaultNode(paletteType),
+            sideTarget.side,
+          );
         } catch (err) {
-          devWarn("[side] wrapInFlowGroup rejected at apply time:", err);
+          devWarn("[side] addSiblingHorizontal rejected at apply time:", err);
         }
         return;
       }
@@ -343,16 +369,31 @@ function DndCanvasProviderInner({ children }: { children: ReactNode }) {
         devWarn("[side] node FlowGroup drop rejected (engine-managed)");
         return;
       }
-      // Cannot wrap with a target that's a descendant of the dragged node
-      // (would create a cycle).
       if (isInSubtree(draggedNode, sideTarget.targetId)) {
-        devWarn("[side] node drop rejected: cannot wrap with descendant");
+        devWarn("[side] node horizontal drop rejected: cannot wrap with descendant");
+        return;
+      }
+      // Validate the target's parent accepts the dragged type.
+      const parentId = findComponentParentId(currentPage.rootComponent, sideTarget.targetId);
+      if (!parentId) {
+        devWarn("[side] horizontal drop rejected: target has no parent");
+        return;
+      }
+      const parentNode = findNodeInTree(currentPage.rootComponent, parentId);
+      if (!parentNode) return;
+      if (!canAcceptChild(parentNode, draggedNode.type)) {
+        devWarn(
+          "[side] node horizontal drop rejected:",
+          parentNode.type,
+          "cannot accept",
+          draggedNode.type,
+        );
         return;
       }
       try {
-        wrapInFlowGroupMove(draggedId, sideTarget.targetId, sideTarget.side);
+        addSiblingHorizontalMove(draggedId, sideTarget.targetId, sideTarget.side);
       } catch (err) {
-        devWarn("[side] wrapInFlowGroupMove rejected at apply time:", err);
+        devWarn("[side] addSiblingHorizontalMove rejected at apply time:", err);
       }
       return;
     }

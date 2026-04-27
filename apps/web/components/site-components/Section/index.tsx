@@ -22,9 +22,7 @@ export function Section({ node, cssStyle, children }: SectionProps) {
   // side-by-side, while sections with all-default-width children keep their
   // existing block-stack behavior unchanged.
   const childNodes = node.children ?? [];
-  const hasExplicitWidthChild = childNodes.some(
-    (c) => c.style?.width !== undefined,
-  );
+  const hasExplicitWidthChild = childNodes.some((c) => c.style?.width !== undefined);
 
   let renderedChildren: ReactNode = children;
   let finalStyle: CSSProperties = cssStyle;
@@ -45,6 +43,7 @@ export function Section({ node, cssStyle, children }: SectionProps) {
       const w = childNode?.style?.width;
       const flex = w ? `0 0 ${w}` : "1 1 100%";
       return (
+        // biome-ignore lint/suspicious/noArrayIndexKey: no stable id available at render time; children are positional
         <div key={idx} style={{ flex, minWidth: 0, maxWidth: "100%" }}>
           {child}
         </div>

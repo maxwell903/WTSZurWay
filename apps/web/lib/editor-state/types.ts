@@ -124,6 +124,18 @@ export type EditorActions = {
     targetId: ComponentId,
     side: "left" | "right",
   ) => void;
+  // Side-edge horizontal sibling actions (replaces FlowGroup wrap intent for drop handler).
+  // Inserts new/dragged node as a sibling at the target's parent, sets both to width:50%.
+  addSiblingHorizontal: (
+    targetId: ComponentId,
+    newSibling: ComponentNode,
+    direction: "left" | "right",
+  ) => void;
+  addSiblingHorizontalMove: (
+    draggedId: ComponentId,
+    targetId: ComponentId,
+    direction: "left" | "right",
+  ) => void;
   markSaving: () => void;
   markSaved: (at: number) => void;
   markError: (message: string) => void;
