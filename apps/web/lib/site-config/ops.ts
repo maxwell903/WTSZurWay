@@ -1473,6 +1473,19 @@ export function buildAutoPopulatedNavLinks(config: SiteConfig): NavLink[] {
     .map((p) => ({ kind: "page" as const, pageSlug: p.slug, label: p.name }));
 }
 
+// Overwrite every existing NavBar's `links` prop with one auto-populated
+// "page" link per static page. Used at initial-generation time so the
+// navbar always reflects the seeded/generated page set, regardless of
+// what shape the AI returned. Detail pages are excluded by
+// `buildAutoPopulatedNavLinks` (they need an id to resolve).
+export function applyAutoPopulatedNavLinks(config: SiteConfig): SiteConfig {
+  const links = buildAutoPopulatedNavLinks(config);
+  return mapAllNavBars(config, (node) => ({
+    ...node,
+    props: { ...node.props, links },
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // Locked NavBar replication (Sprint 13)
 // ---------------------------------------------------------------------------

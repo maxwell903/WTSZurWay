@@ -38,7 +38,7 @@ import {
   newComponentId,
   safeParseSiteConfig,
 } from "@/lib/site-config";
-import { buildAutoPopulatedNavLinks } from "@/lib/site-config/ops";
+import { applyAutoPopulatedNavLinks, buildAutoPopulatedNavLinks } from "@/lib/site-config/ops";
 import { createServiceSupabaseClient } from "@/lib/supabase";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { ImageBlockParam, MessageParam } from "@anthropic-ai/sdk/resources/messages";
@@ -183,38 +183,42 @@ async function withFixtureFallback(
   return { kind: "error", error, source: "live" };
 }
 
-// Sprint 13. The user-visible default is "every site has one NavBar locked
-// across all pages" — so after the AI returns a config, we make sure the
-// home page contains at least one NavBar at the top of its root component.
-// If a NavBar already exists anywhere in the config, we leave the structure
-// alone (the global lock + addComponentChild adoption will keep things
-// in sync). This is purely additive and does not touch existing AI output
-// when it already wired one in.
+// After the AI returns a config we (a) guarantee a NavBar exists on the
+// home page and (b) overwrite every NavBar's `links` with the
+// auto-populated set — one "page" link per static page in declaration
+// order. The AI's component-catalog hint advertises the legacy
+// `{ label, href }` shape, so anything it produces is wrong by
+// construction; the user can edit/delete entries from the editor after
+// initial generation. Detail (`[id]`) pages are excluded because they
+// can't be linked without an id.
 function ensureLockedNavBarOnHome(config: SiteConfig): SiteConfig {
-  if (containsNavBarAnywhere(config)) return config;
-  const homeIndex = config.pages.findIndex((p) => p.kind === "static" && p.slug === "home");
-  if (homeIndex === -1) return config;
-  const home = config.pages[homeIndex];
-  if (!home) return config;
-  const seedNavBar: ComponentNode = {
-    id: newComponentId("cmp"),
-    type: "NavBar",
-    props: {
-      links: buildAutoPopulatedNavLinks(config),
-      logoPlacement: "left",
-      sticky: false,
-      overrideShared: false,
-    },
-    style: {},
-  };
-  const root = home.rootComponent;
-  const nextRoot: ComponentNode = {
-    ...root,
-    children: [seedNavBar, ...(root.children ?? [])],
-  };
-  const nextPages = config.pages.slice();
-  nextPages[homeIndex] = { ...home, rootComponent: nextRoot };
-  return { ...config, pages: nextPages };
+  let next = config;
+  if (!containsNavBarAnywhere(next)) {
+    const homeIndex = next.pages.findIndex((p) => p.kind === "static" && p.slug === "home");
+    const home = homeIndex === -1 ? undefined : next.pages[homeIndex];
+    if (home) {
+      const seedNavBar: ComponentNode = {
+        id: newComponentId("cmp"),
+        type: "NavBar",
+        props: {
+          links: buildAutoPopulatedNavLinks(next),
+          logoPlacement: "left",
+          sticky: false,
+          overrideShared: false,
+        },
+        style: {},
+      };
+      const root = home.rootComponent;
+      const nextRoot: ComponentNode = {
+        ...root,
+        children: [seedNavBar, ...(root.children ?? [])],
+      };
+      const nextPages = next.pages.slice();
+      nextPages[homeIndex] = { ...home, rootComponent: nextRoot };
+      next = { ...next, pages: nextPages };
+    }
+  }
+  return applyAutoPopulatedNavLinks(next);
 }
 
 function containsNavBarAnywhere(config: SiteConfig): boolean {

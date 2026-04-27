@@ -92,7 +92,11 @@
       "Bash(pnpm --filter web test components/editor/__tests__/canvas)",
       "Bash(pnpm --filter web test \"components/editor/canvas/dnd/__tests__/ResizeHandles.test.tsx\" --reporter=verbose)",
       "Bash(pnpm --filter web test \"components/editor/canvas/dnd/__tests__/sideDropZones.test.tsx\" --reporter=verbose)",
-      "Bash(./node_modules/.bin/biome format *)"
+      "Bash(./node_modules/.bin/biome format *)",
+      "PowerShell(npx --version)",
+      "PowerShell(node --version)",
+      "PowerShell(Get-Command pnpm -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Command npm -ErrorAction SilentlyContinue)"
     ]
   }
 }

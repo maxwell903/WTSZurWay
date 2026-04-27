@@ -151,6 +151,79 @@ describe("generateInitialSite", () => {
     }
   });
 
+  it("overwrites AI-supplied NavBar links with one auto-populated page link per static page", async () => {
+    // Multi-page config WITH a NavBar already present; the NavBar's `links`
+    // are the legacy `{ label, href }` shape the prompt currently advertises
+    // and they intentionally omit Home and About to mimic the bug.
+    const configJson = JSON.stringify({
+      meta: { siteName: "Aurora", siteSlug: "aurora" },
+      brand: { palette: "ocean", fontFamily: "Inter" },
+      global: {
+        navBar: { links: [], logoPlacement: "left", sticky: false },
+        footer: { columns: [], copyright: "" },
+      },
+      pages: [
+        {
+          id: "p_home",
+          slug: "home",
+          name: "Home",
+          kind: "static",
+          rootComponent: {
+            id: "cmp_root",
+            type: "Section",
+            props: {},
+            style: {},
+            children: [
+              {
+                id: "cmp_nav",
+                type: "NavBar",
+                props: {
+                  links: [{ label: "Contact", href: "/contact" }],
+                  logoPlacement: "left",
+                  sticky: false,
+                },
+                style: {},
+              },
+            ],
+          },
+        },
+        {
+          id: "p_about",
+          slug: "about",
+          name: "About Us",
+          kind: "static",
+          rootComponent: { id: "cmp_about_root", type: "Section", props: {}, style: {} },
+        },
+        {
+          id: "p_unit_detail",
+          slug: "unit",
+          name: "Unit Detail",
+          kind: "detail",
+          detailDataSource: "units",
+          rootComponent: { id: "cmp_unit_root", type: "Section", props: {}, style: {} },
+        },
+      ],
+      forms: [],
+    });
+    const { client } = makeMockClient([makeMessageResponse(configJson)]);
+    const result = await generateInitialSite(
+      { form: MIN_FORM },
+      client as unknown as Parameters<typeof generateInitialSite>[1],
+    );
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      const home = result.config.pages.find((p) => p.slug === "home" && p.kind === "static");
+      const navBar = home?.rootComponent.children?.find((c) => c.type === "NavBar");
+      expect(navBar).toBeDefined();
+      // Auto-populated: one page-kind link per static page, label = page name,
+      // detail page omitted.
+      expect(navBar?.props.links).toEqual([
+        { kind: "page", pageSlug: "home", label: "Home" },
+        { kind: "page", pageSlug: "about", label: "About Us" },
+      ]);
+    }
+  });
+
   it("retries once after a malformed JSON first response and returns ok on success", async () => {
     const { client, create } = makeMockClient([
       makeMessageResponse("this is not json"),

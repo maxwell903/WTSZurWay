@@ -5,6 +5,7 @@ import {
   OPERATION_TYPES,
   type Operation,
   OperationInvalidError,
+  applyAutoPopulatedNavLinks,
   applyGlobalNavBarLocked,
   applyOperation,
   applyOperations,
@@ -1070,6 +1071,59 @@ describe("isFirstNavBar / buildAutoPopulatedNavLinks", () => {
     };
     const links = buildAutoPopulatedNavLinks(config);
     expect(links).toEqual([{ kind: "page", pageSlug: "home", label: "Home" }]);
+  });
+
+  it("applyAutoPopulatedNavLinks overwrites every NavBar's links with the auto-populated set", () => {
+    const config = makeConfigWith({
+      home: {
+        id: "s_home",
+        type: "Section",
+        props: {},
+        style: {},
+        children: [
+          {
+            id: "nav_home",
+            type: "NavBar",
+            props: {
+              links: [{ label: "Stale", href: "/stale" }],
+              logoPlacement: "left",
+            },
+            style: {},
+          },
+        ],
+      },
+      about: {
+        id: "s_about",
+        type: "Section",
+        props: {},
+        style: {},
+        children: [
+          {
+            id: "nav_about",
+            type: "NavBar",
+            props: { links: [], logoPlacement: "left" },
+            style: {},
+          },
+        ],
+      },
+    });
+    const next = applyAutoPopulatedNavLinks(config);
+    const expectedLinks = [
+      { kind: "page", pageSlug: "home", label: "Home" },
+      { kind: "page", pageSlug: "about", label: "About" },
+    ];
+    const homeNav = next.pages[0]?.rootComponent.children?.[0];
+    const aboutNav = next.pages[1]?.rootComponent.children?.[0];
+    expect(homeNav?.props.links).toEqual(expectedLinks);
+    expect(aboutNav?.props.links).toEqual(expectedLinks);
+    // Non-link props are preserved.
+    expect(homeNav?.props.logoPlacement).toBe("left");
+  });
+
+  it("applyAutoPopulatedNavLinks is a no-op when no NavBar exists", () => {
+    const config = makeConfigWith({ home: emptySection("h") });
+    const next = applyAutoPopulatedNavLinks(config);
+    expect(next).toBe(config);
   });
 });
 
