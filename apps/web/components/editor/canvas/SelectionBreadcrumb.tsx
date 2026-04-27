@@ -18,7 +18,12 @@ export function SelectionBreadcrumb() {
     const page =
       pages.find((p) => p.slug === currentPageSlug && p.kind === "static") ??
       pages.find((p) => p.slug === currentPageSlug);
-    return findComponentTrail(page?.rootComponent, selectedId);
+    // FlowGroup is engine-managed and never user-visible — hide it from the
+    // breadcrumb so e.g. a Heading inside a FlowGroup inside a Section reads
+    // as "Section / Heading", not "Section / Flow Group / Heading".
+    return findComponentTrail(page?.rootComponent, selectedId).filter(
+      (n) => n.type !== "FlowGroup",
+    );
   }, [selectedId, currentPageSlug, pages]);
 
   if (trail.length === 0) return null;
