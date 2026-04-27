@@ -77,16 +77,24 @@ export function PreviewPanel({ state, onRetry }: PreviewPanelProps) {
         >
           {slug ? `https://www.${slug}.com` : "—"}
         </div>
-        <span
-          data-testid="preview-panel-pill"
-          className={
-            isLive
-              ? "rounded-full bg-emerald-900/50 px-2 py-0.5 text-xs font-medium text-emerald-300"
-              : "rounded-full bg-zinc-800 px-2 py-0.5 text-xs font-medium text-zinc-400"
-          }
-        >
-          {isLive ? "Live" : "Pending"}
-        </span>
+        {isLive && slug ? (
+          <a
+            data-testid="preview-panel-pill"
+            href={`/${slug}/preview`}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-full bg-emerald-900/50 px-2 py-0.5 text-xs font-medium text-emerald-300 transition hover:bg-emerald-800/60"
+          >
+            Live
+          </a>
+        ) : (
+          <span
+            data-testid="preview-panel-pill"
+            className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs font-medium text-zinc-400"
+          >
+            Pending
+          </span>
+        )}
         {/* Sprint 14 DoD-9: dev-only `[live]`/`[fixture]` badge next to the
             existing pill. Hidden in production builds; the orchestrator's
             source field is internal-only when NODE_ENV === "production". */}

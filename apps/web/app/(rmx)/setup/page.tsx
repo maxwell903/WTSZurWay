@@ -4,6 +4,11 @@ import { Toaster } from "@/components/ui/sonner";
 import { createServiceSupabaseClient } from "@/lib/supabase";
 import Link from "next/link";
 
+// Force per-request rendering. Without this, Vercel prerenders this page
+// at build time and the "Open an existing site" list is frozen — newly
+// created sites never appear after refresh in production.
+export const dynamic = "force-dynamic";
+
 async function loadEditableSites() {
   const supabase = createServiceSupabaseClient();
   const { data, error } = await supabase
