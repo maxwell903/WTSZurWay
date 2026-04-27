@@ -362,7 +362,7 @@ export function applyRemoveComponent(config: SiteConfig, id: ComponentId): SiteC
     if (!res.found) continue;
     const nextPages = config.pages.slice();
     nextPages[i] = { ...page, rootComponent: res.node };
-    return { ...config, pages: nextPages };
+    return dissolveStaleFlowGroups({ ...config, pages: nextPages });
   }
   fail("component_not_found", `Component "${id}" not found in any page.`);
 }
@@ -458,8 +458,10 @@ export function applyMoveComponent(
 
   // Remove from current location, then re-insert under the new parent at
   // the requested index. Children policy was already validated above.
+  // applyRemoveComponent already runs dissolveStaleFlowGroups; wrapping the
+  // final result here handles any FlowGroup left stale by the re-insert step.
   const removed = applyRemoveComponent(config, targetId);
-  return applyAddComponentChild(removed, newParentId, newIndex, target);
+  return dissolveStaleFlowGroups(applyAddComponentChild(removed, newParentId, newIndex, target));
 }
 
 export function applyReorderChildren(
@@ -682,6 +684,34 @@ export function applyWrapInFlowGroup(
     return { ...config, pages: nextPages };
   }
   fail("component_not_found", `Component "${targetId}" not found in any page.`);
+}
+
+// After any tree mutation that could leave a FlowGroup with <=1 children,
+// walk every page's tree and dissolve those wrappers in one pass. Iterates
+// because dissolving one FlowGroup could leave its parent (also a FlowGroup,
+// in nested cases) eligible for dissolution.
+function dissolveStaleFlowGroups(config: SiteConfig): SiteConfig {
+  let cur = config;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const page of cur.pages) {
+      const stale: string[] = [];
+      function walk(n: ComponentNode): void {
+        if (n.type === "FlowGroup" && (n.children?.length ?? 0) <= 1) {
+          stale.push(n.id);
+        }
+        for (const c of n.children ?? []) walk(c);
+      }
+      walk(page.rootComponent);
+      for (const id of stale) {
+        const before = cur;
+        cur = applyDissolveFlowGroup(cur, id);
+        if (cur !== before) changed = true;
+      }
+    }
+  }
+  return cur;
 }
 
 // If `flowGroupId` resolves to a FlowGroup with ≤1 children, removes the

@@ -1089,3 +1089,109 @@ describe("applyDissolveFlowGroup", () => {
     expect(next).toBe(config);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 5 Task 5.3 -- auto-dissolve FlowGroups after remove/move
+// ---------------------------------------------------------------------------
+
+describe("auto-dissolve FlowGroups (Task 5.3)", () => {
+  function makeRootWith(rootChildren: ComponentNode[]): SiteConfig {
+    const base = makeFixtureConfig();
+    const firstPage = base.pages[0];
+    if (!firstPage) throw new Error("fixture missing first page");
+    return {
+      ...base,
+      pages: [
+        {
+          ...firstPage,
+          rootComponent: {
+            id: "cmp_root",
+            type: "Section",
+            props: {},
+            style: {},
+            children: rootChildren,
+          },
+        },
+      ],
+    };
+  }
+
+  it("dissolves a FlowGroup left with 1 child via applyRemoveComponent", () => {
+    const config = makeRootWith([
+      {
+        id: "fg",
+        type: "FlowGroup",
+        props: {},
+        style: {},
+        children: [
+          { id: "a", type: "Section", props: {}, style: {}, children: [] },
+          { id: "b", type: "Section", props: {}, style: {}, children: [] },
+        ],
+      },
+    ]);
+    const next = applyRemoveComponent(config, "b");
+    const root = next.pages[0]?.rootComponent;
+    // FlowGroup gone, "a" reparented up.
+    expect(root?.children?.map((c) => c.id)).toEqual(["a"]);
+  });
+
+  it("dissolves a FlowGroup left with 0 children via applyRemoveComponent", () => {
+    const config = makeRootWith([
+      {
+        id: "fg",
+        type: "FlowGroup",
+        props: {},
+        style: {},
+        children: [{ id: "only", type: "Section", props: {}, style: {}, children: [] }],
+      },
+      { id: "after", type: "Section", props: {}, style: {}, children: [] },
+    ]);
+    const next = applyRemoveComponent(config, "only");
+    const root = next.pages[0]?.rootComponent;
+    expect(root?.children?.map((c) => c.id)).toEqual(["after"]);
+  });
+
+  it("dissolves a FlowGroup left with 1 child via applyMoveComponent", () => {
+    const config = makeRootWith([
+      { id: "dst", type: "Section", props: {}, style: {}, children: [] },
+      {
+        id: "fg",
+        type: "FlowGroup",
+        props: {},
+        style: {},
+        children: [
+          { id: "a", type: "Section", props: {}, style: {}, children: [] },
+          { id: "b", type: "Section", props: {}, style: {}, children: [] },
+        ],
+      },
+    ]);
+    const next = applyMoveComponent(config, "b", "dst", 0);
+    const root = next.pages[0]?.rootComponent;
+    expect(root?.children?.map((c) => c.id)).toEqual(["dst", "a"]);
+    const dst = root?.children?.[0];
+    expect(dst?.children?.map((c) => c.id)).toEqual(["b"]);
+  });
+
+  it("does NOT dissolve a FlowGroup that still has 2+ children after the op", () => {
+    const config = makeRootWith([
+      {
+        id: "fg",
+        type: "FlowGroup",
+        props: {},
+        style: {},
+        children: [
+          { id: "a", type: "Section", props: {}, style: {}, children: [] },
+          { id: "b", type: "Section", props: {}, style: {}, children: [] },
+          { id: "c", type: "Section", props: {}, style: {}, children: [] },
+        ],
+      },
+    ]);
+    const next = applyRemoveComponent(config, "c");
+    const root = next.pages[0]?.rootComponent;
+    // FlowGroup intact with two children.
+    expect(root?.children).toHaveLength(1);
+    const fg = root?.children?.[0];
+    expect(fg?.type).toBe("FlowGroup");
+    expect(fg?.children?.map((c) => c.id)).toEqual(["a", "b"]);
+  });
+});
