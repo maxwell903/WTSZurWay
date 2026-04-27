@@ -43,6 +43,11 @@ export function EditModeWrapper({
   const showOverlay = mode === "edit" && showComponentTypes && type !== "FlowGroup";
 
   const handleClick = (e: MouseEvent<HTMLDivElement>) => {
+    // Anchor clicks must bubble up to the canvas-level link interceptor
+    // so it can preventDefault + swap the page. If we stopPropagation here,
+    // the browser still executes the <a>'s default navigation (404 on
+    // root-relative slugs that don't exist as top-level routes).
+    if (e.target instanceof Element && e.target.closest("a")) return;
     e.stopPropagation();
     onSelect?.(id);
   };

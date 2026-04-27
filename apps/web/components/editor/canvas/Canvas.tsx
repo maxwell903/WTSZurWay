@@ -2,7 +2,7 @@
 
 import { Renderer } from "@/components/renderer";
 import { selectCurrentPage, useEditorStore } from "@/lib/editor-state";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { SelectionBreadcrumb } from "./SelectionBreadcrumb";
 import { CanvasDropOverlay } from "./dnd/CanvasDropOverlay";
 import { ResizeHandles } from "./dnd/ResizeHandles";
@@ -16,6 +16,16 @@ export function Canvas() {
   const selectComponent = useEditorStore((s) => s.selectComponent);
   const enterElementEditMode = useEditorStore((s) => s.enterElementEditMode);
   const setCurrentPageSlug = useEditorStore((s) => s.setCurrentPageSlug);
+  // Set of static page slugs in the current draft. Passed to the link
+  // interceptor so retroactive NavBar links (legacy `/<slug>` hrefs without
+  // `data-internal-page-slug`) still resolve to in-canvas page swaps.
+  const knownPageSlugs = useMemo(
+    () =>
+      new Set(
+        draftConfig.pages.filter((p) => p.kind === "static").map((p) => p.slug),
+      ),
+    [draftConfig.pages],
+  );
 
   // Esc clears the selection. Skip when focus is in an input/textarea so
   // dialog forms (AddPageDialog, RenamePageDialog, SiteNameInput) can use Esc
@@ -60,13 +70,17 @@ export function Canvas() {
       data-testid="editor-canvas"
       className="relative flex-1 overflow-y-auto bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.04)_1px,transparent_0)] [background-size:16px_16px]"
       onClick={(e) => {
-        const outcome = handlePreviewLinkClick(e.target, {
-          preventDefault: () => e.preventDefault(),
-          setCurrentPageSlug,
-          openExternal: (href) => {
-            if (previewMode) window.open(href, "_blank", "noopener,noreferrer");
+        const outcome = handlePreviewLinkClick(
+          e.target,
+          {
+            preventDefault: () => e.preventDefault(),
+            setCurrentPageSlug,
+            openExternal: (href) => {
+              if (previewMode) window.open(href, "_blank", "noopener,noreferrer");
+            },
           },
-        });
+          knownPageSlugs,
+        );
         if (outcome === "internal" || outcome === "external") return;
         if (e.target === e.currentTarget) {
           selectComponent(null);

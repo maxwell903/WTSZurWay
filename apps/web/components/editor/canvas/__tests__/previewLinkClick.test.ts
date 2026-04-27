@@ -77,4 +77,38 @@ describe("handlePreviewLinkClick", () => {
     expect(deps.setCurrentPageSlug).toHaveBeenCalledWith("home");
     expect(deps.openExternal).not.toHaveBeenCalled();
   });
+
+  it("treats `/<slug>` hrefs as internal when the slug is in knownPageSlugs (retroactive path)", () => {
+    const a = makeAnchor({ href: "/about" });
+    const deps = makeDeps();
+    const known = new Set(["home", "about", "contact"]);
+    expect(handlePreviewLinkClick(a, deps, known)).toBe("internal");
+    expect(deps.preventDefault).toHaveBeenCalledOnce();
+    expect(deps.setCurrentPageSlug).toHaveBeenCalledWith("about");
+  });
+
+  it("treats `/` as the home slug when 'home' is in knownPageSlugs", () => {
+    const a = makeAnchor({ href: "/" });
+    const deps = makeDeps();
+    const known = new Set(["home", "about"]);
+    expect(handlePreviewLinkClick(a, deps, known)).toBe("internal");
+    expect(deps.setCurrentPageSlug).toHaveBeenCalledWith("home");
+  });
+
+  it("falls through to passthrough when the relative href doesn't match any known slug", () => {
+    const a = makeAnchor({ href: "/unknown" });
+    const deps = makeDeps();
+    const known = new Set(["home", "about"]);
+    expect(handlePreviewLinkClick(a, deps, known)).toBe("passthrough");
+    expect(deps.preventDefault).not.toHaveBeenCalled();
+    expect(deps.setCurrentPageSlug).not.toHaveBeenCalled();
+  });
+
+  it("strips query/hash off matched slugs (e.g. `/about?ref=nav` → 'about')", () => {
+    const a = makeAnchor({ href: "/about?ref=nav#section" });
+    const deps = makeDeps();
+    const known = new Set(["about"]);
+    expect(handlePreviewLinkClick(a, deps, known)).toBe("internal");
+    expect(deps.setCurrentPageSlug).toHaveBeenCalledWith("about");
+  });
 });

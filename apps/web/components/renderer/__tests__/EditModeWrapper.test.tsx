@@ -56,6 +56,23 @@ describe("<EditModeWrapper> — Sprint 5/6/8 behavior (no provider)", () => {
     expect(onSelect).toHaveBeenCalledWith("cmp_x");
   });
 
+  it("does not select when the click lands inside an <a> — anchor clicks bubble up to the canvas-level link interceptor", () => {
+    const onSelect = vi.fn();
+    const { container } = render(
+      <EditModeWrapper id="cmp_x" type="NavBar" mode="edit" onSelect={onSelect}>
+        <a href="/about" data-internal-page-slug="about">
+          <span>About</span>
+        </a>
+      </EditModeWrapper>,
+    );
+    const link = container.querySelector("a");
+    expect(link).not.toBeNull();
+    if (link) {
+      fireEvent.click(link);
+    }
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
   it("invokes onContextMenu with the id on right-click and prevents the default", () => {
     const onContextMenu = vi.fn();
     const { container } = render(
