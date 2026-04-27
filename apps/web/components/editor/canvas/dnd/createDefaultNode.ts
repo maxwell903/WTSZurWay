@@ -26,6 +26,9 @@ const DEFAULT_PROPS: Record<ComponentType, Record<string, unknown>> = {
   Divider: { thickness: 1, color: "#e5e7eb" },
   NavBar: { links: [], logoPlacement: "left", sticky: false },
   Footer: { columns: [], copyright: "© 2026" },
+  // FlowGroup is an empty horizontal container — no props at creation time;
+  // layout is driven by the parent canvas context (Phase 5 x-axis resize).
+  FlowGroup: {},
   HeroBanner: {
     heading: "New hero",
     subheading: "",
@@ -62,6 +65,7 @@ const CONTAINER_TYPES: ReadonlySet<ComponentType> = new Set<ComponentType>([
   "Section",
   "Row",
   "Column",
+  "FlowGroup",
   "Form",
   "Repeater",
 ]);

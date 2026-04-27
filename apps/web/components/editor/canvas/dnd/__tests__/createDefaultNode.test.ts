@@ -170,3 +170,17 @@ describe("createDefaultNode — props match the runtime safeParse contract", () 
     expect(createDefaultNode("Repeater").props).toEqual({});
   });
 });
+
+describe("createDefaultNode for FlowGroup", () => {
+  it("returns a node with empty children array", () => {
+    const node = createDefaultNode("FlowGroup");
+    expect(node.type).toBe("FlowGroup");
+    expect(node.children).toEqual([]);
+    expect(node.props).toEqual({});
+  });
+
+  it("validates against componentNodeSchema", () => {
+    const node = createDefaultNode("FlowGroup");
+    expect(componentNodeSchema.safeParse(node).success).toBe(true);
+  });
+});
