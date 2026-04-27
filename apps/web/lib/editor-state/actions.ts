@@ -618,3 +618,110 @@ export function getMaxAllowedDimension(
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 5 Task 5.2 -- FlowGroup wrap/dissolve helpers
+//
+// FlowGroups are horizontal sibling containers created on-the-fly when the
+// user drops a component to the left or right of an existing sibling. These
+// two helpers are the only write path for FlowGroup lifecycle so invariants
+// are maintained in one place.
+// ---------------------------------------------------------------------------
+
+// Wraps `targetId` and `newSibling` in a fresh FlowGroup at the target's
+// current parent + index. If the target's parent IS already a FlowGroup,
+// inserts the new sibling at index ±1 of the target instead of double-
+// wrapping. Side "left" places the new sibling BEFORE the target; "right"
+// places it AFTER. Top/bottom are not handled here — those are vertical
+// drops routed to applyAddComponentChild by the caller.
+export function applyWrapInFlowGroup(
+  config: SiteConfig,
+  targetId: ComponentId,
+  newSibling: ComponentNode,
+  side: "left" | "right" | "top" | "bottom",
+): SiteConfig {
+  if (side === "top" || side === "bottom") {
+    fail(
+      "invalid_drop_target",
+      "applyWrapInFlowGroup only handles horizontal sides (left/right).",
+    );
+  }
+  for (let i = 0; i < config.pages.length; i++) {
+    const page = config.pages[i];
+    if (!page) continue;
+    const parentId = findComponentParentId(page.rootComponent, targetId);
+    if (!parentId) continue;
+    const res = mapNodeById(page.rootComponent, parentId, (parent) => {
+      const children = (parent.children ?? []).slice();
+      const idx = children.findIndex((c) => c.id === targetId);
+      if (idx < 0) return parent;
+      const target = children[idx];
+      if (!target) return parent;
+      // If the parent is ALREADY a FlowGroup, just insert as a sibling to
+      // avoid nesting FlowGroups inside FlowGroups.
+      if (parent.type === "FlowGroup") {
+        const insertAt = side === "right" ? idx + 1 : idx;
+        children.splice(insertAt, 0, newSibling);
+        return { ...parent, children };
+      }
+      // Otherwise wrap the target + new sibling in a fresh FlowGroup that
+      // occupies the target's former slot in the parent.
+      const fg: ComponentNode = {
+        id: newComponentId("cmp"),
+        type: "FlowGroup",
+        props: {},
+        style: {},
+        children: side === "right" ? [target, newSibling] : [newSibling, target],
+      };
+      children.splice(idx, 1, fg);
+      return { ...parent, children };
+    });
+    if (!res.found) continue;
+    const nextPages = config.pages.slice();
+    nextPages[i] = { ...page, rootComponent: res.node };
+    return { ...config, pages: nextPages };
+  }
+  fail("component_not_found", `Component "${targetId}" not found in any page.`);
+}
+
+// If `flowGroupId` resolves to a FlowGroup with ≤1 children, removes the
+// wrapper and reparents the survivor (if any) to the wrapper's parent at
+// the wrapper's index. Returns the input unchanged when the FlowGroup has
+// >1 children, isn't a FlowGroup, or doesn't exist — callers can use
+// reference equality to detect "no work done" (structural sharing).
+export function applyDissolveFlowGroup(
+  config: SiteConfig,
+  flowGroupId: ComponentId,
+): SiteConfig {
+  for (let i = 0; i < config.pages.length; i++) {
+    const page = config.pages[i];
+    if (!page) continue;
+    const fg = findComponentById(page.rootComponent, flowGroupId);
+    // Only act on FlowGroups with ≤1 child — anything else is a no-op.
+    if (!fg || fg.type !== "FlowGroup") continue;
+    if ((fg.children?.length ?? 0) > 1) return config;
+    const survivor = fg.children?.[0];
+    const parentId = findComponentParentId(page.rootComponent, flowGroupId);
+    // FlowGroup is the page root — shouldn't happen, but be defensive.
+    if (!parentId) continue;
+    const res = mapNodeById(page.rootComponent, parentId, (parent) => {
+      const children = (parent.children ?? []).slice();
+      const idx = children.findIndex((c) => c.id === flowGroupId);
+      if (idx < 0) return parent;
+      if (survivor) {
+        // Reparent the single surviving child into the FlowGroup's slot.
+        children.splice(idx, 1, survivor);
+      } else {
+        // Empty FlowGroup — just remove the wrapper entirely.
+        children.splice(idx, 1);
+      }
+      return { ...parent, children };
+    });
+    if (!res.found) continue;
+    const nextPages = config.pages.slice();
+    nextPages[i] = { ...page, rootComponent: res.node };
+    return { ...config, pages: nextPages };
+  }
+  // FlowGroup not found in any page — no-op, preserve reference.
+  return config;
+}

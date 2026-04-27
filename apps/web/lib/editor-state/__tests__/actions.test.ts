@@ -4,6 +4,7 @@ import {
   applyAddComponentChild,
   applyAddPage,
   applyDeletePage,
+  applyDissolveFlowGroup,
   applyMoveComponent,
   applyRemoveComponent,
   applyRenamePage,
@@ -20,6 +21,7 @@ import {
   applySetFontFamily,
   applySetPalette,
   applySetSiteName,
+  applyWrapInFlowGroup,
   getMaxAllowedDimension,
 } from "../actions";
 import { EditorActionError } from "../types";
@@ -900,5 +902,190 @@ describe("applyResizeWithCascade", () => {
     const h = p?.children?.[0];
     expect(p?.style.width).toBe("50%");
     expect(h?.style.width).toBe("500px");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 5 Task 5.2 -- applyWrapInFlowGroup and applyDissolveFlowGroup
+// ---------------------------------------------------------------------------
+
+describe("applyWrapInFlowGroup", () => {
+  function makeRootWith(rootChildren: ComponentNode[]): SiteConfig {
+    const base = makeFixtureConfig();
+    const firstPage = base.pages[0];
+    if (!firstPage) throw new Error("fixture missing first page");
+    return {
+      ...base,
+      pages: [
+        {
+          ...firstPage,
+          rootComponent: {
+            id: "cmp_root",
+            type: "Section",
+            props: {},
+            style: {},
+            children: rootChildren,
+          },
+        },
+      ],
+    };
+  }
+
+  it("wraps target + new sibling in a FlowGroup at the target's index (right side)", () => {
+    const config = makeRootWith([
+      { id: "a", type: "Section", props: {}, style: {}, children: [] },
+      { id: "b", type: "Section", props: {}, style: {}, children: [] },
+    ]);
+    const newNode: ComponentNode = { id: "n", type: "Heading", props: {}, style: {} };
+    const next = applyWrapInFlowGroup(config, "a", newNode, "right");
+    const root = next.pages[0]?.rootComponent;
+    expect(root?.children).toHaveLength(2); // FlowGroup + section "b"
+    const fg = root?.children?.[0];
+    expect(fg?.type).toBe("FlowGroup");
+    expect(fg?.children?.map((c: ComponentNode) => c.id)).toEqual(["a", "n"]);
+    // Existing siblings preserved.
+    expect(root?.children?.[1]?.id).toBe("b");
+  });
+
+  it("inserts on the LEFT side correctly", () => {
+    const config = makeRootWith([
+      { id: "a", type: "Section", props: {}, style: {}, children: [] },
+    ]);
+    const next = applyWrapInFlowGroup(
+      config,
+      "a",
+      { id: "n", type: "Heading", props: {}, style: {} },
+      "left",
+    );
+    const fg = next.pages[0]?.rootComponent.children?.[0];
+    expect(fg?.type).toBe("FlowGroup");
+    expect(fg?.children?.map((c: ComponentNode) => c.id)).toEqual(["n", "a"]);
+  });
+
+  it("inserts as a sibling INSIDE an existing FlowGroup parent (no double-wrap)", () => {
+    const config = makeRootWith([
+      {
+        id: "fg",
+        type: "FlowGroup",
+        props: {},
+        style: {},
+        children: [
+          { id: "a", type: "Section", props: {}, style: {}, children: [] },
+          { id: "b", type: "Section", props: {}, style: {}, children: [] },
+        ],
+      },
+    ]);
+    const newNode: ComponentNode = { id: "n", type: "Heading", props: {}, style: {} };
+    const next = applyWrapInFlowGroup(config, "a", newNode, "right");
+    const root = next.pages[0]?.rootComponent;
+    // Still ONE FlowGroup at the root (no double-wrap).
+    expect(root?.children).toHaveLength(1);
+    const fg = root?.children?.[0];
+    expect(fg?.type).toBe("FlowGroup");
+    expect(fg?.children?.map((c: ComponentNode) => c.id)).toEqual(["a", "n", "b"]);
+  });
+
+  it("throws for top/bottom (those are vertical neighbours, not FlowGroup wraps)", () => {
+    const config = makeRootWith([
+      { id: "a", type: "Section", props: {}, style: {}, children: [] },
+    ]);
+    expect(() =>
+      applyWrapInFlowGroup(
+        config,
+        "a",
+        { id: "n", type: "Heading", props: {}, style: {} },
+        "top",
+      ),
+    ).toThrow();
+  });
+
+  it("throws when target is not found", () => {
+    const config = makeRootWith([]);
+    expect(() =>
+      applyWrapInFlowGroup(
+        config,
+        "missing",
+        { id: "n", type: "Heading", props: {}, style: {} },
+        "right",
+      ),
+    ).toThrow();
+  });
+});
+
+describe("applyDissolveFlowGroup", () => {
+  function makeRootWith(rootChildren: ComponentNode[]): SiteConfig {
+    const base = makeFixtureConfig();
+    const firstPage = base.pages[0];
+    if (!firstPage) throw new Error("fixture missing first page");
+    return {
+      ...base,
+      pages: [
+        {
+          ...firstPage,
+          rootComponent: {
+            id: "cmp_root",
+            type: "Section",
+            props: {},
+            style: {},
+            children: rootChildren,
+          },
+        },
+      ],
+    };
+  }
+
+  it("removes a 1-child FlowGroup and reparents the survivor at the FlowGroup's index", () => {
+    const config = makeRootWith([
+      {
+        id: "fg",
+        type: "FlowGroup",
+        props: {},
+        style: {},
+        children: [{ id: "a", type: "Section", props: {}, style: {}, children: [] }],
+      },
+      { id: "b", type: "Section", props: {}, style: {}, children: [] },
+    ]);
+    const next = applyDissolveFlowGroup(config, "fg");
+    const root = next.pages[0]?.rootComponent;
+    expect(root?.children?.map((c: ComponentNode) => c.id)).toEqual(["a", "b"]);
+  });
+
+  it("removes a 0-child FlowGroup entirely", () => {
+    const config = makeRootWith([
+      { id: "fg", type: "FlowGroup", props: {}, style: {}, children: [] },
+      { id: "b", type: "Section", props: {}, style: {}, children: [] },
+    ]);
+    const next = applyDissolveFlowGroup(config, "fg");
+    const root = next.pages[0]?.rootComponent;
+    expect(root?.children?.map((c: ComponentNode) => c.id)).toEqual(["b"]);
+  });
+
+  it("is a no-op for a multi-child FlowGroup", () => {
+    const config = makeRootWith([
+      {
+        id: "fg",
+        type: "FlowGroup",
+        props: {},
+        style: {},
+        children: [
+          { id: "a", type: "Section", props: {}, style: {}, children: [] },
+          { id: "b", type: "Section", props: {}, style: {}, children: [] },
+        ],
+      },
+    ]);
+    const next = applyDissolveFlowGroup(config, "fg");
+    expect(next).toBe(config); // structural sharing — same reference
+  });
+
+  it("is a no-op when the FlowGroup is not found", () => {
+    const config = makeRootWith([]);
+    const next = applyDissolveFlowGroup(config, "missing");
+    expect(next).toBe(config);
+  });
+
+  it("is a no-op when the id refers to a non-FlowGroup node", () => {
+    const config = makeRootWith([{ id: "h", type: "Heading", props: {}, style: {} }]);
+    const next = applyDissolveFlowGroup(config, "h");
+    expect(next).toBe(config);
   });
 });
