@@ -327,11 +327,10 @@ describe("setComponentDimensionWithCascade", () => {
 
     const state = useEditorStore.getState();
     expect(state.saveState).toBe("dirty");
-    const root = state.draftConfig.pages[0]!.rootComponent;
-    const p = root.children![0]!;
-    const h = p.children![0]!;
-    expect(p.style.width).toBe("400px");
-    expect(h.style.width).toBe("400px"); // clamped
+    const p = state.draftConfig.pages[0]?.rootComponent.children?.[0];
+    const h = p?.children?.[0];
+    expect(p?.style.width).toBe("400px");
+    expect(h?.style.width).toBe("400px"); // clamped
   });
 });
 

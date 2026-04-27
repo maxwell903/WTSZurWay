@@ -771,11 +771,13 @@ describe("applySetComponentDimension", () => {
 describe("getMaxAllowedDimension", () => {
   function makeConfigWithRoot(rootChildren: ComponentNode[]): SiteConfig {
     const base = makeFixtureConfig();
+    const firstPage = base.pages[0];
+    if (!firstPage) throw new Error("fixture missing first page");
     return {
       ...base,
       pages: [
         {
-          ...base.pages[0]!,
+          ...firstPage,
           rootComponent: {
             id: "cmp_root",
             type: "Section",
@@ -797,9 +799,7 @@ describe("getMaxAllowedDimension", () => {
   });
 
   it("returns 100% when the candidate is the only child", () => {
-    const config = makeConfigWithRoot([
-      { id: "only", type: "Heading", props: {}, style: {} },
-    ]);
+    const config = makeConfigWithRoot([{ id: "only", type: "Heading", props: {}, style: {} }]);
     expect(getMaxAllowedDimension(config, "only", "width")).toBe(100);
   });
 
@@ -809,9 +809,7 @@ describe("getMaxAllowedDimension", () => {
   });
 
   it("returns null for the height axis (not bounded by sibling stack)", () => {
-    const config = makeConfigWithRoot([
-      { id: "h1", type: "Heading", props: {}, style: {} },
-    ]);
+    const config = makeConfigWithRoot([{ id: "h1", type: "Heading", props: {}, style: {} }]);
     expect(getMaxAllowedDimension(config, "h1", "height")).toBeNull();
   });
 });
@@ -824,11 +822,13 @@ describe("applyResizeWithCascade", () => {
   // Builds: root Section > "p" Section (style.width = parentWidth) > children
   function makeWithParent(parentChildren: ComponentNode[], parentWidth: string): SiteConfig {
     const base = makeFixtureConfig();
+    const firstPage = base.pages[0];
+    if (!firstPage) throw new Error("fixture missing first page");
     return {
       ...base,
       pages: [
         {
-          ...base.pages[0]!,
+          ...firstPage,
           rootComponent: {
             id: "cmp_root",
             type: "Section",
@@ -858,13 +858,12 @@ describe("applyResizeWithCascade", () => {
       "600px",
     );
     const next = applyResizeWithCascade(config, "p", "width", "400px");
-    const root = next.pages[0]!.rootComponent;
-    const p = root.children![0]!;
-    const a = p.children![0]!;
-    const b = p.children![1]!;
-    expect(p.style.width).toBe("400px");
-    expect(a.style.width).toBe("60%");
-    expect(b.style.width).toBe("40%");
+    const p = next.pages[0]?.rootComponent.children?.[0];
+    const a = p?.children?.[0];
+    const b = p?.children?.[1];
+    expect(p?.style.width).toBe("400px");
+    expect(a?.style.width).toBe("60%");
+    expect(b?.style.width).toBe("40%");
   });
 
   it("clamps an oversized px-leaf child to the new parent width", () => {
@@ -873,10 +872,10 @@ describe("applyResizeWithCascade", () => {
       "600px",
     );
     const next = applyResizeWithCascade(config, "p", "width", "400px");
-    const p = next.pages[0]!.rootComponent.children![0]!;
-    const h = p.children![0]!;
-    expect(p.style.width).toBe("400px");
-    expect(h.style.width).toBe("400px");
+    const p = next.pages[0]?.rootComponent.children?.[0];
+    const h = p?.children?.[0];
+    expect(p?.style.width).toBe("400px");
+    expect(h?.style.width).toBe("400px");
   });
 
   it("is a no-op when the parent grows", () => {
@@ -885,10 +884,10 @@ describe("applyResizeWithCascade", () => {
       "400px",
     );
     const next = applyResizeWithCascade(config, "p", "width", "800px");
-    const p = next.pages[0]!.rootComponent.children![0]!;
-    const h = p.children![0]!;
-    expect(p.style.width).toBe("800px");
-    expect(h.style.width).toBe("200px");
+    const p = next.pages[0]?.rootComponent.children?.[0];
+    const h = p?.children?.[0];
+    expect(p?.style.width).toBe("800px");
+    expect(h?.style.width).toBe("200px");
   });
 
   it("is a no-op for children when the parent's new width is a percent (no px math possible)", () => {
@@ -897,9 +896,9 @@ describe("applyResizeWithCascade", () => {
       "600px",
     );
     const next = applyResizeWithCascade(config, "p", "width", "50%");
-    const p = next.pages[0]!.rootComponent.children![0]!;
-    const h = p.children![0]!;
-    expect(p.style.width).toBe("50%");
-    expect(h.style.width).toBe("500px");
+    const p = next.pages[0]?.rootComponent.children?.[0];
+    const h = p?.children?.[0];
+    expect(p?.style.width).toBe("50%");
+    expect(h?.style.width).toBe("500px");
   });
 });

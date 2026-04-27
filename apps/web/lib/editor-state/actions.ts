@@ -10,6 +10,7 @@ import type {
   StyleConfig,
 } from "@/lib/site-config";
 import { type Operation, applyOperations } from "@/lib/site-config/ops";
+import { findComponentById, findComponentParentId } from "./store";
 import type {
   AddPageInput,
   ComponentId,
@@ -19,7 +20,6 @@ import type {
   ReorderPagesInput,
 } from "./types";
 import { EditorActionError } from "./types";
-import { findComponentById, findComponentParentId } from "./store";
 
 const SLUG_REGEX = /^[a-z0-9-]+$/;
 const SLUG_MAX = 60;
@@ -544,7 +544,7 @@ export function applySetComponentDimension(
 function parsePx(value: string | undefined): number | null {
   if (!value) return null;
   const m = value.match(/^(\d+(?:\.\d+)?)\s*px$/);
-  return m && m[1] ? Number.parseFloat(m[1]) : null;
+  return m?.[1] ? Number.parseFloat(m[1]) : null;
 }
 
 // Walks the direct children of `node` and clamps any px-width child that now
@@ -588,7 +588,7 @@ export function applyResizeWithCascade(
 function parsePercent(value: string | undefined): number | null {
   if (!value) return null;
   const m = value.match(/^(\d+(?:\.\d+)?)\s*%$/);
-  return m && m[1] ? Number.parseFloat(m[1]) : null;
+  return m?.[1] ? Number.parseFloat(m[1]) : null;
 }
 
 export function getMaxAllowedDimension(
