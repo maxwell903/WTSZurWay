@@ -34,6 +34,13 @@ const DEFAULT_PROPS: Record<ComponentType, Record<string, unknown>> = {
     subheading: "",
     ctaLabel: "Learn more",
     ctaHref: "#",
+    images: [],
+    autoplay: true,
+    intervalMs: 5000,
+    loop: true,
+    pauseOnHover: true,
+    showDots: true,
+    showArrows: false,
   },
   PropertyCard: {
     heading: "Property Name",

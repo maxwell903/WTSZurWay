@@ -7,6 +7,7 @@ import {
   applyAddSiblingHorizontalMove,
   applyDeletePage,
   applyDissolveFlowGroup,
+  applyMergeCanvasConfig,
   applyMoveComponent,
   applyRemoveComponent,
   applyRenamePage,
@@ -1375,5 +1376,37 @@ describe("applyAddSiblingHorizontalMove", () => {
     expect(() => applyAddSiblingHorizontalMove(config, "missing", "a", "right")).toThrow(
       EditorActionError,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyMergeCanvasConfig
+// ---------------------------------------------------------------------------
+
+describe("applyMergeCanvasConfig", () => {
+  it("creates global.canvas on first write", () => {
+    const config = makeFixtureConfig();
+    expect(config.global.canvas).toBeUndefined();
+    const next = applyMergeCanvasConfig(config, { maxWidth: 1000 });
+    expect(next.global.canvas).toEqual({ maxWidth: 1000 });
+  });
+
+  it("merges new fields without clobbering existing ones", () => {
+    const config = applyMergeCanvasConfig(makeFixtureConfig(), { maxWidth: 1000 });
+    const next = applyMergeCanvasConfig(config, { borderRadius: 12 });
+    expect(next.global.canvas).toEqual({ maxWidth: 1000, borderRadius: 12 });
+  });
+
+  it("treats `undefined` in the patch as 'clear this field'", () => {
+    const config = applyMergeCanvasConfig(makeFixtureConfig(), { maxWidth: 1000, sidePadding: 24 });
+    const next = applyMergeCanvasConfig(config, { maxWidth: undefined });
+    expect(next.global.canvas).toEqual({ sidePadding: 24 });
+  });
+
+  it("preserves unrelated global fields (navBar, footer)", () => {
+    const config = makeFixtureConfig();
+    const next = applyMergeCanvasConfig(config, { sectionGap: 8 });
+    expect(next.global.navBar).toBe(config.global.navBar);
+    expect(next.global.footer).toBe(config.global.footer);
   });
 });

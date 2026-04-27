@@ -230,6 +230,23 @@ export const footerConfigSchema = z.object({
 });
 export type FooterConfig = z.infer<typeof footerConfigSchema>;
 
+// Site-wide canvas: the "page background" sits behind everything; the "canvas"
+// is the centered surface that page content (everything between any leading
+// NavBars and trailing Footers in the page tree) sits on. Every field is
+// optional so legacy configs parse cleanly; resolveCanvas() supplies defaults
+// at render time.
+export const canvasConfigSchema = z.object({
+  pageBackground: colorOrGradientSchema.optional(),
+  canvasBackground: colorOrGradientSchema.optional(),
+  maxWidth: z.number().int().positive().optional(),
+  sidePadding: z.number().int().nonnegative().optional(),
+  verticalPadding: spacingSchema.optional(),
+  sectionGap: z.number().int().nonnegative().optional(),
+  borderRadius: z.number().int().nonnegative().optional(),
+  shadow: shadowPresetSchema.optional(),
+});
+export type CanvasConfig = z.infer<typeof canvasConfigSchema>;
+
 export const pageKindSchema = z.enum(["static", "detail"]);
 export type PageKind = z.infer<typeof pageKindSchema>;
 
@@ -299,6 +316,7 @@ export const siteConfigSchema = z
       // `isGlobalNavBarLocked(config)` to honor the default.
       navBarLocked: z.boolean().optional(),
       footer: footerConfigSchema,
+      canvas: canvasConfigSchema.optional(),
     }),
     pages: z.array(pageSchema),
     forms: z.array(formDefinitionSchema),

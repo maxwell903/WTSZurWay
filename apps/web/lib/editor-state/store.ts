@@ -16,6 +16,7 @@ import {
   applyAddSiblingHorizontalMove,
   applyCommitAiEditOperations,
   applyDeletePage,
+  applyMergeCanvasConfig,
   applyMoveComponent,
   applyRemoveComponent,
   applyRenamePage,
@@ -143,6 +144,12 @@ const creator: StateCreator<EditorStore> = (set) => ({
   setFontFamily: (font) =>
     set((state) => ({
       draftConfig: applySetFontFamily(state.draftConfig, font),
+      saveState: "dirty",
+    })),
+
+  setCanvasConfig: (patch) =>
+    set((state) => ({
+      draftConfig: applyMergeCanvasConfig(state.draftConfig, patch),
       saveState: "dirty",
     })),
 

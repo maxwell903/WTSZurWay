@@ -1,5 +1,6 @@
 import type {
   AnimationConfig,
+  CanvasConfig,
   ComponentNode,
   DataBinding,
   DetailDataSource,
@@ -79,6 +80,7 @@ export type EditorActions = {
   setSiteName: (name: string) => void;
   setPalette: (id: PaletteId) => void;
   setFontFamily: (font: string) => void;
+  setCanvasConfig: (patch: Partial<CanvasConfig>) => void;
   addPage: (input: AddPageInput) => void;
   renamePage: (input: RenamePageInput) => void;
   deletePage: (slug: string, kind: PageKind) => void;

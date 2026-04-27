@@ -597,6 +597,37 @@ describe("applyOperation -- setSiteSetting", () => {
       }),
     ).toThrow(/must start with one of meta, brand, global/);
   });
+
+  it("creates global.canvas.maxWidth on a config with no canvas, and the result reparses", async () => {
+    const config = makeConfig();
+    expect(config.global.canvas).toBeUndefined();
+    const next = applyOperation(config, {
+      type: "setSiteSetting",
+      path: "global.canvas.maxWidth",
+      value: 960,
+    });
+    expect(next.global.canvas).toEqual({ maxWidth: 960 });
+    const { siteConfigSchema } = await import("@/lib/site-config/schema");
+    expect(siteConfigSchema.safeParse(next).success).toBe(true);
+  });
+
+  it("can set a whole global.canvas object in one shot", async () => {
+    const config = makeConfig();
+    const next = applyOperation(config, {
+      type: "setSiteSetting",
+      path: "global.canvas",
+      value: {
+        maxWidth: 1100,
+        sidePadding: 16,
+        verticalPadding: { top: 40, bottom: 40 },
+        shadow: "md",
+      },
+    });
+    expect(next.global.canvas?.maxWidth).toBe(1100);
+    expect(next.global.canvas?.shadow).toBe("md");
+    const { siteConfigSchema } = await import("@/lib/site-config/schema");
+    expect(siteConfigSchema.safeParse(next).success).toBe(true);
+  });
 });
 
 describe("applyOperation -- setPalette", () => {

@@ -4,6 +4,7 @@ export {
   animationPresetSchema,
   borderSchema,
   BORDER_STYLES,
+  canvasConfigSchema,
   colorOrGradientSchema,
   COMPONENT_TYPES,
   componentNodeSchema,
@@ -27,6 +28,7 @@ export type {
   AnimationConfig,
   AnimationPreset,
   Border,
+  CanvasConfig,
   ColorOrGradient,
   ComponentNode,
   ComponentType,
@@ -47,5 +49,6 @@ export type {
 } from "./schema";
 export { parseSiteConfig, safeParseSiteConfig } from "./parse";
 export type { SafeParseSiteConfigResult } from "./parse";
-export { styleConfigToCss } from "./style";
+export { backgroundToCss, shadowPresetToCss, styleConfigToCss } from "./style";
 export { newComponentId } from "./ids";
+export { resolveCanvas, type ResolvedCanvas } from "./canvas";

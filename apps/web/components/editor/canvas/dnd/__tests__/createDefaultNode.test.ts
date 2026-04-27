@@ -95,12 +95,19 @@ describe("createDefaultNode — props match the runtime safeParse contract", () 
     expect("formId" in node.props).toBe(false);
   });
 
-  it("HeroBanner props use heading/subheading (NOT headline/subheadline)", () => {
+  it("HeroBanner props use heading/subheading (NOT headline/subheadline) and seed slideshow defaults", () => {
     const node = createDefaultNode("HeroBanner");
     expect(Object.keys(node.props).sort()).toEqual([
+      "autoplay",
       "ctaHref",
       "ctaLabel",
       "heading",
+      "images",
+      "intervalMs",
+      "loop",
+      "pauseOnHover",
+      "showArrows",
+      "showDots",
       "subheading",
     ]);
     expect(node.props).toMatchObject({
@@ -108,6 +115,13 @@ describe("createDefaultNode — props match the runtime safeParse contract", () 
       subheading: "",
       ctaLabel: "Learn more",
       ctaHref: "#",
+      images: [],
+      autoplay: true,
+      intervalMs: 5000,
+      loop: true,
+      pauseOnHover: true,
+      showDots: true,
+      showArrows: false,
     });
     expect("headline" in node.props).toBe(false);
     expect("subheadline" in node.props).toBe(false);

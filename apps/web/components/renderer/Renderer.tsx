@@ -1,7 +1,9 @@
 "use client";
 
 import { RowContextProvider } from "@/lib/row-context";
+import { backgroundToCss, resolveCanvas, shadowPresetToCss } from "@/lib/site-config";
 import type { SiteConfig } from "@/types/site-config";
+import type { CSSProperties } from "react";
 import { ComponentRenderer, type Mode } from "./ComponentRenderer";
 import { SiteConfigProvider } from "./SiteConfigContext";
 
@@ -48,14 +50,47 @@ export function Renderer({
     />
   );
 
-  const wrappedTree =
+  // Site-wide canvas: pageBackground sits behind everything, the canvas div
+  // (max-width, margin-auto, padding) wraps the rendered tree. NavBar /
+  // Footer instances inside the tree escape the canvas's max-width via a
+  // CSS rule in globals.css (the `margin-inline: calc(50% - 50vw)` trick),
+  // which keeps the rendered tree's DOM unchanged so EditModeWrapper,
+  // BetweenDropZone, and the root Section's own style continue to work.
+  const canvas = resolveCanvas(config.global.canvas);
+  const pageStyle: CSSProperties = {
+    minHeight: "100%",
+    background: backgroundToCss(canvas.pageBackground),
+  };
+  const canvasStyle: CSSProperties = {
+    background: backgroundToCss(canvas.canvasBackground),
+    maxWidth: canvas.maxWidth === null ? undefined : `${canvas.maxWidth}px`,
+    width: "100%",
+    marginInline: "auto",
+    paddingInline: `${canvas.sidePadding}px`,
+    paddingBlock: `${canvas.verticalPadding.top}px ${canvas.verticalPadding.bottom}px`,
+    borderRadius: canvas.borderRadius > 0 ? `${canvas.borderRadius}px` : undefined,
+    boxShadow: shadowPresetToCss(canvas.shadow),
+    display: canvas.sectionGap > 0 ? "flex" : undefined,
+    flexDirection: canvas.sectionGap > 0 ? "column" : undefined,
+    gap: canvas.sectionGap > 0 ? `${canvas.sectionGap}px` : undefined,
+  };
+
+  const wrapped = (
+    <div style={pageStyle}>
+      <div data-canvas style={canvasStyle}>
+        {tree}
+      </div>
+    </div>
+  );
+
+  const withRowContext =
     effectiveKind === "detail" && row !== undefined ? (
       <RowContextProvider row={row} kind="detail">
-        {tree}
+        {wrapped}
       </RowContextProvider>
     ) : (
-      tree
+      wrapped
     );
 
-  return <SiteConfigProvider config={config}>{wrappedTree}</SiteConfigProvider>;
+  return <SiteConfigProvider config={config}>{withRowContext}</SiteConfigProvider>;
 }

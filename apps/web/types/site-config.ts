@@ -5,6 +5,7 @@ export type {
   AnimationConfig,
   AnimationPreset,
   Border,
+  CanvasConfig,
   ColorOrGradient,
   ComponentNode,
   ComponentType,

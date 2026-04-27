@@ -2,6 +2,7 @@ import { canAcceptChild } from "@/components/editor/canvas/dnd/dropTargetPolicy"
 import { newComponentId } from "@/lib/site-config";
 import type {
   AnimationConfig,
+  CanvasConfig,
   ComponentNode,
   DataBinding,
   Page,
@@ -181,6 +182,30 @@ export function applySetFontFamily(config: SiteConfig, fontFamily: string): Site
   return {
     ...config,
     brand: { ...config.brand, fontFamily },
+  };
+}
+
+// Shallow-merges a partial canvas patch into `global.canvas`. Each input in
+// the Site tab's Canvas section calls this with just the field it owns, so
+// changing one control never clobbers another. Passing `undefined` for a key
+// preserves the existing stored value (use a sentinel via `setSiteSetting` if
+// a true "clear" is ever needed; resolveCanvas() then falls back to default).
+export function applyMergeCanvasConfig(
+  config: SiteConfig,
+  patch: Partial<CanvasConfig>,
+): SiteConfig {
+  const current = config.global.canvas ?? {};
+  const next: CanvasConfig = { ...current };
+  for (const [key, value] of Object.entries(patch) as [keyof CanvasConfig, unknown][]) {
+    if (value === undefined) {
+      delete (next as Record<string, unknown>)[key];
+    } else {
+      (next as Record<string, unknown>)[key] = value;
+    }
+  }
+  return {
+    ...config,
+    global: { ...config.global, canvas: next },
   };
 }
 

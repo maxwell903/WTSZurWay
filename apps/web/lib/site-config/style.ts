@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import type { ShadowPreset, StyleConfig } from "./schema";
+import type { ColorOrGradient, ShadowPreset, StyleConfig } from "./schema";
 
 const SHADOW_VALUES: Record<ShadowPreset, string> = {
   none: "none",
@@ -9,17 +9,23 @@ const SHADOW_VALUES: Record<ShadowPreset, string> = {
   xl: "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)",
 };
 
+export function backgroundToCss(bg: ColorOrGradient | undefined): string | undefined {
+  if (!bg) return undefined;
+  if (bg.kind === "color") return bg.value;
+  const angle = bg.angle ?? 180;
+  return `linear-gradient(${angle}deg, ${bg.from}, ${bg.to})`;
+}
+
+export function shadowPresetToCss(shadow: ShadowPreset | undefined): string | undefined {
+  if (shadow === undefined) return undefined;
+  return SHADOW_VALUES[shadow];
+}
+
 export function styleConfigToCss(style: StyleConfig): CSSProperties {
   const css: CSSProperties = {};
 
-  if (style.background) {
-    if (style.background.kind === "color") {
-      css.background = style.background.value;
-    } else {
-      const angle = style.background.angle ?? 180;
-      css.background = `linear-gradient(${angle}deg, ${style.background.from}, ${style.background.to})`;
-    }
-  }
+  const bg = backgroundToCss(style.background);
+  if (bg !== undefined) css.background = bg;
 
   if (style.padding) {
     if (style.padding.top !== undefined) css.paddingTop = style.padding.top;
@@ -45,9 +51,8 @@ export function styleConfigToCss(style: StyleConfig): CSSProperties {
     css.borderRadius = style.borderRadius;
   }
 
-  if (style.shadow !== undefined) {
-    css.boxShadow = SHADOW_VALUES[style.shadow];
-  }
+  const shadow = shadowPresetToCss(style.shadow);
+  if (shadow !== undefined) css.boxShadow = shadow;
 
   if (style.width !== undefined) {
     css.width = style.width;

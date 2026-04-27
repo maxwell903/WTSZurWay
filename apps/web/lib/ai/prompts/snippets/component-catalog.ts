@@ -99,9 +99,10 @@ const CATALOG: Record<ComponentType, ComponentDoc> = {
   HeroBanner: {
     category: "Content",
     childrenPolicy: "none",
-    description: "Large above-the-fold banner with image, headline, subheadline, and CTA.",
+    description:
+      "Large above-the-fold banner with heading, sub-heading, and CTA. Optionally renders a crossfade slideshow when `images` is non-empty (with autoplay, loop, dots, arrows). When `images` is empty, falls back to a single static `backgroundImage`. Use `images` for slideshow heroes, `backgroundImage` for static heroes — never both.",
     props:
-      "{ headline: string; subheadline?: string; backgroundImageUrl?: string; ctaLabel?: string; ctaHref?: string }",
+      "{ heading: string; subheading?: string; ctaLabel?: string; ctaHref?: string; backgroundImage?: string; overlay?: boolean; height?: string; images?: { src: string; alt?: string }[]; autoplay?: boolean; intervalMs?: number; loop?: boolean; pauseOnHover?: boolean; showDots?: boolean; showArrows?: boolean }",
   },
   PropertyCard: {
     category: "Data",
