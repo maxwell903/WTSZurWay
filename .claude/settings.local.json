@@ -64,7 +64,31 @@
       "Bash(pnpm --filter web test lib/editor-state/__tests__/)",
       "Bash(pnpm --filter web test \"components/editor/canvas/dnd/__tests__/BetweenDropZone.test.tsx\")",
       "Bash(pnpm --filter web test components/editor/canvas/dnd/__tests__/DropZoneIndicator -t \"post-overlay-system\")",
-      "Bash(pnpm --filter web test components/editor/canvas/dnd/)"
+      "Bash(pnpm --filter web test components/editor/canvas/dnd/)",
+      "Bash(pnpm --filter web test components/editor/canvas/dnd/__tests__/EmptyContainerOverlay.test.tsx)",
+      "Bash(pnpm --filter web test components/renderer/)",
+      "Bash(pnpm --filter web test \"components/editor/canvas/dnd/__tests__/DndCanvasProvider.test.tsx\" -t \"dropzone\" --reporter=verbose)",
+      "Bash(pnpm --filter web test \"components/editor/canvas/dnd/__tests__/DndCanvasProvider.test.tsx\" --reporter=verbose)",
+      "Bash(git -C /c/Users/maxwa/WTSZurWay add apps/web/components/editor/canvas/dnd/DndCanvasProvider.tsx apps/web/components/editor/canvas/dnd/__tests__/DndCanvasProvider.test.tsx)",
+      "Bash(git -C /c/Users/maxwa/WTSZurWay commit -m \"feat\\(dnd\\): handle dropzone:<parentId> drop intent for empty containers\")",
+      "Bash(pnpm --filter web test components/editor/canvas/dnd/__tests__/CanvasDropOverlay.test.tsx)",
+      "Bash(pnpm --filter web test components/editor/canvas/)",
+      "Bash(pnpm --filter web test components/editor/canvas/dnd/__tests__/dnd-ids.test.ts -t \"side dropzone\")",
+      "Bash(pnpm --filter web test components/editor/canvas/dnd/__tests__/dnd-ids.test.ts)",
+      "Bash(git -C C:/Users/maxwa/WTSZurWay add apps/web/components/editor/canvas/dnd/dnd-ids.ts apps/web/components/editor/canvas/dnd/__tests__/dnd-ids.test.ts)",
+      "Bash(git -C C:/Users/maxwa/WTSZurWay commit -m \"feat\\(dnd\\): add sideId constructor/parser for edge-drop targets\")",
+      "Bash(pnpm --filter web test lib/editor-state/__tests__/actions.test.ts --reporter=verbose)",
+      "Bash(pnpm --filter web test lib/editor-state/__tests__/actions.test.ts -t \"auto-dissolve\")",
+      "Bash(pnpm --filter web exec tsc --noEmit)",
+      "Bash(pnpm --filter web test apps/web/lib/editor-state/__tests__/actions.test.ts -t \"applyWrapInFlowGroupMove\")",
+      "Bash(pnpm --filter web biome check apps/web/lib/editor-state/)",
+      "Bash(pnpm --filter web exec biome check lib/editor-state/)",
+      "Bash(pnpm --filter web test \"components/editor/canvas/dnd/__tests__/DndCanvasProvider.test.tsx\")",
+      "Bash(pnpm --filter web test components/editor/topbar/__tests__/ShowComponentTypesToggle.test.tsx)",
+      "Bash(pnpm --filter web test components/editor/topbar/)",
+      "Bash(pnpm --filter web test components/editor/__tests__/canvas.test.tsx)",
+      "Bash(pnpm --filter web test components/renderer/__tests__/EditModeWrapper.test.tsx)",
+      "Bash(pnpm --filter web test components/editor/ components/renderer/ lib/editor-state/)"
     ]
   }
 }

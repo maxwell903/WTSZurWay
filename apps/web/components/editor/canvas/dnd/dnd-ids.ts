@@ -125,9 +125,7 @@ export function isSideId(value: unknown): value is SideDropId {
 // Side ids encode `side:${targetId}:${side}`. Component ids never contain a
 // colon (newComponentId rules), so the LAST colon in the tail is the side
 // separator regardless of the targetId shape — same approach as parseBetweenId.
-export function parseSideId(
-  value: unknown,
-): { targetId: ComponentId; side: Side } | null {
+export function parseSideId(value: unknown): { targetId: ComponentId; side: Side } | null {
   if (typeof value !== "string") return null;
   if (!value.startsWith(SIDE_PREFIX)) return null;
   const tail = value.slice(SIDE_PREFIX.length);
