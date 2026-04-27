@@ -7,23 +7,25 @@ import { z } from "zod";
 
 // Mirror of `navLinkSchema` in lib/site-config/schema.ts — the component does
 // its own safeParse so malformed `node.props` falls back to defaults rather
-// than crashing the whole canvas. Keep the two shapes in sync.
+// than crashing the whole canvas. Keep the two shapes in sync. `kind` is
+// optional; `undefined` is treated as "external" so legacy configs parse.
 const navLinkSchema = z
   .object({
     label: z.string(),
-    kind: z.enum(["page", "external"]).default("external"),
+    kind: z.enum(["page", "external"]).optional(),
     href: z.string().optional(),
     pageSlug: z.string().optional(),
   })
   .superRefine((link, ctx) => {
-    if (link.kind === "page" && link.pageSlug === undefined) {
+    const effectiveKind = link.kind ?? "external";
+    if (effectiveKind === "page" && link.pageSlug === undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["pageSlug"],
         message: "Required when kind is 'page'",
       });
     }
-    if (link.kind === "external" && link.href === undefined) {
+    if (effectiveKind === "external" && link.href === undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["href"],
@@ -149,7 +151,8 @@ function resolveLink(
   pages: readonly { kind: string; slug: string; name: string }[] | undefined,
   index: number,
 ): { key: string; href: string; label: string; pageSlug?: string } | null {
-  if (link.kind === "page") {
+  const effectiveKind = link.kind ?? "external";
+  if (effectiveKind === "page") {
     const pageSlug = link.pageSlug;
     if (!pageSlug) return null;
     // When pages context is available, resolve the live page name; otherwise
@@ -164,7 +167,7 @@ function resolveLink(
       pageSlug,
     };
   }
-  // external
+  // external (or kind === undefined, treated as external)
   const href = link.href ?? "";
   return { key: `ext-${href}-${index}`, href, label: link.label };
 }

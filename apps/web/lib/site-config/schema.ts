@@ -182,24 +182,27 @@ export type FormDefinition = z.infer<typeof formDefinitionSchema>;
 
 // A navbar/footer link is either a "page" link (resolved against the site's
 // static pages by slug — labels stay live as pages are renamed) or an
-// "external" link with a free-form URL. The default `kind: "external"` keeps
-// backward compat with pre-existing configs that stored just `{ label, href }`.
+// "external" link with a free-form URL. `kind` is optional and `undefined`
+// is treated as "external" so legacy configs that stored just
+// `{ label, href }` (and any test fixtures typed against `SiteConfig`)
+// continue to type- and parse-check without modification.
 const navLinkSchema = z
   .object({
     label: z.string(),
-    kind: z.enum(["page", "external"]).default("external"),
+    kind: z.enum(["page", "external"]).optional(),
     href: z.string().optional(),
     pageSlug: z.string().optional(),
   })
   .superRefine((link, ctx) => {
-    if (link.kind === "page" && link.pageSlug === undefined) {
+    const effectiveKind = link.kind ?? "external";
+    if (effectiveKind === "page" && link.pageSlug === undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["pageSlug"],
         message: "Required when kind is 'page'",
       });
     }
-    if (link.kind === "external" && link.href === undefined) {
+    if (effectiveKind === "external" && link.href === undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["href"],

@@ -492,13 +492,14 @@ describe("navLinkSchema (via navBarConfigSchema)", () => {
     return { links, logoPlacement: "left" as const, sticky: false };
   }
 
-  it("parses a legacy { label, href } link as kind: 'external'", () => {
+  it("parses a legacy { label, href } link (kind absent → treated as external)", () => {
     const result = navBarConfigSchema.safeParse(
       makeNavBar([{ label: "Home", href: "/" }]),
     );
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.links[0]?.kind).toBe("external");
+      // kind stays undefined; readers default to 'external' at use site.
+      expect(result.data.links[0]?.kind).toBeUndefined();
       expect(result.data.links[0]?.href).toBe("/");
     }
   });

@@ -1483,14 +1483,6 @@ export function isGlobalNavBarLocked(config: SiteConfig): boolean {
   return config.global.navBarLocked !== false;
 }
 
-// A NavBar component participates in the locked group when the site-wide lock
-// is on AND its own `overrideShared` flag is not true.
-function isNodeInLockedGroup(node: ComponentNode, globalLocked: boolean): boolean {
-  if (!globalLocked) return false;
-  if (node.type !== "NavBar") return false;
-  return node.props.overrideShared !== true;
-}
-
 // Walk every page's tree; apply `transform` to every NavBar node and replace
 // it in place. The transform receives the node and returns its replacement
 // (or the same node to leave unchanged). Used by `syncLockedNavBars` and the

@@ -185,16 +185,24 @@ describe("ImageEditPanel", () => {
 });
 
 describe("NavBarEditPanel", () => {
-  it("adding and removing a link writes the new array", () => {
+  it("adds a link defaulted to kind=page; switching to external exposes label+href", () => {
     render(<PanelHost id="cmp_navbar" Panel={NavBarEditPanel} />);
     fireEvent.click(screen.getByTestId("navbar-links-add"));
-    expect((getNode("cmp_navbar").props.links as unknown[]).length).toBe(1);
+    const afterAdd = getNode("cmp_navbar").props.links as { kind: string }[];
+    expect(afterAdd).toHaveLength(1);
+    expect(afterAdd[0]?.kind).toBe("page");
+    // Switch to external mode and fill in label+href.
+    fireEvent.click(screen.getByTestId("navbar-links-kind-0-external"));
     fireEvent.change(screen.getByTestId("navbar-links-label-0"), {
       target: { value: "Home" },
     });
     fireEvent.change(screen.getByTestId("navbar-links-href-0"), { target: { value: "/" } });
-    const links = getNode("cmp_navbar").props.links as { label: string; href: string }[];
-    expect(links[0]).toEqual({ label: "Home", href: "/" });
+    const links = getNode("cmp_navbar").props.links as {
+      kind: string;
+      label: string;
+      href: string;
+    }[];
+    expect(links[0]).toMatchObject({ kind: "external", label: "Home", href: "/" });
     fireEvent.click(screen.getByTestId("navbar-links-remove-0"));
     expect((getNode("cmp_navbar").props.links as unknown[]).length).toBe(0);
   });
