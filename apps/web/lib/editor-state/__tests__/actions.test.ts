@@ -19,6 +19,7 @@ import {
   applySetFontFamily,
   applySetPalette,
   applySetSiteName,
+  getMaxAllowedDimension,
 } from "../actions";
 import { EditorActionError } from "../types";
 
@@ -759,5 +760,57 @@ describe("applySetComponentDimension", () => {
     expect(() => applySetComponentDimension(cfg, "missing", "height", "1px")).toThrow(
       EditorActionError,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 Task 3.1 -- getMaxAllowedDimension read helper
+// ---------------------------------------------------------------------------
+
+describe("getMaxAllowedDimension", () => {
+  function makeConfigWithRoot(rootChildren: ComponentNode[]): SiteConfig {
+    const base = makeFixtureConfig();
+    return {
+      ...base,
+      pages: [
+        {
+          ...base.pages[0]!,
+          rootComponent: {
+            id: "cmp_root",
+            type: "Section",
+            props: {},
+            style: {},
+            children: rootChildren,
+          },
+        },
+      ],
+    };
+  }
+
+  it("returns parent width minus sibling widths when querying a sibling cap", () => {
+    const config = makeConfigWithRoot([
+      { id: "h1", type: "Heading", props: {}, style: { width: "60%" } },
+      { id: "h2", type: "Heading", props: {}, style: {} },
+    ]);
+    expect(getMaxAllowedDimension(config, "h2", "width")).toBe(40);
+  });
+
+  it("returns 100% when the candidate is the only child", () => {
+    const config = makeConfigWithRoot([
+      { id: "only", type: "Heading", props: {}, style: {} },
+    ]);
+    expect(getMaxAllowedDimension(config, "only", "width")).toBe(100);
+  });
+
+  it("returns null when the component is not found", () => {
+    const config = makeConfigWithRoot([]);
+    expect(getMaxAllowedDimension(config, "nope", "width")).toBeNull();
+  });
+
+  it("returns null for the height axis (not bounded by sibling stack)", () => {
+    const config = makeConfigWithRoot([
+      { id: "h1", type: "Heading", props: {}, style: {} },
+    ]);
+    expect(getMaxAllowedDimension(config, "h1", "height")).toBeNull();
   });
 });

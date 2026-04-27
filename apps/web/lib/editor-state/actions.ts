@@ -19,6 +19,7 @@ import type {
   ReorderPagesInput,
 } from "./types";
 import { EditorActionError } from "./types";
+import { findComponentById, findComponentParentId } from "./store";
 
 const SLUG_REGEX = /^[a-z0-9-]+$/;
 const SLUG_MAX = 60;
@@ -530,4 +531,42 @@ export function applySetComponentDimension(
     const nextStyle: StyleConfig = { ...node.style, [axis]: value };
     return { ...node, style: nextStyle };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 Task 3.1 -- read helper for x-axis resize drag math
+// ---------------------------------------------------------------------------
+
+function parsePercent(value: string | undefined): number | null {
+  if (!value) return null;
+  const m = value.match(/^(\d+(?:\.\d+)?)\s*%$/);
+  return m && m[1] ? Number.parseFloat(m[1]) : null;
+}
+
+export function getMaxAllowedDimension(
+  config: SiteConfig,
+  id: ComponentId,
+  axis: "width" | "height",
+): number | null {
+  for (const page of config.pages) {
+    const parentId = findComponentParentId(page.rootComponent, id);
+    if (!parentId) continue;
+    const parent = findComponentById(page.rootComponent, parentId);
+    if (!parent) continue;
+    const siblings = (parent.children ?? []).filter((c) => c.id !== id);
+    if (axis === "width") {
+      // Sibling % widths consume parent headroom. Siblings without an
+      // explicit width count as 0% (they reflow naturally to fill what's
+      // left). Returns remaining headroom clamped to 0..100.
+      let used = 0;
+      for (const s of siblings) {
+        const p = parsePercent(s.style.width);
+        if (p !== null) used += p;
+      }
+      return Math.max(0, Math.min(100, 100 - used));
+    }
+    // Height is not bounded by sibling stack in current spec — return null.
+    return null;
+  }
+  return null;
 }
