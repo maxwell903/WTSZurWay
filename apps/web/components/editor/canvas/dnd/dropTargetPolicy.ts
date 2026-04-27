@@ -1,5 +1,3 @@
-"use client";
-
 // Sprint 7 routes drop-target validation through the component registry's
 // `meta.childrenPolicy`. The registry is the SINGLE source of truth — the
 // per-component SPEC.md files mirror it but are not read at runtime.
