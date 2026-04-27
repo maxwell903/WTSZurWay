@@ -2,6 +2,7 @@
 
 import { DropZoneIndicator } from "@/components/editor/canvas/dnd/DropZoneIndicator";
 import { useNodeSortable } from "@/components/editor/canvas/dnd/SortableNodeContext";
+import { SideDropZones } from "@/components/editor/canvas/dnd/sideDropZones";
 import { cn } from "@/lib/utils";
 import { CSS } from "@dnd-kit/utilities";
 import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from "react";
@@ -90,6 +91,7 @@ export function EditModeWrapper({ id, selected, onSelect, onContextMenu, childre
           no DndCanvasProvider is in scope, so existing Sprint 5/6/8 callers
           (preview mode, standalone tests, public site) emit identical DOM. */}
       <DropZoneIndicator id={id} />
+      {sortable !== null && <SideDropZones targetId={id} />}
       {children}
     </div>
   );
