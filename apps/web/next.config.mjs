@@ -13,7 +13,6 @@ const nextConfig = {
   // local `package-lock.json` warning but breaks production tracing on
   // Vercel — see DECISIONS.md "2026-04-27 — Sprint 14.5".
   outputFileTracingRoot: join(__dirname, "../../"),
-  outputFileTracingRoot: __dirname,
 };
 
 export default nextConfig;
