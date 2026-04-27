@@ -108,3 +108,33 @@ export function parseBetweenId(value: unknown): { parentId: ComponentId; index: 
   if (!Number.isFinite(index) || index < 0) return null;
   return { parentId, index };
 }
+
+const SIDE_PREFIX = "side:";
+const SIDES = ["left", "right", "top", "bottom"] as const;
+export type Side = (typeof SIDES)[number];
+export type SideDropId = `side:${ComponentId}:${Side}`;
+
+export function sideId(targetId: ComponentId, side: Side): SideDropId {
+  return `${SIDE_PREFIX}${targetId}:${side}` as SideDropId;
+}
+
+export function isSideId(value: unknown): value is SideDropId {
+  return parseSideId(value) !== null;
+}
+
+// Side ids encode `side:${targetId}:${side}`. Component ids never contain a
+// colon (newComponentId rules), so the LAST colon in the tail is the side
+// separator regardless of the targetId shape — same approach as parseBetweenId.
+export function parseSideId(
+  value: unknown,
+): { targetId: ComponentId; side: Side } | null {
+  if (typeof value !== "string") return null;
+  if (!value.startsWith(SIDE_PREFIX)) return null;
+  const tail = value.slice(SIDE_PREFIX.length);
+  const lastColon = tail.lastIndexOf(":");
+  if (lastColon <= 0) return null;
+  const targetId = tail.slice(0, lastColon);
+  const side = tail.slice(lastColon + 1);
+  if (!(SIDES as readonly string[]).includes(side)) return null;
+  return { targetId, side: side as Side };
+}

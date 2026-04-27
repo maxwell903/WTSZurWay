@@ -4,11 +4,14 @@ import {
   isDropZoneId,
   isNodeId,
   isPaletteId,
+  isSideId,
   nodeId,
   paletteId,
   parseDropZoneId,
   parseNodeId,
   parsePaletteId,
+  parseSideId,
+  sideId,
 } from "../dnd-ids";
 
 describe("dnd-id constructors", () => {
@@ -101,5 +104,28 @@ describe("parse rejection of malformed input", () => {
     expect(parseDropZoneId("dropzone:")).toBeNull();
     expect(parseDropZoneId("node:cmp_x")).toBeNull();
     expect(parseDropZoneId(null)).toBeNull();
+  });
+});
+
+describe("side dropzone ids", () => {
+  it("constructs and parses a right-side id", () => {
+    const id = sideId("cmp_x", "right");
+    expect(id).toBe("side:cmp_x:right");
+    expect(isSideId(id)).toBe(true);
+    expect(parseSideId(id)).toEqual({ targetId: "cmp_x", side: "right" });
+  });
+
+  it("constructs and parses left/top/bottom ids", () => {
+    expect(parseSideId(sideId("cmp_y", "left"))).toEqual({ targetId: "cmp_y", side: "left" });
+    expect(parseSideId(sideId("cmp_y", "top"))).toEqual({ targetId: "cmp_y", side: "top" });
+    expect(parseSideId(sideId("cmp_y", "bottom"))).toEqual({ targetId: "cmp_y", side: "bottom" });
+  });
+
+  it("rejects malformed side ids", () => {
+    expect(isSideId("side:cmp_x:diagonal")).toBe(false);
+    expect(parseSideId("side:cmp_x:diagonal")).toBeNull();
+    expect(parseSideId("between:cmp_x:0")).toBeNull();
+    expect(parseSideId("node:cmp_x")).toBeNull();
+    expect(parseSideId("side:")).toBeNull();
   });
 });
