@@ -1,6 +1,6 @@
+import type { ComponentNode } from "@/types/site-config";
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { ComponentNode } from "@/types/site-config";
 import { FlowGroup } from "../index";
 
 const baseNode: ComponentNode = {

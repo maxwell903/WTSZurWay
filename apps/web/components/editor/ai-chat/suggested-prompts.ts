@@ -48,6 +48,8 @@ export const SUGGESTIONS_BY_TYPE: Record<ComponentType, readonly string[]> = {
   Form: ["Add an email field", "Change the submit button label", "Rename the form"],
   MapEmbed: ["Recenter the map", "Change the zoom"],
   Gallery: ["Add a row of images", "Use a 4-column layout"],
+  // FlowGroup is engine-managed (auto-inserted on side-edge drops); no AI suggestions.
+  FlowGroup: [],
 };
 
 export function suggestionsForSelection(node: ComponentNode | null): string[] {

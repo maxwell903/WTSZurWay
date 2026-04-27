@@ -48,6 +48,8 @@ export const RESIZE_MATRIX: Readonly<Record<ComponentType, ResizeMatrixEntry | n
   Spacer: { right: false, bottom: true },
   PropertyCard: { right: false, bottom: true },
   UnitCard: { right: false, bottom: true },
+  // FlowGroup is invisible to the user (inherits container width); no resize handles.
+  FlowGroup: null,
   Heading: null,
   Paragraph: null,
   Button: null,

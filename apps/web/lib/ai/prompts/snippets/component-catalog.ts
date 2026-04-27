@@ -153,6 +153,14 @@ const CATALOG: Record<ComponentType, ComponentDoc> = {
     description: "Image grid.",
     props: "{ images: { src: string; alt?: string }[]; columns?: 2 | 3 | 4 }",
   },
+  // FlowGroup is engine-managed; the AI must never emit it directly.
+  FlowGroup: {
+    category: "Layout",
+    childrenPolicy: "many",
+    description:
+      "Engine-managed horizontal flex wrapper. Never emit FlowGroup directly — it is auto-inserted by the editor when a user drops on the side edge of a component.",
+    props: "(none)",
+  },
 };
 
 export function buildComponentCatalog(): string {

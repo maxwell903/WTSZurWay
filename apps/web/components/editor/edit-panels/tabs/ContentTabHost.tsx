@@ -46,6 +46,8 @@ const PANELS: Record<ComponentType, ContentPanel> = {
   Form: FormEditPanel,
   MapEmbed: MapEmbedEditPanel,
   Gallery: GalleryEditPanel,
+  // FlowGroup is engine-managed and never directly edited by the user; no panel.
+  FlowGroup: () => null,
 };
 
 export type ContentTabHostProps = {
