@@ -569,6 +569,13 @@ export function applyResizeWithCascade(
   value: string,
 ): SiteConfig {
   return applyMapToConfig(config, id, (node) => {
+    // Spacer dimensions live in props, not style — same guard as applySetComponentDimension.
+    if (node.type === "Spacer") {
+      fail(
+        "invalid_resize_target",
+        "Spacer height belongs in props, not style. Use setComponentProps instead.",
+      );
+    }
     const next: ComponentNode = { ...node, style: { ...node.style, [axis]: value } };
     if (axis !== "width") return next;
     const newPx = parsePx(value);

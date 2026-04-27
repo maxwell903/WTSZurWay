@@ -13,13 +13,19 @@
 // Task 2.3 (2026-04-27 x-axis-resize plan): CornerHandle drives both axes
 // simultaneously. For Spacer, only width is written (height lives in props,
 // not style — corner skips the height write entirely for Spacer).
+//
+// Task 3.4 (2026-04-27 x-axis-resize plan): RightEdgeHandle and CornerHandle
+// now write width via setComponentDimensionWithCascade so descendant px-width
+// values are auto-clamped when a parent shrinks. BottomEdgeHandle and
+// CornerHandle's height write remain on setComponentDimension (height cascade
+// is not implemented per spec).
 
 import { ResizeHandles, isResizableOnAxis } from "@/components/editor/canvas/dnd/ResizeHandles";
 import { __resetEditorStoreForTests, useEditorStore } from "@/lib/editor-state/store";
 import { COMPONENT_TYPES } from "@/lib/site-config";
 import type { SiteConfig } from "@/lib/site-config";
 import { act, render } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("isResizableOnAxis", () => {
   for (const type of COMPONENT_TYPES) {
@@ -353,5 +359,112 @@ describe("CornerHandle — Task 2.3 two-axis resize", () => {
     // so style remains untouched after a corner drag.
     expect(spacer?.style.width).toBeUndefined();
     expect(spacer?.style.height).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 3.4 — cascade integration: width writes use setComponentDimensionWithCascade
+// ---------------------------------------------------------------------------
+//
+// Strategy: spy on useEditorStore's setComponentDimensionWithCascade action to
+// verify it is invoked (not the plain setComponentDimension) when width is
+// written. A spy approach is used because the handles write % values, which
+// means parsePx returns null inside applyResizeWithCascade and no actual child
+// clamping occurs — the correct observable difference is which action was called.
+
+describe("RightEdgeHandle — Task 3.4 cascade integration", () => {
+  beforeEach(() => {
+    __resetEditorStoreForTests();
+    useEditorStore.getState().hydrate({
+      siteId: "s",
+      siteSlug: "test",
+      workingVersionId: "v",
+      initialConfig: makeFixture(),
+    });
+  });
+
+  afterEach(() => {
+    for (const el of document.querySelectorAll("[data-edit-id]")) {
+      el.parentNode?.removeChild(el);
+    }
+    vi.restoreAllMocks();
+  });
+
+  it("calls setComponentDimensionWithCascade (not setComponentDimension) for width on right-edge drag", () => {
+    plantElement("cmp_sec", { left: 0, width: 400 });
+    plantElement("cmp_heading", { left: 0, top: 0, width: 200, height: 50 });
+
+    act(() => {
+      useEditorStore.getState().selectComponent("cmp_heading");
+    });
+
+    // Spy on both actions so we can assert only the cascade variant is called.
+    const cascadeSpy = vi.spyOn(useEditorStore.getState(), "setComponentDimensionWithCascade");
+    const plainSpy = vi.spyOn(useEditorStore.getState(), "setComponentDimension");
+
+    const { getByTestId } = render(<ResizeHandles />);
+    const handle = getByTestId("resize-handle-right-cmp_heading");
+
+    act(() => {
+      dispatchPointerDown(handle, { clientX: 200, clientY: 25 });
+    });
+    act(() => {
+      // Release at clientX=300 → fraction=300/400=0.75 → writes width %
+      dispatchPointerUp(300);
+    });
+
+    expect(cascadeSpy).toHaveBeenCalledWith("cmp_heading", "width", expect.stringMatching(/^\d+%$/));
+    // Plain setComponentDimension must NOT be called for the width write.
+    const widthCalls = plainSpy.mock.calls.filter((args) => args[1] === "width");
+    expect(widthCalls).toHaveLength(0);
+  });
+});
+
+describe("CornerHandle — Task 3.4 cascade integration", () => {
+  beforeEach(() => {
+    __resetEditorStoreForTests();
+    useEditorStore.getState().hydrate({
+      siteId: "s",
+      siteSlug: "test",
+      workingVersionId: "v",
+      initialConfig: makeFixture(),
+    });
+  });
+
+  afterEach(() => {
+    for (const el of document.querySelectorAll("[data-edit-id]")) {
+      el.parentNode?.removeChild(el);
+    }
+    vi.restoreAllMocks();
+  });
+
+  it("calls setComponentDimensionWithCascade for width and setComponentDimension for height on corner drag", () => {
+    plantElement("cmp_sec", { left: 0, top: 0, width: 600, height: 800 });
+    plantElement("cmp_heading", { left: 0, top: 0, width: 100, height: 100 });
+
+    act(() => {
+      useEditorStore.getState().selectComponent("cmp_heading");
+    });
+
+    const cascadeSpy = vi.spyOn(useEditorStore.getState(), "setComponentDimensionWithCascade");
+    const plainSpy = vi.spyOn(useEditorStore.getState(), "setComponentDimension");
+
+    const { getByTestId } = render(<ResizeHandles />);
+    const handle = getByTestId("resize-handle-corner-cmp_heading");
+
+    act(() => {
+      dispatchPointerDown(handle, { clientX: 100, clientY: 100 });
+    });
+    act(() => {
+      dispatchPointerUpXY(200, 200);
+    });
+
+    // Width write must go through cascade action.
+    expect(cascadeSpy).toHaveBeenCalledWith("cmp_heading", "width", expect.stringMatching(/^\d+%$/));
+    // Height write must stay on the plain action (height cascade not implemented).
+    expect(plainSpy).toHaveBeenCalledWith("cmp_heading", "height", expect.stringMatching(/^\d+px$/));
+    // Plain action must NOT be called for width.
+    const widthCalls = plainSpy.mock.calls.filter((args) => args[1] === "width");
+    expect(widthCalls).toHaveLength(0);
   });
 });

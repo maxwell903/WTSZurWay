@@ -128,7 +128,7 @@ function ResizeHandlesActive({
 
 function RightEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect }) {
   const setComponentSpan = useEditorStore((s) => s.setComponentSpan);
-  const setComponentDimension = useEditorStore((s) => s.setComponentDimension);
+  const setComponentDimensionWithCascade = useEditorStore((s) => s.setComponentDimensionWithCascade);
   // parentRect generalises the old rowRect — the parent could be any container.
   const dragRef = useRef<{ parentRect: DOMRect; shiftHeld: boolean } | null>(null);
 
@@ -160,7 +160,7 @@ function RightEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRe
         } else {
           // 5% snap for free-percent storage.
           const percent = Math.max(5, Math.round((clampedFraction * 100) / 5) * 5);
-          setComponentDimension(node.id, "width", `${percent}%`);
+          setComponentDimensionWithCascade(node.id, "width", `${percent}%`);
         }
       } catch {
         // Apply layer rejected (e.g. node disappeared mid-drag); silent no-op.
@@ -204,6 +204,7 @@ function RightEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRe
 
 function CornerHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect }) {
   const setComponentDimension = useEditorStore((s) => s.setComponentDimension);
+  const setComponentDimensionWithCascade = useEditorStore((s) => s.setComponentDimensionWithCascade);
   const dragRef = useRef<{
     startX: number;
     startY: number;
@@ -240,7 +241,7 @@ function CornerHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect 
         : 1;
       const percent = Math.max(5, Math.round((fraction * 100) / 5) * 5);
       try {
-        setComponentDimension(node.id, "width", `${percent}%`);
+        setComponentDimensionWithCascade(node.id, "width", `${percent}%`);
         if (node.type !== "Spacer") {
           setComponentDimension(node.id, "height", `${newH}px`);
         }
