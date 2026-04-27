@@ -1594,3 +1594,22 @@ verifiable in-session. `pnpm typecheck` (`tsc --noEmit`) passed
 with zero errors, `pnpm biome check` was clean, and 1046 tests
 passed; the user then ran `pnpm build` in their own terminal and
 confirmed green before this entry was appended.
+
+---
+
+## 2026-04-27 — Sprint X-axis-resize — Retroactive cross-sprint fixes
+
+**Context:** Implementation of `docs/superpowers/plans/2026-04-27-x-axis-resize-and-edit-overlays.md` (X-axis resize + side-by-side FlowGroup + dotted overlays + Show Component Types toggle). Adding `"FlowGroup"` to `COMPONENT_TYPES` triggered exhaustiveness errors in several `Record<ComponentType, …>` literals in earlier-sprint files; biome surfaced one pre-existing duplicate-key bug in next.config.mjs from Sprint 14.5.
+
+**Retroactive fixes applied per CLAUDE.md §15.9:**
+
+1. `apps/web/components/site-components/__tests__/registry.test.ts` — Sprint 5 test asserted exactly 14 non-Sprint-3 components; bumped to 15 for FlowGroup. Commit `e4f442d`.
+2. `apps/web/components/editor/__tests__/component-catalog.test.ts` — Sprint 6 catalog parity tests updated to recognise FlowGroup as the sole engine-managed exception via an `ENGINE_MANAGED` set. Commit `f46d907`.
+3. `apps/web/components/editor/ai-chat/suggested-prompts.ts`, `apps/web/components/editor/canvas/dnd/ResizeHandles.tsx` (RESIZE_MATRIX line, later replaced entirely in Phase 2), `apps/web/components/editor/edit-panels/tabs/ContentTabHost.tsx`, `apps/web/lib/ai/prompts/snippets/component-catalog.ts` — added `FlowGroup` stub entries (null / `() => null` / engine-managed description) to each `Record<ComponentType, …>` literal so the build compiles. Commit `2439735`.
+4. `apps/web/next.config.mjs` — removed duplicate `outputFileTracingRoot` key from Sprint 14.5 that silently overrode the intended monorepo-root value. Commit `fd93574`. (User then enhanced this further in a follow-up edit to add `outputFileTracingIncludes` for the source-map workaround.)
+
+Each fix was minimal, behaviour-preserving, and limited to the smallest change necessary to keep `pnpm typecheck` / `pnpm biome check` / `pnpm test` green between phase tasks. No production semantics altered.
+
+**Affected sprints' files touched:** Sprint 5 (registry test), Sprint 6 (catalog test), Sprint 7 (RESIZE_MATRIX), Sprint 8 (ContentTabHost), Sprint 11 (suggested-prompts, AI catalog), Sprint 14.5 (next.config.mjs).
+
+**No Deviation Reports were required** — every fix was test/config housekeeping that fits §15.9's carve-out (under ~5 lines per file, no runtime-behaviour change).
