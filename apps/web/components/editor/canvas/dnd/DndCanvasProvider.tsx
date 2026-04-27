@@ -20,7 +20,7 @@
 // mutation occurs.
 
 import { COMPONENT_CATALOG } from "@/components/editor/sidebar/add-tab/component-catalog";
-import { selectCurrentPage, useEditorStore } from "@/lib/editor-state";
+import { findComponentParentId, selectCurrentPage, useEditorStore } from "@/lib/editor-state";
 import type { ComponentNode } from "@/lib/site-config";
 import {
   DndContext,
@@ -39,7 +39,14 @@ import { type ReactNode, useMemo, useState } from "react";
 import { DragStateProvider, type DragStateValue } from "./DropZoneIndicator";
 import { SortableProviderActive } from "./SortableNodeContext";
 import { createDefaultNode } from "./createDefaultNode";
-import { nodeId, parseBetweenId, parseDropZoneId, parseNodeId, parsePaletteId } from "./dnd-ids";
+import {
+  nodeId,
+  parseBetweenId,
+  parseDropZoneId,
+  parseNodeId,
+  parsePaletteId,
+  parseSideId,
+} from "./dnd-ids";
 import { canAcceptChild } from "./dropTargetPolicy";
 
 // dev-only diagnostic helper. Sprint 7 CLAUDE.md permits a single
@@ -102,6 +109,8 @@ function DndCanvasProviderInner({ children }: { children: ReactNode }) {
   const addComponentChild = useEditorStore((s) => s.addComponentChild);
   const moveComponent = useEditorStore((s) => s.moveComponent);
   const reorderChildren = useEditorStore((s) => s.reorderChildren);
+  const wrapInFlowGroup = useEditorStore((s) => s.wrapInFlowGroup);
+  const wrapInFlowGroupMove = useEditorStore((s) => s.wrapInFlowGroupMove);
 
   const [dragState, setDragState] = useState<DragStateValue>({
     activeId: null,
@@ -127,6 +136,39 @@ function DndCanvasProviderInner({ children }: { children: ReactNode }) {
 
   function determineAcceptable(activeIdRaw: string, overIdRaw: string | null): boolean {
     if (!overIdRaw || !currentPage) return false;
+
+    // Side-zone target: the left/right/top/bottom overlay registered by SideDropZones.
+    const sideTargetAccept = parseSideId(overIdRaw);
+    if (sideTargetAccept) {
+      const targetNode = findNodeInTree(currentPage.rootComponent, sideTargetAccept.targetId);
+      if (!targetNode) return false;
+      // Reject drops onto self.
+      if (parseNodeId(activeIdRaw) === sideTargetAccept.targetId) return false;
+
+      const candidateType =
+        parsePaletteId(activeIdRaw) ??
+        findNodeInTree(currentPage.rootComponent, parseNodeId(activeIdRaw) ?? "")?.type;
+      if (!candidateType) return false;
+      // FlowGroup is engine-managed — never accept it as a candidate type.
+      if (candidateType === "FlowGroup") return false;
+
+      // For top/bottom, the eventual parent is the target's existing parent —
+      // check that parent's children policy.
+      if (sideTargetAccept.side === "top" || sideTargetAccept.side === "bottom") {
+        const parentId = findComponentParentId(
+          currentPage.rootComponent,
+          sideTargetAccept.targetId,
+        );
+        if (!parentId) return false;
+        const parentNode = findNodeInTree(currentPage.rootComponent, parentId);
+        if (!parentNode) return false;
+        return canAcceptChild(parentNode, candidateType);
+      }
+      // For left/right, the eventual parent is a fresh FlowGroup (or an
+      // existing one if the target's parent is already a FlowGroup), which
+      // accepts any non-FlowGroup type — already gated above.
+      return true;
+    }
 
     // Dropzone target: the empty-container overlay registered by EmptyContainerOverlay.
     const dropzoneParentId = parseDropZoneId(overIdRaw);
@@ -215,6 +257,105 @@ function DndCanvasProviderInner({ children }: { children: ReactNode }) {
 
     const activeIdRaw = String(active.id);
     const overIdRaw = String(over.id);
+
+    // ============ side-zone target (left/right/top/bottom overlay) ============
+    const sideTarget = parseSideId(overIdRaw);
+    if (sideTarget) {
+      // === Top/Bottom: vertical sibling insertion ===
+      if (sideTarget.side === "top" || sideTarget.side === "bottom") {
+        const parentId = findComponentParentId(currentPage.rootComponent, sideTarget.targetId);
+        if (!parentId) {
+          devWarn("[side] top/bottom drop rejected: target has no parent");
+          return;
+        }
+        const parentNode = findNodeInTree(currentPage.rootComponent, parentId);
+        if (!parentNode) return;
+        const targetIdx = (parentNode.children ?? []).findIndex(
+          (c) => c.id === sideTarget.targetId,
+        );
+        if (targetIdx < 0) return;
+        const insertAt = sideTarget.side === "bottom" ? targetIdx + 1 : targetIdx;
+
+        const paletteType = parsePaletteId(activeIdRaw);
+        if (paletteType) {
+          if (!canAcceptChild(parentNode, paletteType)) {
+            devWarn(
+              "[side] palette top/bottom drop rejected:",
+              parentNode.type,
+              "cannot accept",
+              paletteType,
+            );
+            return;
+          }
+          try {
+            addComponentChild(parentNode.id, insertAt, createDefaultNode(paletteType));
+          } catch (err) {
+            devWarn("[side] addComponentChild rejected at apply time:", err);
+          }
+          return;
+        }
+        const draggedId = parseNodeId(activeIdRaw);
+        if (!draggedId) return;
+        if (draggedId === sideTarget.targetId) return; // self-drop no-op
+        const draggedNode = findNodeInTree(currentPage.rootComponent, draggedId);
+        if (!draggedNode) return;
+        if (isInSubtree(draggedNode, parentId)) {
+          devWarn("[side] node top/bottom drop rejected: cannot move into self/descendant");
+          return;
+        }
+        if (!canAcceptChild(parentNode, draggedNode.type)) {
+          devWarn(
+            "[side] node top/bottom drop rejected:",
+            parentNode.type,
+            "cannot accept",
+            draggedNode.type,
+          );
+          return;
+        }
+        try {
+          moveComponent(draggedId, parentNode.id, insertAt);
+        } catch (err) {
+          devWarn("[side] moveComponent rejected at apply time:", err);
+        }
+        return;
+      }
+
+      // === Left/Right: FlowGroup wrap ===
+      const paletteType = parsePaletteId(activeIdRaw);
+      if (paletteType) {
+        if (paletteType === "FlowGroup") {
+          devWarn("[side] palette FlowGroup drop rejected (engine-managed)");
+          return;
+        }
+        try {
+          wrapInFlowGroup(sideTarget.targetId, createDefaultNode(paletteType), sideTarget.side);
+        } catch (err) {
+          devWarn("[side] wrapInFlowGroup rejected at apply time:", err);
+        }
+        return;
+      }
+      const draggedId = parseNodeId(activeIdRaw);
+      if (!draggedId) return;
+      if (draggedId === sideTarget.targetId) return; // self-drop no-op
+      const draggedNode = findNodeInTree(currentPage.rootComponent, draggedId);
+      if (!draggedNode) return;
+      if (draggedNode.type === "FlowGroup") {
+        devWarn("[side] node FlowGroup drop rejected (engine-managed)");
+        return;
+      }
+      // Cannot wrap with a target that's a descendant of the dragged node
+      // (would create a cycle).
+      if (isInSubtree(draggedNode, sideTarget.targetId)) {
+        devWarn("[side] node drop rejected: cannot wrap with descendant");
+        return;
+      }
+      try {
+        wrapInFlowGroupMove(draggedId, sideTarget.targetId, sideTarget.side);
+      } catch (err) {
+        devWarn("[side] wrapInFlowGroupMove rejected at apply time:", err);
+      }
+      return;
+    }
 
     // ============ dropzone target (empty-container overlay, append) ============
     const dropzoneParentId = parseDropZoneId(overIdRaw);
