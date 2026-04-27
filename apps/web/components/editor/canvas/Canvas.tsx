@@ -4,6 +4,7 @@ import { Renderer } from "@/components/renderer";
 import { selectCurrentPage, useEditorStore } from "@/lib/editor-state";
 import { useEffect } from "react";
 import { SelectionBreadcrumb } from "./SelectionBreadcrumb";
+import { CanvasDropOverlay } from "./dnd/CanvasDropOverlay";
 import { ResizeHandles } from "./dnd/ResizeHandles";
 
 export function Canvas() {
@@ -61,6 +62,7 @@ export function Canvas() {
         }
       }}
     >
+      {!previewMode ? <CanvasDropOverlay /> : null}
       <div className="mx-auto my-6 w-full max-w-[1280px] rounded-lg border border-zinc-800 bg-white text-zinc-900 shadow-2xl">
         <Renderer
           config={draftConfig}

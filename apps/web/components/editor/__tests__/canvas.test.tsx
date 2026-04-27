@@ -124,4 +124,18 @@ describe("<Canvas>", () => {
     expect(s.leftSidebarMode).toBe("primary");
     expect(s.selectedComponentId).toBeNull();
   });
+
+  it("Task 4.4: renders the open-canvas dotted overlay in edit mode", () => {
+    const { queryByTestId } = render(<Canvas />);
+    // previewMode defaults to false after hydrate — overlay should be present.
+    expect(queryByTestId("canvas-drop-overlay")).toBeInTheDocument();
+  });
+
+  it("Task 4.4: does NOT render the canvas overlay in preview mode", () => {
+    const { queryByTestId } = render(<Canvas />);
+    act(() => {
+      useEditorStore.getState().setPreviewMode(true);
+    });
+    expect(queryByTestId("canvas-drop-overlay")).toBeNull();
+  });
 });
