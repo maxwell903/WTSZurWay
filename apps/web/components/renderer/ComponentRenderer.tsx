@@ -1,6 +1,7 @@
 "use client";
 
 import { BetweenDropZone } from "@/components/editor/canvas/dnd/BetweenDropZone";
+import { EmptyContainerOverlay } from "@/components/editor/canvas/dnd/EmptyContainerOverlay";
 import { getChildrenPolicy } from "@/components/editor/canvas/dnd/dropTargetPolicy";
 import { componentRegistry } from "@/components/site-components/registry";
 import { useRow } from "@/lib/row-context";
@@ -130,8 +131,21 @@ function ComponentRendererInner({
   // first child and below the last (which is otherwise unreachable for
   // the page-root Section because its children fully cover its area).
   // Preview/public renders skip this entirely.
-  let childrenToRender: ReactNode = childElements;
-  if (mode === "edit" && getChildrenPolicy(node.type) === "many") {
+  //
+  // When a container (policy !== "none") has zero children and we are in edit
+  // mode, render `EmptyContainerOverlay` instead so the user sees a clear
+  // "Drop a component here" affordance and a dnd-kit droppable target fills
+  // the container's interior.
+  const policy = getChildrenPolicy(node.type);
+  const childCount = node.children?.length ?? 0;
+  const showEmpty = mode === "edit" && policy !== "none" && childCount === 0;
+
+  let childrenToRender: ReactNode = showEmpty ? (
+    <EmptyContainerOverlay parentId={node.id} />
+  ) : (
+    childElements
+  );
+  if (!showEmpty && mode === "edit" && policy === "many") {
     const orientation: "vertical" | "horizontal" = node.type === "Row" ? "horizontal" : "vertical";
     const elements = childElements ?? [];
     const interleaved: ReactNode[] = [];
