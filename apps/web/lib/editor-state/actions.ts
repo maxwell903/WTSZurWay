@@ -643,10 +643,7 @@ export function applyWrapInFlowGroup(
   side: "left" | "right" | "top" | "bottom",
 ): SiteConfig {
   if (side === "top" || side === "bottom") {
-    fail(
-      "invalid_drop_target",
-      "applyWrapInFlowGroup only handles horizontal sides (left/right).",
-    );
+    fail("invalid_drop_target", "applyWrapInFlowGroup only handles horizontal sides (left/right).");
   }
   for (let i = 0; i < config.pages.length; i++) {
     const page = config.pages[i];
@@ -686,6 +683,26 @@ export function applyWrapInFlowGroup(
   fail("component_not_found", `Component "${targetId}" not found in any page.`);
 }
 
+// Single-step "remove dragged node from its current parent, then wrap it
+// with `targetId` in a FlowGroup on the given side." Implemented as a
+// composition of `applyRemoveComponent` + `applyWrapInFlowGroup` so the
+// caller gets one undo entry (single store transition) for what is
+// logically one user action (drag onto a side overlay).
+export function applyWrapInFlowGroupMove(
+  config: SiteConfig,
+  draggedId: ComponentId,
+  targetId: ComponentId,
+  side: "left" | "right",
+): SiteConfig {
+  // Locate the dragged node BEFORE removing it (we need its full subtree).
+  const draggedNode = findNodeAcrossPages(config, draggedId);
+  if (!draggedNode) {
+    fail("component_not_found", `Component "${draggedId}" not found in any page.`);
+  }
+  const removed = applyRemoveComponent(config, draggedId);
+  return applyWrapInFlowGroup(removed, targetId, draggedNode, side);
+}
+
 // After any tree mutation that could leave a FlowGroup with <=1 children,
 // walk every page's tree and dissolve those wrappers in one pass. Iterates
 // because dissolving one FlowGroup could leave its parent (also a FlowGroup,
@@ -719,10 +736,7 @@ function dissolveStaleFlowGroups(config: SiteConfig): SiteConfig {
 // the wrapper's index. Returns the input unchanged when the FlowGroup has
 // >1 children, isn't a FlowGroup, or doesn't exist — callers can use
 // reference equality to detect "no work done" (structural sharing).
-export function applyDissolveFlowGroup(
-  config: SiteConfig,
-  flowGroupId: ComponentId,
-): SiteConfig {
+export function applyDissolveFlowGroup(config: SiteConfig, flowGroupId: ComponentId): SiteConfig {
   for (let i = 0; i < config.pages.length; i++) {
     const page = config.pages[i];
     if (!page) continue;

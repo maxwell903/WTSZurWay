@@ -22,6 +22,8 @@ import {
   applySetFontFamily,
   applySetPalette,
   applySetSiteName,
+  applyWrapInFlowGroup,
+  applyWrapInFlowGroupMove,
 } from "./actions";
 import type { EditorStore } from "./types";
 
@@ -276,6 +278,23 @@ const creator: StateCreator<EditorStore> = (set) => ({
   setComponentDimensionWithCascade: (id, axis, value) =>
     set((state) => ({
       draftConfig: applyResizeWithCascade(state.draftConfig, id, axis, value),
+      saveState: "dirty",
+    })),
+
+  // Phase 5 Task 5.4 — wrap a new sibling next to an existing target in a FlowGroup.
+  // Selects the new sibling so the user immediately sees what they placed.
+  wrapInFlowGroup: (targetId, newSibling, side) =>
+    set((state) => ({
+      draftConfig: applyWrapInFlowGroup(state.draftConfig, targetId, newSibling, side),
+      selectedComponentId: newSibling.id,
+      saveState: "dirty",
+    })),
+
+  // Phase 5 Task 5.4 — move an existing dragged node to a FlowGroup position next to target.
+  // Does not change selection (the dragged node was already selected before the drag).
+  wrapInFlowGroupMove: (draggedId, targetId, side) =>
+    set((state) => ({
+      draftConfig: applyWrapInFlowGroupMove(state.draftConfig, draggedId, targetId, side),
       saveState: "dirty",
     })),
 });

@@ -22,6 +22,7 @@ import {
   applySetPalette,
   applySetSiteName,
   applyWrapInFlowGroup,
+  applyWrapInFlowGroupMove,
   getMaxAllowedDimension,
 } from "../actions";
 import { EditorActionError } from "../types";
@@ -948,9 +949,7 @@ describe("applyWrapInFlowGroup", () => {
   });
 
   it("inserts on the LEFT side correctly", () => {
-    const config = makeRootWith([
-      { id: "a", type: "Section", props: {}, style: {}, children: [] },
-    ]);
+    const config = makeRootWith([{ id: "a", type: "Section", props: {}, style: {}, children: [] }]);
     const next = applyWrapInFlowGroup(
       config,
       "a",
@@ -986,16 +985,9 @@ describe("applyWrapInFlowGroup", () => {
   });
 
   it("throws for top/bottom (those are vertical neighbours, not FlowGroup wraps)", () => {
-    const config = makeRootWith([
-      { id: "a", type: "Section", props: {}, style: {}, children: [] },
-    ]);
+    const config = makeRootWith([{ id: "a", type: "Section", props: {}, style: {}, children: [] }]);
     expect(() =>
-      applyWrapInFlowGroup(
-        config,
-        "a",
-        { id: "n", type: "Heading", props: {}, style: {} },
-        "top",
-      ),
+      applyWrapInFlowGroup(config, "a", { id: "n", type: "Heading", props: {}, style: {} }, "top"),
     ).toThrow();
   });
 
@@ -1087,6 +1079,62 @@ describe("applyDissolveFlowGroup", () => {
     const config = makeRootWith([{ id: "h", type: "Heading", props: {}, style: {} }]);
     const next = applyDissolveFlowGroup(config, "h");
     expect(next).toBe(config);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 5 Task 5.4 -- applyWrapInFlowGroupMove
+// ---------------------------------------------------------------------------
+
+describe("applyWrapInFlowGroupMove", () => {
+  function makeRootWith(rootChildren: ComponentNode[]): SiteConfig {
+    const base = makeFixtureConfig();
+    const firstPage = base.pages[0];
+    if (!firstPage) throw new Error("fixture missing first page");
+    return {
+      ...base,
+      pages: [
+        {
+          ...firstPage,
+          rootComponent: {
+            id: "cmp_root",
+            type: "Section",
+            props: {},
+            style: {},
+            children: rootChildren,
+          },
+        },
+      ],
+    };
+  }
+
+  it("removes the dragged node from its current parent and wraps it with the target on the right", () => {
+    const config = makeRootWith([
+      { id: "a", type: "Section", props: {}, style: {}, children: [] },
+      { id: "b", type: "Section", props: {}, style: {}, children: [] },
+    ]);
+    const next = applyWrapInFlowGroupMove(config, "b", "a", "right");
+    const root = next.pages[0]?.rootComponent;
+    // Root contains ONLY the FlowGroup now (b removed from its old position).
+    expect(root?.children).toHaveLength(1);
+    const fg = root?.children?.[0];
+    expect(fg?.type).toBe("FlowGroup");
+    expect(fg?.children?.map((c: ComponentNode) => c.id)).toEqual(["a", "b"]);
+  });
+
+  it("LEFT places the dragged node BEFORE the target", () => {
+    const config = makeRootWith([
+      { id: "a", type: "Section", props: {}, style: {}, children: [] },
+      { id: "b", type: "Section", props: {}, style: {}, children: [] },
+    ]);
+    const next = applyWrapInFlowGroupMove(config, "b", "a", "left");
+    const fg = next.pages[0]?.rootComponent.children?.[0];
+    expect(fg?.children?.map((c: ComponentNode) => c.id)).toEqual(["b", "a"]);
+  });
+
+  it("throws when the dragged node does not exist", () => {
+    const config = makeRootWith([{ id: "a", type: "Section", props: {}, style: {}, children: [] }]);
+    expect(() => applyWrapInFlowGroupMove(config, "missing", "a", "right")).toThrow();
   });
 });
 

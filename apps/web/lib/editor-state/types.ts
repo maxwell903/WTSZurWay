@@ -111,6 +111,17 @@ export type EditorActions = {
     axis: "width" | "height",
     value: string,
   ) => void;
+  // Phase 5 Task 5.4 — FlowGroup wrap (add new sibling) and wrap-move (drag existing node).
+  wrapInFlowGroup: (
+    targetId: ComponentId,
+    newSibling: ComponentNode,
+    side: "left" | "right",
+  ) => void;
+  wrapInFlowGroupMove: (
+    draggedId: ComponentId,
+    targetId: ComponentId,
+    side: "left" | "right",
+  ) => void;
   markSaving: () => void;
   markSaved: (at: number) => void;
   markError: (message: string) => void;

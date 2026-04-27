@@ -494,6 +494,56 @@ describe("editor store -- Sprint 7 dnd action wrappers", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Phase 5 Task 5.4 -- wrapInFlowGroup and wrapInFlowGroupMove store actions
+// ---------------------------------------------------------------------------
+
+describe("wrapInFlowGroup store action (Task 5.4)", () => {
+  it("flips dirty AND selects the new sibling", () => {
+    __resetEditorStoreForTests();
+    const initialConfig: SiteConfig = {
+      meta: { siteName: "Test", siteSlug: "test" },
+      brand: { palette: "ocean", fontFamily: "Inter" },
+      global: {
+        navBar: { links: [], logoPlacement: "left", sticky: false },
+        footer: { columns: [], copyright: "" },
+      },
+      pages: [
+        {
+          id: "p_home",
+          slug: "home",
+          name: "Home",
+          kind: "static" as const,
+          rootComponent: {
+            id: "cmp_root",
+            type: "Section" as const,
+            props: {},
+            style: {},
+            children: [{ id: "a", type: "Section" as const, props: {}, style: {}, children: [] }],
+          },
+        },
+      ],
+      forms: [],
+    };
+    useEditorStore.getState().hydrate({
+      siteId: "s",
+      siteSlug: "x",
+      workingVersionId: "v",
+      initialConfig,
+    });
+
+    const newSibling = { id: "n", type: "Heading" as const, props: {}, style: {} };
+    useEditorStore.getState().wrapInFlowGroup("a", newSibling, "right");
+
+    const state = useEditorStore.getState();
+    expect(state.saveState).toBe("dirty");
+    expect(state.selectedComponentId).toBe("n");
+    const fg = state.draftConfig.pages[0]?.rootComponent.children?.[0];
+    expect(fg?.type).toBe("FlowGroup");
+    expect(fg?.children?.map((c) => c.id)).toEqual(["a", "n"]);
+  });
+});
+
 // Sprint 11 — AI Edit Accept folds the proposed Operation[] into draftConfig.
 describe("editor store -- Sprint 11 commitAiEditOperations", () => {
   beforeEach(() => {
