@@ -53,9 +53,7 @@ describe("<Section>", () => {
 
 describe("Section flex-on-explicit-width (UX rework)", () => {
   it("renders block layout when no child has an explicit width", () => {
-    const node = makeSection([
-      { id: "h", type: "Heading", props: {}, style: {} },
-    ]);
+    const node = makeSection([{ id: "h", type: "Heading", props: {}, style: {} }]);
     const { container } = render(
       <Section node={node} cssStyle={{}}>
         <span data-testid="child">child</span>
