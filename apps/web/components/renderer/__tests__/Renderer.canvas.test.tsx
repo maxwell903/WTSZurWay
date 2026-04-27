@@ -66,7 +66,7 @@ describe("Renderer canvas wrapping", () => {
     expect(canvas.style.paddingBlock).toContain(`${CANVAS_DEFAULTS.verticalPadding.top}px`);
   });
 
-  it("contains the entire page tree (NavBar, Heading, Footer) inside [data-canvas] — full-bleed comes from CSS, not DOM partition", () => {
+  it("contains the entire page tree (root Section, NavBar, Footer) inside [data-canvas] — DOM is unchanged, no partitioning", () => {
     const config = makeConfig([
       navBarNode("nav"),
       headingNode("h", "Body"),
@@ -75,7 +75,9 @@ describe("Renderer canvas wrapping", () => {
     const { container } = render(<Renderer config={config} page="home" mode="preview" />);
     const canvas = container.querySelector("[data-canvas]");
     expect(canvas).not.toBeNull();
-    // All three component types live inside the canvas in the DOM.
+    // All three component types live inside the canvas in the DOM. NavBar
+    // and Footer are constrained to canvas max-width along with everything
+    // else — the canvas is purely additive, not partitioning.
     expect(canvas?.querySelector('[data-component-type="NavBar"]')).not.toBeNull();
     expect(canvas?.querySelector('[data-component-type="Footer"]')).not.toBeNull();
     // The root Section is rendered through ComponentRenderer normally — its

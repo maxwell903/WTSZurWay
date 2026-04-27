@@ -51,14 +51,16 @@ export function Renderer({
   );
 
   // Site-wide canvas: pageBackground sits behind everything, the canvas div
-  // (max-width, margin-auto, padding) wraps the rendered tree. NavBar /
-  // Footer instances inside the tree escape the canvas's max-width via a
-  // CSS rule in globals.css (the `margin-inline: calc(50% - 50vw)` trick),
-  // which keeps the rendered tree's DOM unchanged so EditModeWrapper,
-  // BetweenDropZone, and the root Section's own style continue to work.
+  // (max-width, margin-auto, padding) wraps the entire rendered tree. The
+  // tree's DOM is unchanged (no partition), so EditModeWrapper,
+  // BetweenDropZone, sticky NavBars, and the root Section's own style all
+  // continue to work. NavBar/Footer are constrained to the canvas's
+  // max-width — making them visually full-bleed would require hoisting them
+  // out of the rootComponent tree, which is currently not how they're
+  // stored (they live as direct children of the page rootComponent).
   const canvas = resolveCanvas(config.global.canvas);
   const pageStyle: CSSProperties = {
-    minHeight: "100%",
+    minHeight: "100vh",
     background: backgroundToCss(canvas.pageBackground),
   };
   const canvasStyle: CSSProperties = {

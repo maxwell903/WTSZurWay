@@ -10,19 +10,3 @@
 @theme {
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 }
-
-/*
- * Site canvas: the rendered page tree sits inside [data-canvas], which has a
- * configurable max-width set inline. NavBar and Footer instances inside the
- * canvas escape the max-width by spanning the full viewport. Uses the
- * standard `margin-inline: calc(50% - 50vw); width: 100vw` trick. The "+ *"
- * step accommodates EditModeWrapper, which wraps every component in a
- * data-edit-id div in edit mode — the wrapper passes the layout through to
- * the NavBar/Footer inside it.
- */
-[data-canvas] [data-component-type="NavBar"],
-[data-canvas] [data-component-type="Footer"] {
-  width: 100vw;
-  max-width: 100vw;
-  margin-inline: calc(50% - 50vw);
-}
