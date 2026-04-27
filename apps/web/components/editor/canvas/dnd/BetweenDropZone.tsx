@@ -8,11 +8,12 @@
 // (2) the user can insert a palette item at a chosen position instead of
 // always appending; (3) cross-parent moves can land at a specific index.
 //
-// The zone has a small idle height/width so the user sees a visible gap
-// between top-level components in edit mode (per the user's request). The
-// gap expands while a drag is active so it is easier to hit. Preview/
-// public renders skip this component entirely (ComponentRenderer only
-// emits between-zones when `mode === "edit"`).
+// Phase 4 (Task 4.1): zones are always visible as a dotted-grey border at
+// idle so the user has a clear spatial affordance in edit mode even before
+// starting a drag. The inner pill overlay is removed — the outer div now
+// carries the full visual: idle = dotted zinc, hover-acceptable = blue,
+// hover-invalid = red. Preview/public renders skip this component entirely
+// (ComponentRenderer only emits between-zones when `mode === "edit"`).
 
 import { cn } from "@/lib/utils";
 import { useDroppable } from "@dnd-kit/core";
@@ -30,7 +31,10 @@ export function BetweenDropZone({ parentId, index, orientation = "vertical" }: P
   const { setNodeRef, isOver } = useDroppable({ id });
   const { activeId, isAcceptable, overId } = useDragState();
   const dragInProgress = activeId !== null;
-  const acceptable = isOver && isAcceptable && overId === id;
+  // `acceptable` is derived from context state alone so it is deterministic in
+  // tests and SSR — dnd-kit's `isOver` only becomes true during live pointer
+  // events, which makes it unreliable for data-attribute assertions in jsdom.
+  const acceptable = isAcceptable && overId === id;
 
   if (orientation === "horizontal") {
     return (
@@ -40,19 +44,13 @@ export function BetweenDropZone({ parentId, index, orientation = "vertical" }: P
         data-between-id={id}
         data-acceptable={acceptable ? "true" : undefined}
         className={cn(
-          "relative shrink-0 self-stretch transition-all duration-100",
-          dragInProgress ? "w-6" : "w-1",
+          "relative shrink-0 self-stretch rounded-sm border border-dashed transition-all duration-100",
+          "w-4 border-zinc-400/40 bg-zinc-400/10",
+          dragInProgress && "w-6",
+          acceptable && "border-blue-500/60 bg-blue-500/15",
+          isOver && !acceptable && "border-red-500/60 bg-red-500/15",
         )}
-      >
-        {dragInProgress ? (
-          <div
-            className={cn(
-              "pointer-events-none absolute inset-y-1 left-1/2 w-1 -translate-x-1/2 rounded-full transition-colors",
-              acceptable ? "bg-blue-500" : isOver ? "bg-zinc-500/60" : "bg-blue-300/30",
-            )}
-          />
-        ) : null}
-      </div>
+      />
     );
   }
 
@@ -62,16 +60,15 @@ export function BetweenDropZone({ parentId, index, orientation = "vertical" }: P
       data-testid={`between-dropzone-${parentId}-${index}`}
       data-between-id={id}
       data-acceptable={acceptable ? "true" : undefined}
-      className={cn("relative w-full transition-all duration-100", dragInProgress ? "h-6" : "h-2")}
-    >
-      {dragInProgress ? (
-        <div
-          className={cn(
-            "pointer-events-none absolute inset-x-2 top-1/2 h-1 -translate-y-1/2 rounded-full transition-colors",
-            acceptable ? "bg-blue-500" : isOver ? "bg-zinc-500/60" : "bg-blue-300/30",
-          )}
-        />
-      ) : null}
-    </div>
+      className={cn(
+        "relative w-full rounded-sm border border-dashed transition-all duration-100",
+        // Always-visible dotted-grey idle, doubled height (h-4 vs old h-2).
+        "h-4 border-zinc-400/40 bg-zinc-400/10",
+        // Drag-active expands and tints. Acceptable = blue, invalid = red.
+        dragInProgress && "h-6",
+        acceptable && "border-blue-500/60 bg-blue-500/15",
+        isOver && !acceptable && "border-red-500/60 bg-red-500/15",
+      )}
+    />
   );
 }
