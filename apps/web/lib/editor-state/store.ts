@@ -54,6 +54,8 @@ const creator: StateCreator<EditorStore> = (set) => ({
   saveState: "idle",
   lastSavedAt: null,
   saveError: null,
+  // Phase 6 Task 6.1 — transient; defaults ON each editor load (no persistence).
+  showComponentTypes: true,
 
   // -------- non-mutating actions --------
   hydrate: (input) =>
@@ -297,6 +299,10 @@ const creator: StateCreator<EditorStore> = (set) => ({
       draftConfig: applyWrapInFlowGroupMove(state.draftConfig, draggedId, targetId, side),
       saveState: "dirty",
     })),
+
+  // Phase 6 Task 6.1 — flip the canvas-wide component type overlay (transient, not persisted).
+  toggleShowComponentTypes: () =>
+    set((state) => ({ showComponentTypes: !state.showComponentTypes })),
 });
 
 // Sprint 6: zustand devtools middleware was deferred -- the conditional-wrap
@@ -323,6 +329,7 @@ export function __resetEditorStoreForTests(): void {
     saveState: "idle",
     lastSavedAt: null,
     saveError: null,
+    showComponentTypes: true,
   });
 }
 

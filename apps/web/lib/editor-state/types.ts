@@ -65,6 +65,8 @@ export type EditorState = {
   saveState: SaveState;
   lastSavedAt: number | null;
   saveError: string | null;
+  // Phase 6 Task 6.1 — transient toggle, defaults ON each editor load (no persistence).
+  showComponentTypes: boolean;
 };
 
 export type EditorActions = {
@@ -125,6 +127,8 @@ export type EditorActions = {
   markSaving: () => void;
   markSaved: (at: number) => void;
   markError: (message: string) => void;
+  // Phase 6 Task 6.1 — toggle the canvas-wide component type overlay.
+  toggleShowComponentTypes: () => void;
 };
 
 export type EditorStore = EditorState & EditorActions;

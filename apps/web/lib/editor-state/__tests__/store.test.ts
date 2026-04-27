@@ -599,3 +599,22 @@ describe("editor store -- Sprint 11 commitAiEditOperations", () => {
     expect(useEditorStore.getState().saveState).toBe("dirty");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 6 Task 6.1 -- showComponentTypes toggle
+// ---------------------------------------------------------------------------
+
+describe("showComponentTypes toggle (Task 6.1)", () => {
+  it("defaults to true", () => {
+    __resetEditorStoreForTests();
+    expect(useEditorStore.getState().showComponentTypes).toBe(true);
+  });
+
+  it("toggles between true and false", () => {
+    __resetEditorStoreForTests();
+    useEditorStore.getState().toggleShowComponentTypes();
+    expect(useEditorStore.getState().showComponentTypes).toBe(false);
+    useEditorStore.getState().toggleShowComponentTypes();
+    expect(useEditorStore.getState().showComponentTypes).toBe(true);
+  });
+});
