@@ -287,4 +287,85 @@ describe("<DndCanvasProvider>", () => {
     captured.onDragEnd?.(dragEnd("palette:Heading", null));
     expect(useEditorStore.getState().draftConfig).toBe(before);
   });
+
+  describe("dropzone:<parentId> drop intent (Task 4.3 follow-up)", () => {
+    it("palette drop on an empty Section's overlay appends a new child", () => {
+      render(
+        <DndCanvasProvider>
+          <div />
+        </DndCanvasProvider>,
+      );
+      // cmp_secB is an empty Section — its empty-container overlay registers as dropzone:cmp_secB
+      captured.onDragEnd?.(dragEnd("palette:Heading", "dropzone:cmp_secB"));
+
+      const secB = findById(getRoot(), "cmp_secB");
+      expect(secB?.children?.length).toBe(1);
+      expect(secB?.children?.[0]?.type).toBe("Heading");
+      expect(useEditorStore.getState().saveState).toBe("dirty");
+    });
+
+    it("node drop on a Section's overlay moves the dragged node into the section", () => {
+      render(
+        <DndCanvasProvider>
+          <div />
+        </DndCanvasProvider>,
+      );
+      // Drag cmp_h1 (currently in cmp_secA) onto dropzone:cmp_secB
+      captured.onDragEnd?.(dragEnd("node:cmp_h1", "dropzone:cmp_secB"));
+
+      const secA = findById(getRoot(), "cmp_secA");
+      const secB = findById(getRoot(), "cmp_secB");
+      expect(secA?.children?.map((c) => c.id)).toEqual(["cmp_h2"]);
+      expect(secB?.children?.map((c) => c.id)).toEqual(["cmp_h1"]);
+      expect(useEditorStore.getState().saveState).toBe("dirty");
+    });
+
+    it("palette drop onto a dropzone that rejects the type is rejected", () => {
+      render(
+        <DndCanvasProvider>
+          <div />
+        </DndCanvasProvider>,
+      );
+      // cmp_repB is a Repeater with one child (occupied), rejects further children
+      const before = useEditorStore.getState().draftConfig;
+      captured.onDragEnd?.(dragEnd("palette:PropertyCard", "dropzone:cmp_repB"));
+      expect(useEditorStore.getState().draftConfig).toBe(before);
+    });
+
+    it("self-drop on own dropzone is rejected", () => {
+      render(
+        <DndCanvasProvider>
+          <div />
+        </DndCanvasProvider>,
+      );
+      const before = useEditorStore.getState().draftConfig;
+      // Drag cmp_secA onto its own dropzone — should be a no-op
+      captured.onDragEnd?.(dragEnd("node:cmp_secA", "dropzone:cmp_secA"));
+      expect(useEditorStore.getState().draftConfig).toBe(before);
+    });
+
+    it("descendant drop onto ancestor's dropzone is rejected (cycle guard)", () => {
+      render(
+        <DndCanvasProvider>
+          <div />
+        </DndCanvasProvider>,
+      );
+      const before = useEditorStore.getState().draftConfig;
+      // Drag cmp_h1 (child of cmp_secA) onto dropzone:cmp_h1's own sub-node won't form cycle,
+      // but dragging cmp_secA onto dropzone:cmp_h1 would try to move a parent into its child.
+      // We test: drag cmp_secA onto dropzone:cmp_h1 — isInSubtree(cmp_secA, cmp_h1.id)? No.
+      // More direct cycle: drag cmp_root (ancestor) onto dropzone:cmp_secA's child.
+      // Actually: drag cmp_secA onto dropzone:cmp_h1 — cmp_h1 is inside cmp_secA,
+      // so isInSubtree(draggedNode=cmp_secA, dropzoneParentId=cmp_h1) → false.
+      // The cycle case: drag cmp_secA onto dropzone of its own child cmp_h1 — cmp_h1
+      // is a child of cmp_secA, but we're moving cmp_secA INTO cmp_h1 which is a leaf; it
+      // would fail canAcceptChild (Heading doesn't accept children).
+      // To test the isInSubtree guard: drag cmp_h1 onto dropzone:cmp_root — but cmp_root
+      // accepts all. Better: drag cmp_secA onto dropzone:cmp_secA (self-drop, already covered).
+      // Real descendant cycle: drag cmp_root onto dropzone of one of cmp_root's descendants.
+      // isInSubtree(root=cmp_root, id=cmp_secA) → true → rejected.
+      captured.onDragEnd?.(dragEnd("node:cmp_root", "dropzone:cmp_secA"));
+      expect(useEditorStore.getState().draftConfig).toBe(before);
+    });
+  });
 });

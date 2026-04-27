@@ -39,7 +39,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import { DragStateProvider, type DragStateValue } from "./DropZoneIndicator";
 import { SortableProviderActive } from "./SortableNodeContext";
 import { createDefaultNode } from "./createDefaultNode";
-import { nodeId, parseBetweenId, parseNodeId, parsePaletteId } from "./dnd-ids";
+import { nodeId, parseBetweenId, parseDropZoneId, parseNodeId, parsePaletteId } from "./dnd-ids";
 import { canAcceptChild } from "./dropTargetPolicy";
 
 // dev-only diagnostic helper. Sprint 7 CLAUDE.md permits a single
@@ -128,6 +128,25 @@ function DndCanvasProviderInner({ children }: { children: ReactNode }) {
   function determineAcceptable(activeIdRaw: string, overIdRaw: string | null): boolean {
     if (!overIdRaw || !currentPage) return false;
 
+    // Dropzone target: the empty-container overlay registered by EmptyContainerOverlay.
+    const dropzoneParentId = parseDropZoneId(overIdRaw);
+    if (dropzoneParentId) {
+      const parentNode = findNodeInTree(currentPage.rootComponent, dropzoneParentId);
+      if (!parentNode) return false;
+
+      const paletteType = parsePaletteId(activeIdRaw);
+      if (paletteType) {
+        return canAcceptChild(parentNode, paletteType);
+      }
+      const draggedId = parseNodeId(activeIdRaw);
+      if (!draggedId) return false;
+      if (draggedId === dropzoneParentId) return false; // self-drop
+      const draggedNode = findNodeInTree(currentPage.rootComponent, draggedId);
+      if (!draggedNode) return false;
+      if (isInSubtree(draggedNode, dropzoneParentId)) return false; // descendant cycle
+      return canAcceptChild(parentNode, draggedNode.type);
+    }
+
     // Between-zone target: the gap-droppable rendered between siblings.
     const between = parseBetweenId(overIdRaw);
     if (between) {
@@ -196,6 +215,59 @@ function DndCanvasProviderInner({ children }: { children: ReactNode }) {
 
     const activeIdRaw = String(active.id);
     const overIdRaw = String(over.id);
+
+    // ============ dropzone target (empty-container overlay, append) ============
+    const dropzoneParentId = parseDropZoneId(overIdRaw);
+    if (dropzoneParentId) {
+      const parentNode = findNodeInTree(currentPage.rootComponent, dropzoneParentId);
+      if (!parentNode) return;
+
+      const paletteType = parsePaletteId(activeIdRaw);
+      if (paletteType) {
+        if (!canAcceptChild(parentNode, paletteType)) {
+          devWarn(
+            "[dropzone] palette drop rejected:",
+            parentNode.type,
+            "cannot accept",
+            paletteType,
+          );
+          return;
+        }
+        const appendIndex = (parentNode.children ?? []).length;
+        try {
+          addComponentChild(parentNode.id, appendIndex, createDefaultNode(paletteType));
+        } catch (err) {
+          devWarn("[dropzone] addComponentChild rejected at apply time:", err);
+        }
+        return;
+      }
+
+      const draggedId = parseNodeId(activeIdRaw);
+      if (!draggedId) return;
+      const draggedNode = findNodeInTree(currentPage.rootComponent, draggedId);
+      if (!draggedNode) return;
+      if (draggedId === dropzoneParentId) return; // self-drop
+      if (isInSubtree(draggedNode, dropzoneParentId)) {
+        devWarn("[dropzone] node drop rejected: cannot move into self/descendant");
+        return;
+      }
+      if (!canAcceptChild(parentNode, draggedNode.type)) {
+        devWarn(
+          "[dropzone] node drop rejected:",
+          parentNode.type,
+          "cannot accept",
+          draggedNode.type,
+        );
+        return;
+      }
+      const appendIndex = (parentNode.children ?? []).length;
+      try {
+        moveComponent(draggedId, parentNode.id, appendIndex);
+      } catch (err) {
+        devWarn("[dropzone] moveComponent rejected at apply time:", err);
+      }
+      return;
+    }
 
     // ============ between-zone target (insert/move at named index) ============
     const between = parseBetweenId(overIdRaw);
