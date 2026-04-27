@@ -537,6 +537,47 @@ export function applySetComponentDimension(
 // Phase 3 Task 3.1 -- read helper for x-axis resize drag math
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Phase 3 Task 3.2 -- cascade write helper for x-axis resize
+// ---------------------------------------------------------------------------
+
+function parsePx(value: string | undefined): number | null {
+  if (!value) return null;
+  const m = value.match(/^(\d+(?:\.\d+)?)\s*px$/);
+  return m && m[1] ? Number.parseFloat(m[1]) : null;
+}
+
+// Walks the direct children of `node` and clamps any px-width child that now
+// overflows the new parent boundary. Only direct children are touched: deeper
+// descendants are containers whose percent widths re-flow via CSS naturally.
+function clampChildWidthsToPx(node: ComponentNode, parentPx: number): ComponentNode {
+  if (!node.children || node.children.length === 0) return node;
+  const nextChildren = node.children.map((child) => {
+    const childPx = parsePx(child.style.width);
+    if (childPx !== null && childPx > parentPx) {
+      return { ...child, style: { ...child.style, width: `${parentPx}px` } };
+    }
+    return child;
+  });
+  return { ...node, children: nextChildren };
+}
+
+export function applyResizeWithCascade(
+  config: SiteConfig,
+  id: ComponentId,
+  axis: "width" | "height",
+  value: string,
+): SiteConfig {
+  return applyMapToConfig(config, id, (node) => {
+    const next: ComponentNode = { ...node, style: { ...node.style, [axis]: value } };
+    if (axis !== "width") return next;
+    const newPx = parsePx(value);
+    // % parent — children's percent widths re-flow via CSS, no JSON clamping needed.
+    if (newPx === null) return next;
+    return clampChildWidthsToPx(next, newPx);
+  });
+}
+
 function parsePercent(value: string | undefined): number | null {
   if (!value) return null;
   const m = value.match(/^(\d+(?:\.\d+)?)\s*%$/);

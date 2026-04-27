@@ -9,6 +9,7 @@ import {
   applyRenamePage,
   applyReorderChildren,
   applyReorderPages,
+  applyResizeWithCascade,
   applySetComponentAnimation,
   applySetComponentDataBinding,
   applySetComponentDimension,
@@ -812,5 +813,93 @@ describe("getMaxAllowedDimension", () => {
       { id: "h1", type: "Heading", props: {}, style: {} },
     ]);
     expect(getMaxAllowedDimension(config, "h1", "height")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 Task 3.2 -- applyResizeWithCascade write helper
+// ---------------------------------------------------------------------------
+
+describe("applyResizeWithCascade", () => {
+  // Builds: root Section > "p" Section (style.width = parentWidth) > children
+  function makeWithParent(parentChildren: ComponentNode[], parentWidth: string): SiteConfig {
+    const base = makeFixtureConfig();
+    return {
+      ...base,
+      pages: [
+        {
+          ...base.pages[0]!,
+          rootComponent: {
+            id: "cmp_root",
+            type: "Section",
+            props: {},
+            style: {},
+            children: [
+              {
+                id: "p",
+                type: "Section",
+                props: {},
+                style: { width: parentWidth },
+                children: parentChildren,
+              },
+            ],
+          },
+        },
+      ],
+    };
+  }
+
+  it("proportionally rescales 60/40 % siblings when parent shrinks (no JSON change for % children)", () => {
+    const config = makeWithParent(
+      [
+        { id: "a", type: "Section", props: {}, style: { width: "60%" }, children: [] },
+        { id: "b", type: "Section", props: {}, style: { width: "40%" }, children: [] },
+      ],
+      "600px",
+    );
+    const next = applyResizeWithCascade(config, "p", "width", "400px");
+    const root = next.pages[0]!.rootComponent;
+    const p = root.children![0]!;
+    const a = p.children![0]!;
+    const b = p.children![1]!;
+    expect(p.style.width).toBe("400px");
+    expect(a.style.width).toBe("60%");
+    expect(b.style.width).toBe("40%");
+  });
+
+  it("clamps an oversized px-leaf child to the new parent width", () => {
+    const config = makeWithParent(
+      [{ id: "h", type: "Heading", props: {}, style: { width: "500px" } }],
+      "600px",
+    );
+    const next = applyResizeWithCascade(config, "p", "width", "400px");
+    const p = next.pages[0]!.rootComponent.children![0]!;
+    const h = p.children![0]!;
+    expect(p.style.width).toBe("400px");
+    expect(h.style.width).toBe("400px");
+  });
+
+  it("is a no-op when the parent grows", () => {
+    const config = makeWithParent(
+      [{ id: "h", type: "Heading", props: {}, style: { width: "200px" } }],
+      "400px",
+    );
+    const next = applyResizeWithCascade(config, "p", "width", "800px");
+    const p = next.pages[0]!.rootComponent.children![0]!;
+    const h = p.children![0]!;
+    expect(p.style.width).toBe("800px");
+    expect(h.style.width).toBe("200px");
+  });
+
+  it("is a no-op for children when the parent's new width is a percent (no px math possible)", () => {
+    const config = makeWithParent(
+      [{ id: "h", type: "Heading", props: {}, style: { width: "500px" } }],
+      "600px",
+    );
+    const next = applyResizeWithCascade(config, "p", "width", "50%");
+    const p = next.pages[0]!.rootComponent.children![0]!;
+    const h = p.children![0]!;
+    expect(p.style.width).toBe("50%");
+    expect(h.style.width).toBe("500px");
   });
 });
