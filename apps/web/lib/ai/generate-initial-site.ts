@@ -38,7 +38,11 @@ import {
   newComponentId,
   safeParseSiteConfig,
 } from "@/lib/site-config";
-import { applyAutoPopulatedNavLinks, buildAutoPopulatedNavLinks } from "@/lib/site-config/ops";
+import {
+  applyAutoPopulatedNavLinks,
+  buildAutoPopulatedNavLinks,
+  replicateLockedNavBarToAllPages,
+} from "@/lib/site-config/ops";
 import { createServiceSupabaseClient } from "@/lib/supabase";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { ImageBlockParam, MessageParam } from "@anthropic-ai/sdk/resources/messages";
@@ -218,7 +222,8 @@ function ensureLockedNavBarOnHome(config: SiteConfig): SiteConfig {
       next = { ...next, pages: nextPages };
     }
   }
-  return applyAutoPopulatedNavLinks(next);
+  next = applyAutoPopulatedNavLinks(next);
+  return replicateLockedNavBarToAllPages(next);
 }
 
 function containsNavBarAnywhere(config: SiteConfig): boolean {

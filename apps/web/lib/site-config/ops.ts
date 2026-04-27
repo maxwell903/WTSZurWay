@@ -1486,6 +1486,44 @@ export function applyAutoPopulatedNavLinks(config: SiteConfig): SiteConfig {
   }));
 }
 
+// "Lock across all pages" semantic: when the global lock is on, every page
+// must carry an identical NavBar at the top of its tree. This helper
+// finds the canonical NavBar (first-encountered, declaration order,
+// depth-first) and prepends a fresh copy onto any page that lacks one.
+// Pages that already contain a NavBar somewhere in their tree are left
+// alone — `syncLockedNavBars` keeps their content in sync separately.
+// No-op when the lock is off or when no NavBar exists anywhere.
+export function replicateLockedNavBarToAllPages(config: SiteConfig): SiteConfig {
+  if (!isGlobalNavBarLocked(config)) return config;
+  let canonical: ComponentNode | null = null;
+  for (const page of config.pages) {
+    canonical = findFirstNavBar(page.rootComponent);
+    if (canonical) break;
+  }
+  if (!canonical) return config;
+  const sourceProps = canonical.props;
+  const sourceStyle = canonical.style;
+  const sourceAnimation = canonical.animation;
+  let changed = false;
+  const nextPages = config.pages.map((page) => {
+    if (subtreeContainsType(page.rootComponent, "NavBar")) return page;
+    const copy: ComponentNode = {
+      id: newComponentId("cmp"),
+      type: "NavBar",
+      props: { ...sourceProps, overrideShared: false },
+      style: sourceStyle,
+      animation: sourceAnimation,
+    };
+    const root = page.rootComponent;
+    changed = true;
+    return {
+      ...page,
+      rootComponent: { ...root, children: [copy, ...(root.children ?? [])] },
+    };
+  });
+  return changed ? { ...config, pages: nextPages } : config;
+}
+
 // ---------------------------------------------------------------------------
 // Locked NavBar replication (Sprint 13)
 // ---------------------------------------------------------------------------
@@ -1605,7 +1643,10 @@ export function applyGlobalNavBarLocked(config: SiteConfig, value: boolean): Sit
     canonical = anyNavBar;
   }
   if (!canonical) return next;
-  return syncLockedNavBars(next, canonical.id);
+  // Sync content across existing NavBars, then ensure every page actually
+  // has one — flipping the lock ON should make the navbar present on every
+  // page, not just on the pages that already had one.
+  return replicateLockedNavBarToAllPages(syncLockedNavBars(next, canonical.id));
 }
 
 function findLockableInSubtree(node: ComponentNode): ComponentNode | null {

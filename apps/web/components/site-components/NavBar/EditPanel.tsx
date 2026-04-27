@@ -60,7 +60,7 @@ export function NavBarEditPanel({ node }: NavBarEditPanelProps) {
       <div className="space-y-2 rounded-md border border-zinc-800 bg-zinc-900/40 p-2">
         <SwitchInput
           id="navbar-global-locked"
-          label="Lock all content, sizing and formatting across all pages"
+          label="Lock across all pages"
           value={globalLocked}
           testId="navbar-global-locked"
           onChange={(next) => setGlobalNavBarLocked(next)}

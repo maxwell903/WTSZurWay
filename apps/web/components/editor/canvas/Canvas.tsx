@@ -48,25 +48,26 @@ export function Canvas() {
   // useEffect above. We add an onKeyDown that mirrors the click for
   // Space/Enter to satisfy a11y/useKeyWithClickEvents.
   //
-  // Preview-mode click interception (PROJECT_SPEC.md §8.11): a delegated
-  // handler walks up from the click target to find an <a> element. If it
-  // carries `data-internal-page-slug`, swap the canvas page via
-  // `setCurrentPageSlug` instead of letting the browser navigate (which
-  // would leave the editor entirely). External http(s) URLs open in a new
-  // tab so the user keeps their place in the editor.
+  // Anchor-click interception: a delegated handler walks up from the
+  // click target to find an <a> element. Internal-page-slug links always
+  // swap the canvas page (in both edit and preview modes) so clicking a
+  // NavBar label never navigates the browser away from the editor.
+  // External http(s) links only open in a new tab while in preview mode;
+  // in edit mode they're prevented (a click does nothing) so the editor
+  // stays put.
   return (
     <main
       data-testid="editor-canvas"
       className="relative flex-1 overflow-y-auto bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.04)_1px,transparent_0)] [background-size:16px_16px]"
       onClick={(e) => {
-        if (previewMode) {
-          const outcome = handlePreviewLinkClick(e.target, {
-            preventDefault: () => e.preventDefault(),
-            setCurrentPageSlug,
-            openExternal: (href) => window.open(href, "_blank", "noopener,noreferrer"),
-          });
-          if (outcome === "internal" || outcome === "external") return;
-        }
+        const outcome = handlePreviewLinkClick(e.target, {
+          preventDefault: () => e.preventDefault(),
+          setCurrentPageSlug,
+          openExternal: (href) => {
+            if (previewMode) window.open(href, "_blank", "noopener,noreferrer");
+          },
+        });
+        if (outcome === "internal" || outcome === "external") return;
         if (e.target === e.currentTarget) {
           selectComponent(null);
         }

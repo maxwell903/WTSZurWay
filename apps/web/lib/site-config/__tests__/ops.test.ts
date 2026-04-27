@@ -13,6 +13,7 @@ import {
   findLockedNavBar,
   isFirstNavBar,
   isGlobalNavBarLocked,
+  replicateLockedNavBarToAllPages,
   syncLockedNavBars,
 } from "@/lib/site-config/ops";
 import { describe, expect, it } from "vitest";
@@ -1125,6 +1126,110 @@ describe("isFirstNavBar / buildAutoPopulatedNavLinks", () => {
     const next = applyAutoPopulatedNavLinks(config);
     expect(next).toBe(config);
   });
+
+  it("replicateLockedNavBarToAllPages copies the canonical NavBar onto every page that lacks one", () => {
+    const config = makeConfigWith({
+      home: {
+        id: "s_home",
+        type: "Section",
+        props: {},
+        style: {},
+        children: [
+          {
+            id: "nav_canonical",
+            type: "NavBar",
+            props: {
+              links: [{ kind: "page", pageSlug: "home", label: "Home" }],
+              logoPlacement: "center",
+              sticky: true,
+            },
+            style: { background: "blue" },
+          },
+        ],
+      },
+      about: emptySection("s_about"),
+      contact: emptySection("s_contact"),
+    });
+    const next = replicateLockedNavBarToAllPages(config);
+    // Home is unchanged (already had a NavBar).
+    expect(next.pages[0]?.rootComponent.children?.[0]?.id).toBe("nav_canonical");
+    // About and contact each get a NavBar prepended with the same content.
+    const aboutNav = next.pages[1]?.rootComponent.children?.[0];
+    const contactNav = next.pages[2]?.rootComponent.children?.[0];
+    expect(aboutNav?.type).toBe("NavBar");
+    expect(contactNav?.type).toBe("NavBar");
+    // New copies get fresh ids — required for tree uniqueness.
+    expect(aboutNav?.id).not.toBe("nav_canonical");
+    expect(contactNav?.id).not.toBe("nav_canonical");
+    expect(aboutNav?.id).not.toBe(contactNav?.id);
+    // Props/style match the canonical and overrideShared is reset to false.
+    expect(aboutNav?.props.logoPlacement).toBe("center");
+    expect(aboutNav?.props.sticky).toBe(true);
+    expect(aboutNav?.props.overrideShared).toBe(false);
+    expect(aboutNav?.style).toEqual({ background: "blue" });
+  });
+
+  it("replicateLockedNavBarToAllPages is a no-op when the global lock is off", () => {
+    const baseConfig = makeConfigWith({
+      home: {
+        id: "s_home",
+        type: "Section",
+        props: {},
+        style: {},
+        children: [
+          {
+            id: "nav1",
+            type: "NavBar",
+            props: { links: [], logoPlacement: "left" },
+            style: {},
+          },
+        ],
+      },
+      about: emptySection("s_about"),
+    });
+    const config: SiteConfig = {
+      ...baseConfig,
+      global: { ...baseConfig.global, navBarLocked: false },
+    };
+    const next = replicateLockedNavBarToAllPages(config);
+    expect(next).toBe(config);
+    // About still has no NavBar.
+    expect(next.pages[1]?.rootComponent.children).toEqual([]);
+  });
+
+  it("replicateLockedNavBarToAllPages is a no-op when no NavBar exists anywhere", () => {
+    const config = makeConfigWith({
+      home: emptySection("s_home"),
+      about: emptySection("s_about"),
+    });
+    const next = replicateLockedNavBarToAllPages(config);
+    expect(next).toBe(config);
+  });
+
+  it("replicateLockedNavBarToAllPages leaves pages alone when they already contain a NavBar", () => {
+    const config = makeConfigWith({
+      home: {
+        id: "s_home",
+        type: "Section",
+        props: {},
+        style: {},
+        children: [
+          { id: "nav_home", type: "NavBar", props: { links: [] }, style: {} },
+        ],
+      },
+      about: {
+        id: "s_about",
+        type: "Section",
+        props: {},
+        style: {},
+        children: [
+          { id: "nav_about", type: "NavBar", props: { links: [] }, style: {} },
+        ],
+      },
+    });
+    const next = replicateLockedNavBarToAllPages(config);
+    expect(next).toBe(config);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1250,6 +1355,20 @@ describe("syncLockedNavBars / findLockedNavBar / applyGlobalNavBarLocked", () =>
       .find((p) => p.slug === "about")
       ?.rootComponent.children?.find((c) => c.id === "nav_b");
     expect(navB?.props.sticky).toBe(true);
+  });
+
+  it("applyGlobalNavBarLocked(true) prepends a NavBar onto pages that lacked one", () => {
+    const a = navBarNode("nav_a", { sticky: true, links: [{ label: "Home", href: "/" }] });
+    const config = buildConfig(
+      [pageWith("home", a), pageWith("about", null)],
+      false,
+    );
+    const next = applyGlobalNavBarLocked(config, true);
+    const aboutPage = next.pages.find((p) => p.slug === "about");
+    const aboutNav = aboutPage?.rootComponent.children?.find((c) => c.type === "NavBar");
+    expect(aboutNav).toBeDefined();
+    expect(aboutNav?.props.sticky).toBe(true);
+    expect(aboutNav?.id).not.toBe("nav_a");
   });
 
   it("applyGlobalNavBarLocked(false) just flips the flag without replicating", () => {

@@ -16,11 +16,11 @@
  * auth lands.
  */
 
-import { Renderer } from "@/components/renderer";
 import { parseSiteConfig } from "@/lib/site-config";
 import { createServiceSupabaseClient } from "@/lib/supabase";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { PreviewClient } from "./PreviewClient";
 
 type PreviewPageParams = { site: string };
 type PreviewPageSearchParams = {
@@ -117,5 +117,5 @@ export default async function PreviewPage(props: PreviewPageProps) {
   }
 
   const config = parseSiteConfig(result.version.config);
-  return <Renderer config={config} page={pageSlug} mode="preview" />;
+  return <PreviewClient config={config} initialPageSlug={pageSlug} />;
 }

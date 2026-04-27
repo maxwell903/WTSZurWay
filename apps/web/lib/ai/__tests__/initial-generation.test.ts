@@ -217,10 +217,20 @@ describe("generateInitialSite", () => {
       expect(navBar).toBeDefined();
       // Auto-populated: one page-kind link per static page, label = page name,
       // detail page omitted.
-      expect(navBar?.props.links).toEqual([
+      const expectedLinks = [
         { kind: "page", pageSlug: "home", label: "Home" },
         { kind: "page", pageSlug: "about", label: "About Us" },
-      ]);
+      ];
+      expect(navBar?.props.links).toEqual(expectedLinks);
+      // With the global lock on (default), every page must carry the NavBar.
+      const about = result.config.pages.find((p) => p.slug === "about");
+      const aboutNav = about?.rootComponent.children?.find((c) => c.type === "NavBar");
+      expect(aboutNav).toBeDefined();
+      expect(aboutNav?.props.links).toEqual(expectedLinks);
+      const detail = result.config.pages.find((p) => p.slug === "unit");
+      const detailNav = detail?.rootComponent.children?.find((c) => c.type === "NavBar");
+      expect(detailNav).toBeDefined();
+      expect(detailNav?.props.links).toEqual(expectedLinks);
     }
   });
 
