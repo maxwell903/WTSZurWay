@@ -1,6 +1,7 @@
 "use client";
 
 import { DetailPageSelect } from "@/components/editor/edit-panels/controls/DetailPageSelect";
+import { PageSelect } from "@/components/editor/edit-panels/controls/PageSelect";
 import { SegmentedControl } from "@/components/editor/edit-panels/controls/SegmentedControl";
 import { SelectInput } from "@/components/editor/edit-panels/controls/SelectInput";
 import { SwitchInput } from "@/components/editor/edit-panels/controls/SwitchInput";
@@ -8,7 +9,7 @@ import { TextInput } from "@/components/editor/edit-panels/controls/TextInput";
 import { useEditorStore } from "@/lib/editor-state";
 import type { ComponentNode } from "@/lib/site-config";
 
-type LinkMode = "static" | "detail";
+type LinkMode = "static" | "page" | "detail";
 
 const VARIANT_OPTIONS = ["primary", "secondary", "outline", "ghost", "link"].map((v) => ({
   label: v,
@@ -18,6 +19,7 @@ const SIZE_OPTIONS = ["sm", "md", "lg"].map((v) => ({ label: v, value: v }));
 const BUTTON_TYPE_OPTIONS = ["button", "submit", "reset"].map((v) => ({ label: v, value: v }));
 const LINK_MODE_OPTIONS = [
   { label: "Static URL", value: "static" as const },
+  { label: "Page", value: "page" as const },
   { label: "Detail page", value: "detail" as const },
 ];
 
@@ -30,7 +32,9 @@ function readBool(props: Record<string, unknown>, key: string): boolean {
 }
 
 function readLinkMode(props: Record<string, unknown>): LinkMode {
-  return props.linkMode === "detail" ? "detail" : "static";
+  if (props.linkMode === "detail") return "detail";
+  if (props.linkMode === "page") return "page";
+  return "static";
 }
 
 export type ButtonEditPanelProps = { node: ComponentNode };
@@ -44,7 +48,15 @@ export function ButtonEditPanel({ node }: ButtonEditPanelProps) {
   };
 
   const linkMode = readLinkMode(props);
+  const isStatic = linkMode === "static";
+  const isPage = linkMode === "page";
   const isDetail = linkMode === "detail";
+
+  const hrefHelper = isPage
+    ? "Computed at render time as `/{pageSlug}`"
+    : isDetail
+      ? "Computed at render time as `/{detailPageSlug}/{row.id}`"
+      : undefined;
 
   return (
     <div data-component-edit-panel="Button" className="space-y-3">
@@ -59,8 +71,8 @@ export function ButtonEditPanel({ node }: ButtonEditPanelProps) {
         id="button-href"
         label="Href"
         value={readString(props, "href")}
-        disabled={isDetail}
-        helper={isDetail ? "Computed at render time as `/{detailPageSlug}/{row.id}`" : undefined}
+        disabled={!isStatic}
+        helper={hrefHelper}
         testId="button-href"
         onChange={(next) => writePartial({ href: next === "" ? undefined : next })}
       />
@@ -105,12 +117,25 @@ export function ButtonEditPanel({ node }: ButtonEditPanelProps) {
           testId="button-link-mode"
           onChange={(next) => {
             if (next === "static") {
-              writePartial({ linkMode: "static", detailPageSlug: undefined });
+              writePartial({ linkMode: "static", pageSlug: undefined, detailPageSlug: undefined });
               return;
             }
-            writePartial({ linkMode: "detail" });
+            if (next === "page") {
+              writePartial({ linkMode: "page", detailPageSlug: undefined });
+              return;
+            }
+            writePartial({ linkMode: "detail", pageSlug: undefined });
           }}
         />
+        {isPage ? (
+          <PageSelect
+            id="button-page-slug"
+            label="Page"
+            value={readString(props, "pageSlug") || undefined}
+            testId="button-page-slug"
+            onChange={(next) => writePartial({ pageSlug: next })}
+          />
+        ) : null}
         {isDetail ? (
           <DetailPageSelect
             id="button-detail-page-slug"

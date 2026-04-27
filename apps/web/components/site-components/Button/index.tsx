@@ -21,8 +21,12 @@ const buttonPropsSchema = z
     size: z.enum(["sm", "md", "lg"]).default("md"),
     fullWidth: z.boolean().default(false),
     buttonType: z.enum(["button", "submit", "reset"]).default("button"),
-    // Sprint 5b backfill — PROJECT_SPEC.md §8.12.
-    linkMode: z.enum(["static", "detail"]).default("static"),
+    // Sprint 5b backfill — PROJECT_SPEC.md §8.12. Sprint 13 adds the "page"
+    // mode so a Button can link to a static page by slug; the renderer emits
+    // `data-internal-page-slug` so the editor's preview-mode click interceptor
+    // can swap the canvas page instead of doing a full browser navigation.
+    linkMode: z.enum(["static", "page", "detail"]).default("static"),
+    pageSlug: z.string().optional(),
     detailPageSlug: z.string().optional(),
   })
   .superRefine((p, ctx) => {
@@ -31,6 +35,13 @@ const buttonPropsSchema = z
         code: z.ZodIssueCode.custom,
         path: ["detailPageSlug"],
         message: "Required when linkMode is 'detail'",
+      });
+    }
+    if (p.linkMode === "page" && p.pageSlug === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["pageSlug"],
+        message: "Required when linkMode is 'page'",
       });
     }
   });
@@ -110,7 +121,11 @@ export function Button({ node, cssStyle }: ButtonProps) {
   // (parse failures already swap data for BUTTON_FALLBACK whose linkMode is
   // "static", so the override never fires on the fallback path).
   let href: string | undefined = data.href;
-  if (
+  let internalPageSlug: string | undefined;
+  if (data.linkMode === "page" && data.pageSlug !== undefined) {
+    href = `/${data.pageSlug}`;
+    internalPageSlug = data.pageSlug;
+  } else if (
     data.linkMode === "detail" &&
     data.detailPageSlug !== undefined &&
     kind !== null &&
@@ -129,6 +144,7 @@ export function Button({ node, cssStyle }: ButtonProps) {
         data-component-id={node.id}
         data-component-type="Button"
         href={href}
+        data-internal-page-slug={internalPageSlug}
         style={finalStyle}
         {...detailDataAttrs}
       >

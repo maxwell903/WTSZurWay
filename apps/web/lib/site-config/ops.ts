@@ -24,6 +24,7 @@ import {
   type ComponentNode,
   type ComponentType,
   type DataBinding,
+  type NavLink,
   type Page,
   type PageKind,
   type SiteConfig,
@@ -1445,6 +1446,31 @@ function applyConnectInputToRepeater(config: SiteConfig, op: ConnectInputToRepea
       dataBinding: { ...node.dataBinding, connectedInputs: next },
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// First-NavBar auto-populate (used by store.addComponentChild)
+// ---------------------------------------------------------------------------
+
+function subtreeContainsType(node: ComponentNode, type: ComponentType): boolean {
+  if (node.type === type) return true;
+  for (const child of node.children ?? []) {
+    if (subtreeContainsType(child, type)) return true;
+  }
+  return false;
+}
+
+export function isFirstNavBar(config: SiteConfig): boolean {
+  for (const page of config.pages) {
+    if (subtreeContainsType(page.rootComponent, "NavBar")) return false;
+  }
+  return true;
+}
+
+export function buildAutoPopulatedNavLinks(config: SiteConfig): NavLink[] {
+  return config.pages
+    .filter((p) => p.kind === "static")
+    .map((p) => ({ kind: "page" as const, pageSlug: p.slug, label: p.name }));
 }
 
 // ---------------------------------------------------------------------------

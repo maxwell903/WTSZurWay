@@ -7,6 +7,8 @@ import {
   OperationInvalidError,
   applyOperation,
   applyOperations,
+  buildAutoPopulatedNavLinks,
+  isFirstNavBar,
 } from "@/lib/site-config/ops";
 import { describe, expect, it } from "vitest";
 
@@ -965,5 +967,104 @@ describe("applyOperations", () => {
 
   it("OPERATION_TYPES enumerates exactly 25 names", () => {
     expect(new Set(OPERATION_TYPES).size).toBe(25);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 13 — first-NavBar auto-populate helpers
+// ---------------------------------------------------------------------------
+
+describe("isFirstNavBar / buildAutoPopulatedNavLinks", () => {
+  function makeConfigWith(rootComponents: Record<string, ComponentNode>): SiteConfig {
+    return {
+      meta: { siteName: "Test", siteSlug: "test" },
+      brand: { palette: "ocean", fontFamily: "Inter" },
+      global: {
+        navBar: { links: [], logoPlacement: "left", sticky: false },
+        footer: { columns: [], copyright: "" },
+      },
+      pages: Object.entries(rootComponents).map(([slug, root]) => ({
+        id: `p_${slug}`,
+        slug,
+        name: slug.charAt(0).toUpperCase() + slug.slice(1),
+        kind: "static" as const,
+        rootComponent: root,
+      })),
+      forms: [],
+    };
+  }
+
+  function emptySection(id = "s"): ComponentNode {
+    return { id, type: "Section", props: {}, style: {}, children: [] };
+  }
+
+  it("isFirstNavBar returns true when no page contains a NavBar", () => {
+    const config = makeConfigWith({ home: emptySection() });
+    expect(isFirstNavBar(config)).toBe(true);
+  });
+
+  it("isFirstNavBar returns false when a NavBar exists at the page root", () => {
+    const config = makeConfigWith({
+      home: {
+        id: "s1",
+        type: "Section",
+        props: {},
+        style: {},
+        children: [{ id: "nav1", type: "NavBar", props: { links: [] }, style: {} }],
+      },
+    });
+    expect(isFirstNavBar(config)).toBe(false);
+  });
+
+  it("isFirstNavBar returns false when a NavBar is nested deep on any page", () => {
+    const config = makeConfigWith({
+      home: emptySection(),
+      about: {
+        id: "s2",
+        type: "Section",
+        props: {},
+        style: {},
+        children: [
+          {
+            id: "row1",
+            type: "Row",
+            props: {},
+            style: {},
+            children: [{ id: "nav1", type: "NavBar", props: { links: [] }, style: {} }],
+          },
+        ],
+      },
+    });
+    expect(isFirstNavBar(config)).toBe(false);
+  });
+
+  it("buildAutoPopulatedNavLinks returns one 'page' link per static page in declaration order", () => {
+    const config = makeConfigWith({
+      home: emptySection("h"),
+      about: emptySection("a"),
+      contact: emptySection("c"),
+    });
+    const links = buildAutoPopulatedNavLinks(config);
+    expect(links).toEqual([
+      { kind: "page", pageSlug: "home", label: "Home" },
+      { kind: "page", pageSlug: "about", label: "About" },
+      { kind: "page", pageSlug: "contact", label: "Contact" },
+    ]);
+  });
+
+  it("buildAutoPopulatedNavLinks skips detail pages", () => {
+    const baseConfig = makeConfigWith({
+      home: emptySection("h"),
+      units: emptySection("u"),
+    });
+    // Mutate the units page to be a detail page.
+    const config: SiteConfig = {
+      ...baseConfig,
+      pages: baseConfig.pages.map((p) =>
+        p.slug === "units" ? { ...p, kind: "detail" as const, detailDataSource: "units" as const } : p,
+      ),
+    };
+    const links = buildAutoPopulatedNavLinks(config);
+    expect(links).toEqual([{ kind: "page", pageSlug: "home", label: "Home" }]);
   });
 });

@@ -116,6 +116,35 @@ describe("<Button>", () => {
     expect(el?.hasAttribute("data-detail-page-slug")).toBe(false);
     expect(el?.textContent).toBe("Button");
   });
+
+  // Sprint 13 — internal page link mode.
+
+  it("renders /<pageSlug> with data-internal-page-slug when linkMode=page", () => {
+    const { container } = render(
+      <Button
+        node={makeNode({ label: "About", linkMode: "page", pageSlug: "about" })}
+        cssStyle={{}}
+      />,
+    );
+    const el = container.querySelector("a[data-component-type='Button']") as HTMLElement | null;
+    expect(el).not.toBeNull();
+    expect(el?.getAttribute("href")).toBe("/about");
+    expect(el?.getAttribute("data-internal-page-slug")).toBe("about");
+    // page mode is not the same as detail mode — no detail data attrs.
+    expect(el?.hasAttribute("data-link-mode")).toBe(false);
+    expect(el?.hasAttribute("data-detail-page-slug")).toBe(false);
+  });
+
+  it("falls back to defaults when linkMode=page is given without pageSlug", () => {
+    const { container } = render(
+      <Button node={makeNode({ label: "Page without slug", linkMode: "page" })} cssStyle={{}} />,
+    );
+    const el = container.querySelector("[data-component-type='Button']") as HTMLElement | null;
+    expect(el).not.toBeNull();
+    // Schema fails superRefine → fallback to BUTTON_FALLBACK with linkMode "static".
+    expect(el?.hasAttribute("data-internal-page-slug")).toBe(false);
+    expect(el?.textContent).toBe("Button");
+  });
 });
 
 // Sprint 9b: detail-href computation under row context. PROJECT_SPEC.md §8.12.

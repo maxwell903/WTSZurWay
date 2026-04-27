@@ -618,3 +618,111 @@ describe("showComponentTypes toggle (Task 6.1)", () => {
     expect(useEditorStore.getState().showComponentTypes).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sprint 13 -- first-NavBar auto-populate via addComponentChild
+// ---------------------------------------------------------------------------
+
+function makeMultiPageConfig(): SiteConfig {
+  return {
+    meta: { siteName: "Multi", siteSlug: "multi" },
+    brand: { palette: "ocean", fontFamily: "Inter" },
+    global: {
+      navBar: { links: [], logoPlacement: "left", sticky: false },
+      footer: { columns: [], copyright: "" },
+    },
+    pages: [
+      {
+        id: "p_home",
+        slug: "home",
+        name: "Home",
+        kind: "static",
+        rootComponent: { id: "cmp_root_home", type: "Section", props: {}, style: {}, children: [] },
+      },
+      {
+        id: "p_about",
+        slug: "about",
+        name: "About",
+        kind: "static",
+        rootComponent: { id: "cmp_root_about", type: "Section", props: {}, style: {}, children: [] },
+      },
+      {
+        id: "p_contact",
+        slug: "contact",
+        name: "Contact",
+        kind: "static",
+        rootComponent: { id: "cmp_root_contact", type: "Section", props: {}, style: {}, children: [] },
+      },
+    ],
+    forms: [],
+  };
+}
+
+describe("addComponentChild auto-populates the first NavBar with all static pages", () => {
+  beforeEach(() => {
+    __resetEditorStoreForTests();
+    useEditorStore.getState().hydrate({
+      siteId: "site-1",
+      siteSlug: "multi",
+      workingVersionId: "v1",
+      initialConfig: makeMultiPageConfig(),
+    });
+  });
+
+  it("seeds links with one page entry per static page when the site has no NavBar yet", () => {
+    useEditorStore
+      .getState()
+      .addComponentChild("cmp_root_home", 0, {
+        id: "cmp_nav1",
+        type: "NavBar",
+        props: { links: [], logoPlacement: "left", sticky: false },
+        style: {},
+      });
+    const home = useEditorStore.getState().draftConfig.pages.find((p) => p.slug === "home");
+    const nav = home?.rootComponent.children?.[0];
+    expect(nav?.type).toBe("NavBar");
+    expect(nav?.props.links).toEqual([
+      { kind: "page", pageSlug: "home", label: "Home" },
+      { kind: "page", pageSlug: "about", label: "About" },
+      { kind: "page", pageSlug: "contact", label: "Contact" },
+    ]);
+  });
+
+  it("does NOT auto-populate a second NavBar after the first exists", () => {
+    useEditorStore
+      .getState()
+      .addComponentChild("cmp_root_home", 0, {
+        id: "cmp_nav1",
+        type: "NavBar",
+        props: { links: [], logoPlacement: "left", sticky: false },
+        style: {},
+      });
+    useEditorStore
+      .getState()
+      .addComponentChild("cmp_root_about", 0, {
+        id: "cmp_nav2",
+        type: "NavBar",
+        props: { links: [], logoPlacement: "left", sticky: false },
+        style: {},
+      });
+    const about = useEditorStore.getState().draftConfig.pages.find((p) => p.slug === "about");
+    const nav2 = about?.rootComponent.children?.[0];
+    expect(nav2?.type).toBe("NavBar");
+    expect(nav2?.props.links).toEqual([]);
+  });
+
+  it("leaves non-NavBar components unchanged on insert", () => {
+    useEditorStore
+      .getState()
+      .addComponentChild("cmp_root_home", 0, {
+        id: "cmp_h",
+        type: "Heading",
+        props: { text: "Hi" },
+        style: {},
+      });
+    const home = useEditorStore.getState().draftConfig.pages.find((p) => p.slug === "home");
+    const node = home?.rootComponent.children?.[0];
+    expect(node?.type).toBe("Heading");
+    expect(node?.props).toEqual({ text: "Hi" });
+  });
+});

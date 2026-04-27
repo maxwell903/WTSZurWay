@@ -1,5 +1,8 @@
+import { SiteConfigProvider } from "@/components/renderer/SiteConfigContext";
+import type { SiteConfig } from "@/lib/site-config";
 import type { ComponentNode } from "@/types/site-config";
 import { render } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
 import { NavBar } from "../index";
 
@@ -49,5 +52,98 @@ describe("<NavBar>", () => {
     expect(nav).not.toBeNull();
     expect(nav?.querySelectorAll("a").length).toBe(0);
     expect(nav?.style.position).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 13 — kind: "page" links + page lookup via SiteConfigProvider
+// ---------------------------------------------------------------------------
+
+function makeConfigWithPages(
+  pages: { slug: string; name: string; kind?: "static" | "detail" }[],
+): SiteConfig {
+  return {
+    meta: { siteName: "Test", siteSlug: "test" },
+    brand: { palette: "ocean", fontFamily: "Inter" },
+    global: {
+      navBar: { links: [], logoPlacement: "left", sticky: false },
+      footer: { columns: [], copyright: "" },
+    },
+    pages: pages.map((p, i) => ({
+      id: `p${i}`,
+      slug: p.slug,
+      name: p.name,
+      kind: p.kind ?? ("static" as const),
+      ...(p.kind === "detail" ? { detailDataSource: "units" as const } : {}),
+      rootComponent: { id: `r${i}`, type: "Section", props: {}, style: {} },
+    })),
+    forms: [],
+  };
+}
+
+function renderWithConfig(node: ReactElement, config: SiteConfig) {
+  return render(<SiteConfigProvider config={config}>{node}</SiteConfigProvider>);
+}
+
+describe("<NavBar> kind: 'page' links", () => {
+  it("renders /<slug> with data-internal-page-slug for kind: page links", () => {
+    const config = makeConfigWithPages([
+      { slug: "home", name: "Home" },
+      { slug: "about", name: "About Us" },
+    ]);
+    const { container } = renderWithConfig(
+      <NavBar
+        node={makeNode({
+          links: [
+            { kind: "page", pageSlug: "home", label: "" },
+            { kind: "page", pageSlug: "about", label: "Custom" },
+          ],
+        })}
+        cssStyle={{}}
+      />,
+      config,
+    );
+    const anchors = container.querySelectorAll(
+      "nav[data-component-type='NavBar'] a",
+    ) as NodeListOf<HTMLAnchorElement>;
+    expect(anchors.length).toBe(2);
+    expect(anchors[0]?.getAttribute("href")).toBe("/home");
+    expect(anchors[0]?.getAttribute("data-internal-page-slug")).toBe("home");
+    // Empty label falls back to the live page name.
+    expect(anchors[0]?.textContent).toBe("Home");
+    // Non-empty label overrides the page name.
+    expect(anchors[1]?.textContent).toBe("Custom");
+    expect(anchors[1]?.getAttribute("data-internal-page-slug")).toBe("about");
+  });
+
+  it("silently skips a kind: page link whose pageSlug doesn't match any static page", () => {
+    const config = makeConfigWithPages([{ slug: "home", name: "Home" }]);
+    const { container } = renderWithConfig(
+      <NavBar
+        node={makeNode({
+          links: [
+            { kind: "page", pageSlug: "home", label: "Home" },
+            { kind: "page", pageSlug: "missing", label: "Gone" },
+          ],
+        })}
+        cssStyle={{}}
+      />,
+      config,
+    );
+    const anchors = container.querySelectorAll("nav[data-component-type='NavBar'] a");
+    expect(anchors.length).toBe(1);
+    expect(anchors[0]?.getAttribute("href")).toBe("/home");
+  });
+
+  it("does NOT mark legacy { label, href } links with data-internal-page-slug", () => {
+    const config = makeConfigWithPages([{ slug: "home", name: "Home" }]);
+    const { container } = renderWithConfig(
+      <NavBar node={makeNode({ links: [{ label: "External", href: "https://x.com" }] })} cssStyle={{}} />,
+      config,
+    );
+    const a = container.querySelector("nav[data-component-type='NavBar'] a") as HTMLElement | null;
+    expect(a).not.toBeNull();
+    expect(a?.getAttribute("href")).toBe("https://x.com");
+    expect(a?.hasAttribute("data-internal-page-slug")).toBe(false);
   });
 });

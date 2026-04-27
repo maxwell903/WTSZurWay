@@ -35,6 +35,7 @@ export type {
   FooterConfig,
   FormDefinition,
   NavBarConfig,
+  NavLink,
   Page,
   PageKind,
   PaletteId,

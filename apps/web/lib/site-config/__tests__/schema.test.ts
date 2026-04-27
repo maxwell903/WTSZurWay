@@ -11,6 +11,7 @@ import {
   componentTypeSchema,
   dataBindingSchema,
   detailDataSourceSchema,
+  navBarConfigSchema,
   pageKindSchema,
   pageSchema,
   paletteIdSchema,
@@ -479,5 +480,49 @@ describe("FlowGroup component type", () => {
       children: [],
     };
     expect(componentNodeSchema.safeParse(node).success).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 13 — navLinkSchema (kind: "page" | "external") + backward compat
+// ---------------------------------------------------------------------------
+
+describe("navLinkSchema (via navBarConfigSchema)", () => {
+  function makeNavBar(links: unknown) {
+    return { links, logoPlacement: "left" as const, sticky: false };
+  }
+
+  it("parses a legacy { label, href } link as kind: 'external'", () => {
+    const result = navBarConfigSchema.safeParse(
+      makeNavBar([{ label: "Home", href: "/" }]),
+    );
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.links[0]?.kind).toBe("external");
+      expect(result.data.links[0]?.href).toBe("/");
+    }
+  });
+
+  it("parses a kind: 'page' link with pageSlug", () => {
+    const result = navBarConfigSchema.safeParse(
+      makeNavBar([{ label: "Home", kind: "page", pageSlug: "home" }]),
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects kind: 'page' without pageSlug", () => {
+    const result = navBarConfigSchema.safeParse(makeNavBar([{ label: "Home", kind: "page" }]));
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects kind: 'external' without href", () => {
+    const result = navBarConfigSchema.safeParse(
+      makeNavBar([{ label: "Home", kind: "external" }]),
+    );
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts an empty links array", () => {
+    expect(navBarConfigSchema.safeParse(makeNavBar([])).success).toBe(true);
   });
 });

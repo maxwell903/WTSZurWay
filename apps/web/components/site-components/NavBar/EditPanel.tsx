@@ -1,6 +1,6 @@
 "use client";
 
-import { type LinkEntry, LinksEditor } from "@/components/editor/edit-panels/controls/LinksEditor";
+import { type NavLinkEntry, NavLinksEditor } from "@/components/editor/edit-panels/controls/NavLinksEditor";
 import { SelectInput } from "@/components/editor/edit-panels/controls/SelectInput";
 import { SwitchInput } from "@/components/editor/edit-panels/controls/SwitchInput";
 import { TextInput } from "@/components/editor/edit-panels/controls/TextInput";
@@ -9,15 +9,24 @@ import type { ComponentNode } from "@/lib/site-config";
 
 const PLACEMENT_OPTIONS = ["left", "center", "right"].map((v) => ({ label: v, value: v }));
 
-function readLinks(props: Record<string, unknown>): LinkEntry[] {
+function readLinks(props: Record<string, unknown>): NavLinkEntry[] {
   if (!Array.isArray(props.links)) return [];
   return props.links
-    .filter((entry): entry is LinkEntry => {
-      if (!entry || typeof entry !== "object") return false;
+    .map((entry): NavLinkEntry | null => {
+      if (!entry || typeof entry !== "object") return null;
       const e = entry as Record<string, unknown>;
-      return typeof e.label === "string" && typeof e.href === "string";
+      const label = typeof e.label === "string" ? e.label : "";
+      const rawKind = e.kind;
+      const kind: "page" | "external" =
+        rawKind === "page" || rawKind === "external" ? rawKind : "external";
+      if (kind === "page") {
+        const pageSlug = typeof e.pageSlug === "string" ? e.pageSlug : undefined;
+        return { kind: "page", label, pageSlug };
+      }
+      const href = typeof e.href === "string" ? e.href : "";
+      return { kind: "external", label, href };
     })
-    .map((entry) => ({ label: entry.label, href: entry.href }));
+    .filter((entry): entry is NavLinkEntry => entry !== null);
 }
 
 function readString(props: Record<string, unknown>, key: string, fallback = ""): string {
@@ -38,7 +47,7 @@ export function NavBarEditPanel({ node }: NavBarEditPanelProps) {
 
   return (
     <div data-component-edit-panel="NavBar" className="space-y-3">
-      <LinksEditor
+      <NavLinksEditor
         id="navbar-links"
         label="Links"
         value={readLinks(node.props)}

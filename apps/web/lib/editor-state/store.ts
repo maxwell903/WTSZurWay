@@ -1,5 +1,9 @@
 import type { ComponentNode, SiteConfig } from "@/lib/site-config";
-import { OperationInvalidError } from "@/lib/site-config/ops";
+import {
+  OperationInvalidError,
+  buildAutoPopulatedNavLinks,
+  isFirstNavBar,
+} from "@/lib/site-config/ops";
 import { type StateCreator, create } from "zustand";
 import {
   applyAddComponentChild,
@@ -240,12 +244,26 @@ const creator: StateCreator<EditorStore> = (set) => ({
   // -------- Sprint 7: drag-and-drop and resize --------
   addComponentChild: (parentId, index, node) =>
     set((state) => {
-      const next = applyAddComponentChild(state.draftConfig, parentId, index, node);
+      // First-NavBar auto-populate: when the very first NavBar is added to
+      // a site, seed its `links` array with one "page" entry per static
+      // page so the user has a starting nav with everything reachable.
+      // Subsequent NavBars are inserted unchanged.
+      const nodeToInsert =
+        node.type === "NavBar" && isFirstNavBar(state.draftConfig)
+          ? {
+              ...node,
+              props: {
+                ...node.props,
+                links: buildAutoPopulatedNavLinks(state.draftConfig),
+              },
+            }
+          : node;
+      const next = applyAddComponentChild(state.draftConfig, parentId, index, nodeToInsert);
       // The new node becomes the selection so the user immediately sees
       // what they dropped (Sprint 7 CLAUDE.md DoD).
       return {
         draftConfig: next,
-        selectedComponentId: node.id,
+        selectedComponentId: nodeToInsert.id,
         saveState: "dirty",
       };
     }),

@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { SelectionBreadcrumb } from "./SelectionBreadcrumb";
 import { CanvasDropOverlay } from "./dnd/CanvasDropOverlay";
 import { ResizeHandles } from "./dnd/ResizeHandles";
+import { handlePreviewLinkClick } from "./previewLinkClick";
 
 export function Canvas() {
   const draftConfig = useEditorStore((s) => s.draftConfig);
@@ -14,6 +15,7 @@ export function Canvas() {
   const selectedComponentId = useEditorStore((s) => s.selectedComponentId);
   const selectComponent = useEditorStore((s) => s.selectComponent);
   const enterElementEditMode = useEditorStore((s) => s.enterElementEditMode);
+  const setCurrentPageSlug = useEditorStore((s) => s.setCurrentPageSlug);
 
   // Esc clears the selection. Skip when focus is in an input/textarea so
   // dialog forms (AddPageDialog, RenamePageDialog, SiteNameInput) can use Esc
@@ -45,11 +47,26 @@ export function Canvas() {
   // keyboard-equivalent deselect is the global Esc handler in the
   // useEffect above. We add an onKeyDown that mirrors the click for
   // Space/Enter to satisfy a11y/useKeyWithClickEvents.
+  //
+  // Preview-mode click interception (PROJECT_SPEC.md §8.11): a delegated
+  // handler walks up from the click target to find an <a> element. If it
+  // carries `data-internal-page-slug`, swap the canvas page via
+  // `setCurrentPageSlug` instead of letting the browser navigate (which
+  // would leave the editor entirely). External http(s) URLs open in a new
+  // tab so the user keeps their place in the editor.
   return (
     <main
       data-testid="editor-canvas"
       className="relative flex-1 overflow-y-auto bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.04)_1px,transparent_0)] [background-size:16px_16px]"
       onClick={(e) => {
+        if (previewMode) {
+          const outcome = handlePreviewLinkClick(e.target, {
+            preventDefault: () => e.preventDefault(),
+            setCurrentPageSlug,
+            openExternal: (href) => window.open(href, "_blank", "noopener,noreferrer"),
+          });
+          if (outcome === "internal" || outcome === "external") return;
+        }
         if (e.target === e.currentTarget) {
           selectComponent(null);
         }

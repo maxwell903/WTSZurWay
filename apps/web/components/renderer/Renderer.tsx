@@ -3,6 +3,7 @@
 import { RowContextProvider } from "@/lib/row-context";
 import type { SiteConfig } from "@/types/site-config";
 import { ComponentRenderer, type Mode } from "./ComponentRenderer";
+import { SiteConfigProvider } from "./SiteConfigContext";
 
 export type RendererProps = {
   config: SiteConfig;
@@ -47,13 +48,14 @@ export function Renderer({
     />
   );
 
-  if (effectiveKind === "detail" && row !== undefined) {
-    return (
+  const wrappedTree =
+    effectiveKind === "detail" && row !== undefined ? (
       <RowContextProvider row={row} kind="detail">
         {tree}
       </RowContextProvider>
+    ) : (
+      tree
     );
-  }
 
-  return tree;
+  return <SiteConfigProvider config={config}>{wrappedTree}</SiteConfigProvider>;
 }
