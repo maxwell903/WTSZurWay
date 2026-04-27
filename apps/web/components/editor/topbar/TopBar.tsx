@@ -5,6 +5,7 @@ import { DeployButton } from "./DeployButton";
 import { PageSelector } from "./PageSelector";
 import { PreviewToggle } from "./PreviewToggle";
 import { SaveIndicator } from "./SaveIndicator";
+import { ShowComponentTypesToggle } from "./ShowComponentTypesToggle";
 import { SiteNameInput } from "./SiteNameInput";
 
 export function TopBar() {
@@ -23,6 +24,7 @@ export function TopBar() {
       </div>
       <div className="ml-auto flex items-center gap-3">
         <SaveIndicator />
+        <ShowComponentTypesToggle />
         <PreviewToggle />
         <DeployButton />
       </div>
