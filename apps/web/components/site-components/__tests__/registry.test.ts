@@ -26,9 +26,10 @@ describe("componentRegistry", () => {
     }
   });
 
-  it("has six Sprint-3 components and 14 Sprint-5 components", () => {
+  it("has six Sprint-3 components and 15 non-Sprint-3 components", () => {
     expect(SPRINT_3_TYPES.length).toBe(6);
-    expect(SPRINT_5_TYPES.length).toBe(14);
+    // 14 Sprint-5 components + 1 engine-managed FlowGroup (added 2026-04-27).
+    expect(SPRINT_5_TYPES.length).toBe(15);
   });
 
   // Building a React element from each registry entry is the typecheck-clean
