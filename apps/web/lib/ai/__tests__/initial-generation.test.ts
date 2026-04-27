@@ -131,6 +131,26 @@ describe("generateInitialSite", () => {
     expect(create).toHaveBeenCalledTimes(1);
   });
 
+  it("seeds a NavBar at the top of the home page when the AI output omits one", async () => {
+    const { client } = makeMockClient([makeMessageResponse(makeValidConfigJson())]);
+    const result = await generateInitialSite(
+      { form: MIN_FORM },
+      client as unknown as Parameters<typeof generateInitialSite>[1],
+    );
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      const home = result.config.pages.find((p) => p.slug === "home" && p.kind === "static");
+      expect(home).toBeDefined();
+      const firstChild = home?.rootComponent.children?.[0];
+      expect(firstChild?.type).toBe("NavBar");
+      // Sprint 13 — auto-populated with one page link per static page.
+      expect(firstChild?.props.links).toEqual([
+        { kind: "page", pageSlug: "home", label: "Home" },
+      ]);
+      expect(firstChild?.props.overrideShared).toBe(false);
+    }
+  });
+
   it("retries once after a malformed JSON first response and returns ok on success", async () => {
     const { client, create } = makeMockClient([
       makeMessageResponse("this is not json"),

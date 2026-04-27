@@ -1,6 +1,9 @@
 "use client";
 
-import { type NavLinkEntry, NavLinksEditor } from "@/components/editor/edit-panels/controls/NavLinksEditor";
+import {
+  type NavLinkEntry,
+  NavLinksEditor,
+} from "@/components/editor/edit-panels/controls/NavLinksEditor";
 import { SelectInput } from "@/components/editor/edit-panels/controls/SelectInput";
 import { SwitchInput } from "@/components/editor/edit-panels/controls/SwitchInput";
 import { TextInput } from "@/components/editor/edit-panels/controls/TextInput";
@@ -41,12 +44,50 @@ export type NavBarEditPanelProps = { node: ComponentNode };
 
 export function NavBarEditPanel({ node }: NavBarEditPanelProps) {
   const setComponentProps = useEditorStore((s) => s.setComponentProps);
+  const setGlobalNavBarLocked = useEditorStore((s) => s.setGlobalNavBarLocked);
+  const setNavBarOverrideShared = useEditorStore((s) => s.setNavBarOverrideShared);
+  // navBarLocked is optional in the schema (undefined === locked). Read it
+  // through the same default as `isGlobalNavBarLocked` to keep behavior
+  // consistent across reads and writes.
+  const globalLocked = useEditorStore((s) => s.draftConfig.global.navBarLocked !== false);
   const writePartial = (patch: Record<string, unknown>) => {
     setComponentProps(node.id, { ...node.props, ...patch });
   };
+  const overrideShared = readBool(node.props, "overrideShared");
 
   return (
     <div data-component-edit-panel="NavBar" className="space-y-3">
+      <div className="space-y-2 rounded-md border border-zinc-800 bg-zinc-900/40 p-2">
+        <SwitchInput
+          id="navbar-global-locked"
+          label="Lock all content, sizing and formatting across all pages"
+          value={globalLocked}
+          testId="navbar-global-locked"
+          onChange={(next) => setGlobalNavBarLocked(next)}
+        />
+        <SwitchInput
+          id="navbar-override-shared"
+          label="Override content on this specific page"
+          value={overrideShared}
+          testId="navbar-override-shared"
+          onChange={(next) => setNavBarOverrideShared(node.id, next)}
+        />
+        {globalLocked && !overrideShared ? (
+          <p className="text-[11px] text-zinc-500">
+            Edits to this NavBar apply to every page's NavBar.
+          </p>
+        ) : null}
+        {!globalLocked ? (
+          <p className="text-[11px] text-zinc-500">
+            Lock is off — each page's NavBar is independent.
+          </p>
+        ) : null}
+        {overrideShared ? (
+          <p className="text-[11px] text-zinc-500">
+            This NavBar diverges from the shared content; other pages are unaffected.
+          </p>
+        ) : null}
+      </div>
       <NavLinksEditor
         id="navbar-links"
         label="Links"

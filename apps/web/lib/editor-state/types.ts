@@ -141,6 +141,9 @@ export type EditorActions = {
   markError: (message: string) => void;
   // Phase 6 Task 6.1 — toggle the canvas-wide component type overlay.
   toggleShowComponentTypes: () => void;
+  // Sprint 13 — site-wide NavBar lock + per-instance override.
+  setGlobalNavBarLocked: (value: boolean) => void;
+  setNavBarOverrideShared: (id: ComponentId, value: boolean) => void;
 };
 
 export type EditorStore = EditorState & EditorActions;

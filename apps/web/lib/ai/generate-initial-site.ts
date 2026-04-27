@@ -32,7 +32,13 @@ import { type AiError, categorizeAiError } from "@/lib/ai/errors";
 import { lookupGenerationFixture } from "@/lib/ai/fixtures";
 import { buildInitialGenerationSystemPrompt } from "@/lib/ai/prompts/initial-generation";
 import type { SetupFormValues } from "@/lib/setup-form/types";
-import { type SiteConfig, safeParseSiteConfig } from "@/lib/site-config";
+import {
+  type ComponentNode,
+  type SiteConfig,
+  newComponentId,
+  safeParseSiteConfig,
+} from "@/lib/site-config";
+import { buildAutoPopulatedNavLinks } from "@/lib/site-config/ops";
 import { createServiceSupabaseClient } from "@/lib/supabase";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { ImageBlockParam, MessageParam } from "@anthropic-ai/sdk/resources/messages";
@@ -109,7 +115,7 @@ export async function generateInitialSite(
     firstAttemptText = text;
     const parsed = parseAndValidate(text);
     if (parsed.success) {
-      return { kind: "ok", config: parsed.config, source: "live" };
+      return { kind: "ok", config: ensureLockedNavBarOnHome(parsed.config), source: "live" };
     }
     firstZodIssues = parsed.issues;
   } catch (e) {
@@ -146,7 +152,7 @@ export async function generateInitialSite(
     const text = extractText(retryResponse);
     const parsed = parseAndValidate(text);
     if (parsed.success) {
-      return { kind: "ok", config: parsed.config, source: "live" };
+      return { kind: "ok", config: ensureLockedNavBarOnHome(parsed.config), source: "live" };
     }
     return withFixtureFallback(input.form, {
       kind: "invalid_output",
@@ -172,9 +178,58 @@ async function withFixtureFallback(
 ): Promise<GenerateInitialSiteResult> {
   const fixture = await lookupGenerationFixture(form);
   if (fixture) {
-    return { kind: "ok", config: fixture, source: "fixture" };
+    return { kind: "ok", config: ensureLockedNavBarOnHome(fixture), source: "fixture" };
   }
   return { kind: "error", error, source: "live" };
+}
+
+// Sprint 13. The user-visible default is "every site has one NavBar locked
+// across all pages" — so after the AI returns a config, we make sure the
+// home page contains at least one NavBar at the top of its root component.
+// If a NavBar already exists anywhere in the config, we leave the structure
+// alone (the global lock + addComponentChild adoption will keep things
+// in sync). This is purely additive and does not touch existing AI output
+// when it already wired one in.
+function ensureLockedNavBarOnHome(config: SiteConfig): SiteConfig {
+  if (containsNavBarAnywhere(config)) return config;
+  const homeIndex = config.pages.findIndex((p) => p.kind === "static" && p.slug === "home");
+  if (homeIndex === -1) return config;
+  const home = config.pages[homeIndex];
+  if (!home) return config;
+  const seedNavBar: ComponentNode = {
+    id: newComponentId("cmp"),
+    type: "NavBar",
+    props: {
+      links: buildAutoPopulatedNavLinks(config),
+      logoPlacement: "left",
+      sticky: false,
+      overrideShared: false,
+    },
+    style: {},
+  };
+  const root = home.rootComponent;
+  const nextRoot: ComponentNode = {
+    ...root,
+    children: [seedNavBar, ...(root.children ?? [])],
+  };
+  const nextPages = config.pages.slice();
+  nextPages[homeIndex] = { ...home, rootComponent: nextRoot };
+  return { ...config, pages: nextPages };
+}
+
+function containsNavBarAnywhere(config: SiteConfig): boolean {
+  for (const page of config.pages) {
+    if (subtreeContainsNavBar(page.rootComponent)) return true;
+  }
+  return false;
+}
+
+function subtreeContainsNavBar(node: ComponentNode): boolean {
+  if (node.type === "NavBar") return true;
+  for (const child of node.children ?? []) {
+    if (subtreeContainsNavBar(child)) return true;
+  }
+  return false;
 }
 
 function buildUserInstruction(form: SetupFormValues): string {

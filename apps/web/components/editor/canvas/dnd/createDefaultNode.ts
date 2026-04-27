@@ -24,7 +24,7 @@ const DEFAULT_PROPS: Record<ComponentType, Record<string, unknown>> = {
   Logo: {},
   Spacer: { height: 40 },
   Divider: { thickness: 1, color: "#e5e7eb" },
-  NavBar: { links: [], logoPlacement: "left", sticky: false },
+  NavBar: { links: [], logoPlacement: "left", sticky: false, overrideShared: false },
   Footer: { columns: [], copyright: "© 2026" },
   // FlowGroup is an empty horizontal container — no props at creation time;
   // layout is driven by the parent canvas context (Phase 5 x-axis resize).

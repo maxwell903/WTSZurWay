@@ -726,3 +726,104 @@ describe("addComponentChild auto-populates the first NavBar with all static page
     expect(node?.props).toEqual({ text: "Hi" });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sprint 13 -- locked NavBar replication via store actions
+// ---------------------------------------------------------------------------
+
+describe("locked NavBar replication: setComponentProps + setComponentStyle propagate", () => {
+  beforeEach(() => {
+    __resetEditorStoreForTests();
+    useEditorStore.getState().hydrate({
+      siteId: "site-1",
+      siteSlug: "multi",
+      workingVersionId: "v1",
+      initialConfig: makeMultiPageConfig(),
+    });
+    // Drop a NavBar on home (auto-populates + becomes the canonical).
+    useEditorStore.getState().addComponentChild("cmp_root_home", 0, {
+      id: "nav_a",
+      type: "NavBar",
+      props: { links: [], logoPlacement: "left", sticky: false },
+      style: {},
+    });
+    // Drop another NavBar on about; addComponentChild should adopt locked content.
+    useEditorStore.getState().addComponentChild("cmp_root_about", 0, {
+      id: "nav_b",
+      type: "NavBar",
+      props: { links: [], logoPlacement: "left", sticky: false },
+      style: {},
+    });
+  });
+
+  it("the second NavBar adopts the canonical's links on insertion", () => {
+    const about = useEditorStore.getState().draftConfig.pages.find((p) => p.slug === "about");
+    const navB = about?.rootComponent.children?.[0];
+    expect(navB?.id).toBe("nav_b");
+    expect(navB?.props.links).toHaveLength(3);
+  });
+
+  it("setComponentProps on a locked NavBar replicates to all other locked NavBars", () => {
+    useEditorStore.getState().setComponentProps("nav_a", {
+      links: [],
+      logoPlacement: "right",
+      sticky: true,
+    });
+    const about = useEditorStore.getState().draftConfig.pages.find((p) => p.slug === "about");
+    const navB = about?.rootComponent.children?.[0];
+    expect(navB?.props).toMatchObject({ logoPlacement: "right", sticky: true });
+  });
+
+  it("setComponentStyle on a locked NavBar replicates style to siblings", () => {
+    useEditorStore.getState().setComponentStyle("nav_a", { background: { kind: "color", value: "#ff0" } });
+    const about = useEditorStore.getState().draftConfig.pages.find((p) => p.slug === "about");
+    const navB = about?.rootComponent.children?.[0];
+    expect(navB?.style.background).toEqual({ kind: "color", value: "#ff0" });
+  });
+
+  it("setNavBarOverrideShared(true) opts out and stops replicating into that node", () => {
+    useEditorStore.getState().setNavBarOverrideShared("nav_b", true);
+    useEditorStore.getState().setComponentProps("nav_a", {
+      links: [],
+      logoPlacement: "center",
+      sticky: false,
+    });
+    const about = useEditorStore.getState().draftConfig.pages.find((p) => p.slug === "about");
+    const navB = about?.rootComponent.children?.[0];
+    // logoPlacement on nav_b is whatever it was before override (not center).
+    expect(navB?.props.logoPlacement).not.toBe("center");
+    expect(navB?.props.overrideShared).toBe(true);
+  });
+
+  it("setNavBarOverrideShared(false) re-adopts content from another locked NavBar", () => {
+    useEditorStore.getState().setNavBarOverrideShared("nav_b", true);
+    useEditorStore.getState().setComponentProps("nav_a", {
+      links: [],
+      logoPlacement: "center",
+      sticky: false,
+    });
+    useEditorStore.getState().setNavBarOverrideShared("nav_b", false);
+    const about = useEditorStore.getState().draftConfig.pages.find((p) => p.slug === "about");
+    const navB = about?.rootComponent.children?.[0];
+    expect(navB?.props.logoPlacement).toBe("center");
+    expect(navB?.props.overrideShared).toBe(false);
+  });
+
+  it("setGlobalNavBarLocked(false) stops sync, then setGlobalNavBarLocked(true) re-aligns", () => {
+    useEditorStore.getState().setGlobalNavBarLocked(false);
+    useEditorStore.getState().setComponentProps("nav_a", {
+      links: [],
+      logoPlacement: "right",
+      sticky: false,
+    });
+    let about = useEditorStore.getState().draftConfig.pages.find((p) => p.slug === "about");
+    let navB = about?.rootComponent.children?.[0];
+    // With lock off, nav_b stays as it was.
+    expect(navB?.props.logoPlacement).not.toBe("right");
+    // Flip lock back on -- nav_b adopts the canonical's content.
+    useEditorStore.getState().setGlobalNavBarLocked(true);
+    about = useEditorStore.getState().draftConfig.pages.find((p) => p.slug === "about");
+    navB = about?.rootComponent.children?.[0];
+    expect(navB?.props.logoPlacement).toBe("right");
+  });
+});

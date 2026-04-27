@@ -39,6 +39,11 @@ const navBarPropsSchema = z.object({
   logoPlacement: z.enum(["left", "center", "right"]).default("left"),
   sticky: z.boolean().default(false),
   logoSrc: z.string().optional(),
+  // Sprint 13 (locked NavBars). When true, this specific NavBar opts out of
+  // the site-wide lock and edits its own props/style independently. The
+  // flag is read by the store's replication policy, not the renderer —
+  // render output is identical regardless of `overrideShared`.
+  overrideShared: z.boolean().optional(),
 });
 
 type NavBarProps = {

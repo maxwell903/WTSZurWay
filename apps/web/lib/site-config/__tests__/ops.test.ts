@@ -5,10 +5,14 @@ import {
   OPERATION_TYPES,
   type Operation,
   OperationInvalidError,
+  applyGlobalNavBarLocked,
   applyOperation,
   applyOperations,
   buildAutoPopulatedNavLinks,
+  findLockedNavBar,
   isFirstNavBar,
+  isGlobalNavBarLocked,
+  syncLockedNavBars,
 } from "@/lib/site-config/ops";
 import { describe, expect, it } from "vitest";
 
@@ -1066,5 +1070,143 @@ describe("isFirstNavBar / buildAutoPopulatedNavLinks", () => {
     };
     const links = buildAutoPopulatedNavLinks(config);
     expect(links).toEqual([{ kind: "page", pageSlug: "home", label: "Home" }]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 13 — locked NavBar replication
+// ---------------------------------------------------------------------------
+
+describe("syncLockedNavBars / findLockedNavBar / applyGlobalNavBarLocked", () => {
+  function navBarNode(id: string, propsPatch: Record<string, unknown> = {}): ComponentNode {
+    return {
+      id,
+      type: "NavBar",
+      props: { links: [], logoPlacement: "left", sticky: false, ...propsPatch },
+      style: {},
+    };
+  }
+
+  function pageWith(slug: string, navBar: ComponentNode | null) {
+    const root: ComponentNode = {
+      id: `r_${slug}`,
+      type: "Section",
+      props: {},
+      style: {},
+      children: navBar ? [navBar] : [],
+    };
+    return {
+      id: `p_${slug}`,
+      slug,
+      name: slug,
+      kind: "static" as const,
+      rootComponent: root,
+    };
+  }
+
+  function buildConfig(
+    pages: ReturnType<typeof pageWith>[],
+    navBarLocked: boolean | undefined = undefined,
+  ): SiteConfig {
+    return {
+      meta: { siteName: "Test", siteSlug: "test" },
+      brand: { palette: "ocean", fontFamily: "Inter" },
+      global: {
+        navBar: { links: [], logoPlacement: "left", sticky: false },
+        ...(navBarLocked !== undefined ? { navBarLocked } : {}),
+        footer: { columns: [], copyright: "" },
+      },
+      pages,
+      forms: [],
+    };
+  }
+
+  it("isGlobalNavBarLocked treats undefined as locked (default ON)", () => {
+    expect(isGlobalNavBarLocked(buildConfig([]))).toBe(true);
+    expect(isGlobalNavBarLocked(buildConfig([], true))).toBe(true);
+    expect(isGlobalNavBarLocked(buildConfig([], false))).toBe(false);
+  });
+
+  it("syncLockedNavBars replicates props/style from the source to all locked siblings", () => {
+    const a = navBarNode("nav_a", { sticky: true, logoPlacement: "right" });
+    const b = navBarNode("nav_b", { sticky: false, logoPlacement: "left" });
+    const config = buildConfig([pageWith("home", a), pageWith("about", b)]);
+    const next = syncLockedNavBars(config, "nav_a");
+    const navB = next.pages
+      .find((p) => p.slug === "about")
+      ?.rootComponent.children?.find((c) => c.id === "nav_b");
+    expect(navB?.props).toMatchObject({ sticky: true, logoPlacement: "right" });
+    expect(navB?.props.overrideShared).toBe(false);
+  });
+
+  it("syncLockedNavBars leaves overrideShared NavBars untouched", () => {
+    const a = navBarNode("nav_a", { sticky: true });
+    const b = navBarNode("nav_b", { sticky: false, overrideShared: true });
+    const config = buildConfig([pageWith("home", a), pageWith("about", b)]);
+    const next = syncLockedNavBars(config, "nav_a");
+    const navB = next.pages
+      .find((p) => p.slug === "about")
+      ?.rootComponent.children?.find((c) => c.id === "nav_b");
+    expect(navB?.props).toMatchObject({ sticky: false, overrideShared: true });
+  });
+
+  it("syncLockedNavBars is a no-op when the global lock is off", () => {
+    const a = navBarNode("nav_a", { sticky: true });
+    const b = navBarNode("nav_b", { sticky: false });
+    const config = buildConfig([pageWith("home", a), pageWith("about", b)], false);
+    const next = syncLockedNavBars(config, "nav_a");
+    const navB = next.pages
+      .find((p) => p.slug === "about")
+      ?.rootComponent.children?.find((c) => c.id === "nav_b");
+    expect(navB?.props.sticky).toBe(false);
+  });
+
+  it("syncLockedNavBars is a no-op when the source itself has overrideShared=true", () => {
+    const a = navBarNode("nav_a", { sticky: true, overrideShared: true });
+    const b = navBarNode("nav_b", { sticky: false });
+    const config = buildConfig([pageWith("home", a), pageWith("about", b)]);
+    const next = syncLockedNavBars(config, "nav_a");
+    const navB = next.pages
+      .find((p) => p.slug === "about")
+      ?.rootComponent.children?.find((c) => c.id === "nav_b");
+    expect(navB?.props.sticky).toBe(false);
+  });
+
+  it("findLockedNavBar returns a sibling locked NavBar (not the excluded id)", () => {
+    const a = navBarNode("nav_a", { sticky: true });
+    const b = navBarNode("nav_b", { sticky: false });
+    const config = buildConfig([pageWith("home", a), pageWith("about", b)]);
+    const found = findLockedNavBar(config, "nav_b");
+    expect(found?.id).toBe("nav_a");
+  });
+
+  it("findLockedNavBar returns null when only override NavBars remain", () => {
+    const a = navBarNode("nav_a", { overrideShared: true });
+    const config = buildConfig([pageWith("home", a)]);
+    expect(findLockedNavBar(config, "nav_b")).toBe(null);
+  });
+
+  it("applyGlobalNavBarLocked(true) replicates from a canonical NavBar across pages", () => {
+    const a = navBarNode("nav_a", { sticky: true });
+    const b = navBarNode("nav_b", { sticky: false });
+    const config = buildConfig([pageWith("home", a), pageWith("about", b)], false);
+    const next = applyGlobalNavBarLocked(config, true);
+    expect(next.global.navBarLocked).toBe(true);
+    const navB = next.pages
+      .find((p) => p.slug === "about")
+      ?.rootComponent.children?.find((c) => c.id === "nav_b");
+    expect(navB?.props.sticky).toBe(true);
+  });
+
+  it("applyGlobalNavBarLocked(false) just flips the flag without replicating", () => {
+    const a = navBarNode("nav_a", { sticky: true });
+    const b = navBarNode("nav_b", { sticky: false });
+    const config = buildConfig([pageWith("home", a), pageWith("about", b)]);
+    const next = applyGlobalNavBarLocked(config, false);
+    expect(next.global.navBarLocked).toBe(false);
+    const navB = next.pages
+      .find((p) => p.slug === "about")
+      ?.rootComponent.children?.find((c) => c.id === "nav_b");
+    expect(navB?.props.sticky).toBe(false);
   });
 });

@@ -1474,6 +1474,154 @@ export function buildAutoPopulatedNavLinks(config: SiteConfig): NavLink[] {
 }
 
 // ---------------------------------------------------------------------------
+// Locked NavBar replication (Sprint 13)
+// ---------------------------------------------------------------------------
+
+// `navBarLocked` is optional in schema for backward compat — undefined means
+// "locked" (the default behavior). Readers should always go through this.
+export function isGlobalNavBarLocked(config: SiteConfig): boolean {
+  return config.global.navBarLocked !== false;
+}
+
+// A NavBar component participates in the locked group when the site-wide lock
+// is on AND its own `overrideShared` flag is not true.
+function isNodeInLockedGroup(node: ComponentNode, globalLocked: boolean): boolean {
+  if (!globalLocked) return false;
+  if (node.type !== "NavBar") return false;
+  return node.props.overrideShared !== true;
+}
+
+// Walk every page's tree; apply `transform` to every NavBar node and replace
+// it in place. The transform receives the node and returns its replacement
+// (or the same node to leave unchanged). Used by `syncLockedNavBars` and the
+// `setGlobalNavBarLocked` action.
+function mapAllNavBars(
+  config: SiteConfig,
+  transform: (node: ComponentNode) => ComponentNode,
+): SiteConfig {
+  function walk(node: ComponentNode): ComponentNode {
+    let next = node;
+    if (next.type === "NavBar") {
+      next = transform(next);
+    }
+    if (!next.children) return next;
+    let childrenChanged = false;
+    const nextChildren = next.children.map((child) => {
+      const w = walk(child);
+      if (w !== child) childrenChanged = true;
+      return w;
+    });
+    return childrenChanged ? { ...next, children: nextChildren } : next;
+  }
+  let changed = false;
+  const nextPages = config.pages.map((page) => {
+    const nextRoot = walk(page.rootComponent);
+    if (nextRoot === page.rootComponent) return page;
+    changed = true;
+    return { ...page, rootComponent: nextRoot };
+  });
+  return changed ? { ...config, pages: nextPages } : config;
+}
+
+// After any mutation that touches a NavBar in the locked group, copy its
+// props/style/animation to every other NavBar in the group. The source's own
+// node is left untouched. NavBars with `overrideShared === true` and any
+// non-NavBar nodes are skipped. If the global lock is off, this is a no-op.
+export function syncLockedNavBars(config: SiteConfig, sourceNodeId: string): SiteConfig {
+  if (!isGlobalNavBarLocked(config)) return config;
+  let source: ComponentNode | null = null;
+  for (const page of config.pages) {
+    source = findNodeInSubtree(page.rootComponent, sourceNodeId);
+    if (source) break;
+  }
+  if (!source || source.type !== "NavBar") return config;
+  if (source.props.overrideShared === true) return config;
+  const sourceProps = source.props;
+  const sourceStyle = source.style;
+  const sourceAnimation = source.animation;
+  return mapAllNavBars(config, (node) => {
+    if (node.id === sourceNodeId) return node;
+    if (node.props.overrideShared === true) return node;
+    return {
+      ...node,
+      props: { ...sourceProps, overrideShared: false },
+      style: sourceStyle,
+      animation: sourceAnimation,
+    };
+  });
+}
+
+// Find any NavBar that's currently in the locked group (other than `excludeId`).
+// Used when toggling `overrideShared` OFF on a node — we need to adopt the
+// group's content, so we copy from any locked sibling.
+export function findLockedNavBar(
+  config: SiteConfig,
+  excludeId: string,
+): ComponentNode | null {
+  if (!isGlobalNavBarLocked(config)) return null;
+  for (const page of config.pages) {
+    const found = findLockedInSubtree(page.rootComponent, excludeId);
+    if (found) return found;
+  }
+  return null;
+}
+
+function findLockedInSubtree(node: ComponentNode, excludeId: string): ComponentNode | null {
+  if (node.type === "NavBar" && node.id !== excludeId && node.props.overrideShared !== true) {
+    return node;
+  }
+  for (const child of node.children ?? []) {
+    const f = findLockedInSubtree(child, excludeId);
+    if (f) return f;
+  }
+  return null;
+}
+
+// When the user flips the site-wide lock ON (OFF → ON), every NavBar that
+// isn't in override mode adopts a single canonical NavBar's content. The
+// canonical is selected as the first NavBar found in declaration order (page
+// order, depth-first). When no NavBar exists, this is a no-op.
+export function applyGlobalNavBarLocked(config: SiteConfig, value: boolean): SiteConfig {
+  const next: SiteConfig = { ...config, global: { ...config.global, navBarLocked: value } };
+  if (!value) return next;
+  // Pick canonical: first NavBar (in any page) that's not in override mode,
+  // else the first NavBar at all.
+  let canonical: ComponentNode | null = null;
+  let anyNavBar: ComponentNode | null = null;
+  for (const page of next.pages) {
+    canonical = findLockableInSubtree(page.rootComponent);
+    if (canonical) break;
+  }
+  if (!canonical) {
+    for (const page of next.pages) {
+      anyNavBar = findFirstNavBar(page.rootComponent);
+      if (anyNavBar) break;
+    }
+    canonical = anyNavBar;
+  }
+  if (!canonical) return next;
+  return syncLockedNavBars(next, canonical.id);
+}
+
+function findLockableInSubtree(node: ComponentNode): ComponentNode | null {
+  if (node.type === "NavBar" && node.props.overrideShared !== true) return node;
+  for (const child of node.children ?? []) {
+    const f = findLockableInSubtree(child);
+    if (f) return f;
+  }
+  return null;
+}
+
+function findFirstNavBar(node: ComponentNode): ComponentNode | null {
+  if (node.type === "NavBar") return node;
+  for (const child of node.children ?? []) {
+    const f = findFirstNavBar(child);
+    if (f) return f;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Dispatcher
 // ---------------------------------------------------------------------------
 

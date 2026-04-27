@@ -1,8 +1,12 @@
 import type { ComponentNode, SiteConfig } from "@/lib/site-config";
 import {
   OperationInvalidError,
+  applyGlobalNavBarLocked,
   buildAutoPopulatedNavLinks,
+  findLockedNavBar,
   isFirstNavBar,
+  isGlobalNavBarLocked,
+  syncLockedNavBars,
 } from "@/lib/site-config/ops";
 import { type StateCreator, create } from "zustand";
 import {
@@ -182,19 +186,22 @@ const creator: StateCreator<EditorStore> = (set) => ({
 
   setComponentProps: (id, props) =>
     set((state) => ({
-      draftConfig: applySetComponentProps(state.draftConfig, id, props),
+      draftConfig: syncLockedNavBars(applySetComponentProps(state.draftConfig, id, props), id),
       saveState: "dirty",
     })),
 
   setComponentStyle: (id, style) =>
     set((state) => ({
-      draftConfig: applySetComponentStyle(state.draftConfig, id, style),
+      draftConfig: syncLockedNavBars(applySetComponentStyle(state.draftConfig, id, style), id),
       saveState: "dirty",
     })),
 
   setComponentAnimation: (id, animation) =>
     set((state) => ({
-      draftConfig: applySetComponentAnimation(state.draftConfig, id, animation),
+      draftConfig: syncLockedNavBars(
+        applySetComponentAnimation(state.draftConfig, id, animation),
+        id,
+      ),
       saveState: "dirty",
     })),
 
@@ -244,20 +251,37 @@ const creator: StateCreator<EditorStore> = (set) => ({
   // -------- Sprint 7: drag-and-drop and resize --------
   addComponentChild: (parentId, index, node) =>
     set((state) => {
-      // First-NavBar auto-populate: when the very first NavBar is added to
-      // a site, seed its `links` array with one "page" entry per static
-      // page so the user has a starting nav with everything reachable.
-      // Subsequent NavBars are inserted unchanged.
-      const nodeToInsert =
-        node.type === "NavBar" && isFirstNavBar(state.draftConfig)
-          ? {
+      // NavBar insertion logic (Sprint 13):
+      //   1. The first NavBar in the site has its `links` auto-populated
+      //      with one "page" entry per static page.
+      //   2. Any subsequent NavBar dropped while the site-wide lock is on
+      //      adopts the existing locked NavBar's props/style/animation so
+      //      it appears identical out of the gate.
+      //   3. With the lock off (or no existing locked NavBar), the node
+      //      is inserted unchanged.
+      let nodeToInsert = node;
+      if (node.type === "NavBar") {
+        if (isFirstNavBar(state.draftConfig)) {
+          nodeToInsert = {
+            ...node,
+            props: {
+              ...node.props,
+              links: buildAutoPopulatedNavLinks(state.draftConfig),
+              overrideShared: false,
+            },
+          };
+        } else if (isGlobalNavBarLocked(state.draftConfig)) {
+          const source = findLockedNavBar(state.draftConfig, node.id);
+          if (source) {
+            nodeToInsert = {
               ...node,
-              props: {
-                ...node.props,
-                links: buildAutoPopulatedNavLinks(state.draftConfig),
-              },
-            }
-          : node;
+              props: { ...source.props, overrideShared: false },
+              style: source.style,
+              animation: source.animation,
+            };
+          }
+        }
+      }
       const next = applyAddComponentChild(state.draftConfig, parentId, index, nodeToInsert);
       // The new node becomes the selection so the user immediately sees
       // what they dropped (Sprint 7 CLAUDE.md DoD).
@@ -293,13 +317,19 @@ const creator: StateCreator<EditorStore> = (set) => ({
 
   setComponentDimension: (id, axis, value) =>
     set((state) => ({
-      draftConfig: applySetComponentDimension(state.draftConfig, id, axis, value),
+      draftConfig: syncLockedNavBars(
+        applySetComponentDimension(state.draftConfig, id, axis, value),
+        id,
+      ),
       saveState: "dirty",
     })),
 
   setComponentDimensionWithCascade: (id, axis, value) =>
     set((state) => ({
-      draftConfig: applyResizeWithCascade(state.draftConfig, id, axis, value),
+      draftConfig: syncLockedNavBars(
+        applyResizeWithCascade(state.draftConfig, id, axis, value),
+        id,
+      ),
       saveState: "dirty",
     })),
 
@@ -339,6 +369,45 @@ const creator: StateCreator<EditorStore> = (set) => ({
   // Phase 6 Task 6.1 — flip the canvas-wide component type overlay (transient, not persisted).
   toggleShowComponentTypes: () =>
     set((state) => ({ showComponentTypes: !state.showComponentTypes })),
+
+  // Sprint 13 — site-wide NavBar lock. When flipping ON, the helper picks a
+  // canonical NavBar and replicates its content/style to every other NavBar
+  // not in override mode so they all align immediately.
+  setGlobalNavBarLocked: (value) =>
+    set((state) => ({
+      draftConfig: applyGlobalNavBarLocked(state.draftConfig, value),
+      saveState: "dirty",
+    })),
+
+  // Sprint 13 — per-NavBar override toggle.
+  //   value=true : the NavBar opts out of the locked group; future edits to
+  //                other locked NavBars no longer affect it.
+  //   value=false: the NavBar rejoins the locked group. If another locked
+  //                NavBar exists, this node adopts that source's
+  //                props/style/animation so it lines up immediately;
+  //                otherwise it stays as-is and becomes the new canonical.
+  setNavBarOverrideShared: (id, value) =>
+    set((state) => {
+      const config = state.draftConfig;
+      // Locate the target so we can preserve its existing props alongside
+      // the new flag (otherwise applySetComponentProps would clobber them).
+      let target: ComponentNode | null = null;
+      for (const page of config.pages) {
+        target = findComponentById(page.rootComponent, id);
+        if (target) break;
+      }
+      if (!target) return {};
+      let next = applySetComponentProps(config, id, { ...target.props, overrideShared: value });
+      if (value === false && isGlobalNavBarLocked(next)) {
+        const source = findLockedNavBar(next, id);
+        if (source) {
+          next = applySetComponentProps(next, id, { ...source.props, overrideShared: false });
+          next = applySetComponentStyle(next, id, source.style);
+          next = applySetComponentAnimation(next, id, source.animation);
+        }
+      }
+      return { draftConfig: next, saveState: "dirty" };
+    }),
 });
 
 // Sprint 6: zustand devtools middleware was deferred -- the conditional-wrap

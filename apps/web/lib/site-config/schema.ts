@@ -287,6 +287,14 @@ export const siteConfigSchema = z
     }),
     global: z.object({
       navBar: navBarConfigSchema,
+      // Site-wide lock for NavBar component instances. When true (the
+      // default behavior — `undefined` is treated as locked), all NavBars
+      // that don't carry `props.overrideShared === true` are kept in sync
+      // via store-side replication after every props/style/animation edit.
+      // The field is optional so legacy configs (pre-Sprint-13) parse
+      // cleanly without test-fixture churn — readers should use
+      // `isGlobalNavBarLocked(config)` to honor the default.
+      navBarLocked: z.boolean().optional(),
       footer: footerConfigSchema,
     }),
     pages: z.array(pageSchema),
