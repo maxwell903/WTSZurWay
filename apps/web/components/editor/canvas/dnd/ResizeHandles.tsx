@@ -39,10 +39,7 @@ type ResizeMatrixEntry = {
 // Components that must opt out can do so via this set; today, none do.
 const NON_RESIZABLE_TYPES: ReadonlySet<ComponentType> = new Set();
 
-export function isResizableOnAxis(
-  type: ComponentType,
-  _axis: "width" | "height",
-): boolean {
+export function isResizableOnAxis(type: ComponentType, _axis: "width" | "height"): boolean {
   if (NON_RESIZABLE_TYPES.has(type)) return false;
   return true;
 }
@@ -130,35 +127,42 @@ function ResizeHandlesActive({
 
 function RightEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect }) {
   const setComponentSpan = useEditorStore((s) => s.setComponentSpan);
-  const dragRef = useRef<{ rowRect: DOMRect } | null>(null);
+  const setComponentDimension = useEditorStore((s) => s.setComponentDimension);
+  // parentRect generalises the old rowRect — the parent could be any container.
+  const dragRef = useRef<{ parentRect: DOMRect; shiftHeld: boolean } | null>(null);
 
   function handlePointerDown(e: ReactPointerEvent<HTMLDivElement>): void {
     e.preventDefault();
     e.stopPropagation();
 
-    // Find the parent Row in the DOM via its data-edit-id.
-    const config = useEditorStore.getState().draftConfig;
     const page = selectCurrentPage(useEditorStore.getState());
     if (!page) return;
     const parentId = findComponentParentId(page.rootComponent, node.id);
     if (!parentId) return;
     const parentEl = document.querySelector(`[data-edit-id="${parentId}"]`);
     if (!parentEl) return;
-    const rowRect = (parentEl as HTMLElement).getBoundingClientRect();
+    const parentRect = (parentEl as HTMLElement).getBoundingClientRect();
 
-    dragRef.current = { rowRect };
+    dragRef.current = { parentRect, shiftHeld: e.shiftKey };
 
     function handlePointerUp(ev: PointerEvent): void {
       const drag = dragRef.current;
       cleanup();
       if (!drag) return;
-      const fraction = (ev.clientX - drag.rowRect.left) / drag.rowRect.width;
-      const newSpan = snapSpan(fraction);
+      const fraction = (ev.clientX - drag.parentRect.left) / drag.parentRect.width;
+      const clampedFraction = Math.max(0.04, Math.min(1, fraction));
+
       try {
-        setComponentSpan(node.id, newSpan);
+        if (node.type === "Column" && !drag.shiftHeld) {
+          // Legacy Column-grid snap (1/12). Shift escapes to free percent.
+          setComponentSpan(node.id, snapSpan(clampedFraction));
+        } else {
+          // 5% snap for free-percent storage.
+          const percent = Math.max(5, Math.round((clampedFraction * 100) / 5) * 5);
+          setComponentDimension(node.id, "width", `${percent}%`);
+        }
       } catch {
-        // Apply layer rejected (e.g. node disappeared mid-drag); silently
-        // ignore — the dev-mode warn helper is in DndCanvasProvider.
+        // Apply layer rejected (e.g. node disappeared mid-drag); silent no-op.
       }
     }
 
@@ -176,9 +180,6 @@ function RightEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRe
 
     window.addEventListener("pointerup", handlePointerUp);
     window.addEventListener("keydown", handleKeyDown);
-
-    // Keep `config` referenced so the reader sees the snapshot at drag start.
-    void config;
   }
 
   return (
