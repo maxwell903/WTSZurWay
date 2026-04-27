@@ -32,6 +32,11 @@ export type PanelState =
       siteSlug: string;
       siteId: string;
       versionId: string;
+      // Sprint 14 DoD-9: which path served the generation. Forwarded from
+      // SetupExperience after reading the dev-only `x-ai-source` header on
+      // /api/generate-initial-site. Undefined in production builds where
+      // the header is omitted.
+      aiSource?: "live" | "fixture";
     }
   | { kind: "error"; error: AiError };
 
@@ -43,6 +48,7 @@ export type PreviewPanelProps = {
 export function PreviewPanel({ state, onRetry }: PreviewPanelProps) {
   const slug = state.kind === "generated" ? state.siteSlug : undefined;
   const isLive = state.kind === "generated";
+  const aiSource = state.kind === "generated" ? state.aiSource : undefined;
 
   return (
     <section
@@ -81,6 +87,17 @@ export function PreviewPanel({ state, onRetry }: PreviewPanelProps) {
         >
           {isLive ? "Live" : "Pending"}
         </span>
+        {/* Sprint 14 DoD-9: dev-only `[live]`/`[fixture]` badge next to the
+            existing pill. Hidden in production builds; the orchestrator's
+            source field is internal-only when NODE_ENV === "production". */}
+        {aiSource && process.env.NODE_ENV !== "production" && (
+          <span
+            data-testid="preview-panel-ai-source"
+            className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-400"
+          >
+            [{aiSource}]
+          </span>
+        )}
       </header>
 
       {state.kind === "generated" ? (

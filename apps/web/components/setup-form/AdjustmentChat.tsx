@@ -59,11 +59,17 @@ type UserTurn = {
   attachments: Attachment[];
 };
 
+// Sprint 14 DoD-11: assistant turns gain an optional `aiSource` carried
+// from the dev-only `x-ai-source` header. Renders a `[live]`/`[fixture]`
+// badge when set and not in production. Error turns by definition were
+// not served by a fixture (a fixture is a known-good response), so the
+// badge only ever appears on summary / clarify rows.
 type AssistantSummary = {
   id: string;
   role: "assistant";
   kind: "summary";
   text: string;
+  aiSource?: "live" | "fixture";
 };
 
 type AssistantClarification = {
@@ -71,6 +77,7 @@ type AssistantClarification = {
   role: "assistant";
   kind: "clarify";
   text: string;
+  aiSource?: "live" | "fixture";
 };
 
 type AssistantError = {
@@ -286,6 +293,10 @@ export function AdjustmentChat({ siteId, versionId, onConfigUpdated }: Adjustmen
       return;
     }
 
+    // Sprint 14 DoD-11: capture the dev-only header for the assistant turn
+    // about to be appended. Undefined in production (server omits it).
+    const turnAiSource = narrowAiSource(editResponse.headers.get("x-ai-source"));
+
     const interpreted = interpretAiEditResponse(editBody);
 
     if (interpreted.kind === "error") {
@@ -300,6 +311,7 @@ export function AdjustmentChat({ siteId, versionId, onConfigUpdated }: Adjustmen
         role: "assistant",
         kind: "clarify",
         text: interpreted.question,
+        aiSource: turnAiSource,
       });
       setState("idle");
       // Attachments are kept on clarify so the user can retry the same
@@ -361,6 +373,7 @@ export function AdjustmentChat({ siteId, versionId, onConfigUpdated }: Adjustmen
       role: "assistant",
       kind: "summary",
       text: interpreted.summary,
+      aiSource: turnAiSource,
     });
     setAttachments([]);
     onConfigUpdated();
@@ -519,22 +532,18 @@ function TranscriptRow({ turn }: { turn: Turn }) {
   }
   if (turn.kind === "summary") {
     return (
-      <p
-        data-testid="adjustment-chat-turn-summary"
-        className="self-start rounded-md bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200"
-      >
-        {turn.text}
-      </p>
+      <div data-testid="adjustment-chat-turn-summary" className="flex flex-col self-start">
+        <p className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200">{turn.text}</p>
+        <AssistantTurnAiSourceBadge aiSource={turn.aiSource} />
+      </div>
     );
   }
   if (turn.kind === "clarify") {
     return (
-      <p
-        data-testid="adjustment-chat-turn-clarify"
-        className="self-start rounded-md bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200"
-      >
-        {turn.text}
-      </p>
+      <div data-testid="adjustment-chat-turn-clarify" className="flex flex-col self-start">
+        <p className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200">{turn.text}</p>
+        <AssistantTurnAiSourceBadge aiSource={turn.aiSource} />
+      </div>
     );
   }
   return (
@@ -546,6 +555,25 @@ function TranscriptRow({ turn }: { turn: Turn }) {
       {turn.text}
     </p>
   );
+}
+
+function AssistantTurnAiSourceBadge({ aiSource }: { aiSource: "live" | "fixture" | undefined }) {
+  // Sprint 14 DoD-11: dev-only `[live]`/`[fixture]` badge under the
+  // assistant turn body. Production hides the element entirely.
+  if (!aiSource || process.env.NODE_ENV === "production") return null;
+  return (
+    <span
+      data-testid="adjustment-chat-turn-ai-source"
+      className="mt-0.5 text-[10px] uppercase tracking-wide text-zinc-500"
+    >
+      [{aiSource}]
+    </span>
+  );
+}
+
+function narrowAiSource(value: string | null): "live" | "fixture" | undefined {
+  if (value === "live" || value === "fixture") return value;
+  return undefined;
 }
 
 type Interpreted =

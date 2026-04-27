@@ -109,10 +109,17 @@ export function useAiEditChat(): UseAiEditChat {
           kind: "network_error",
           message: e instanceof Error ? e.message : "Network request failed",
         };
-        appendAssistantError(setMessages, err);
+        // No response means no x-ai-source header, so the error message
+        // gets aiSource: "live" by definition (a fixture would have served).
+        appendAssistantError(setMessages, err, "live");
         setLoading(false);
         return;
       }
+
+      // Sprint 14 DoD-12: capture the dev-only `x-ai-source` header for the
+      // assistant turn about to be appended. Undefined in production where
+      // the route omits the header.
+      const turnAiSource = narrowAiSource(response.headers.get("x-ai-source"));
 
       let body: unknown;
       try {
@@ -122,7 +129,7 @@ export function useAiEditChat(): UseAiEditChat {
           kind: "invalid_output",
           message: `Bad response shape (HTTP ${response.status})`,
         };
-        appendAssistantError(setMessages, err);
+        appendAssistantError(setMessages, err, "live");
         setLoading(false);
         return;
       }
@@ -136,6 +143,7 @@ export function useAiEditChat(): UseAiEditChat {
           summary: result.summary,
           operations: result.operations,
           status: "pending",
+          aiSource: turnAiSource,
         };
         setMessages((prev) => [...prev, assistant]);
       } else if (result.kind === "clarify") {
@@ -144,10 +152,14 @@ export function useAiEditChat(): UseAiEditChat {
           role: "assistant",
           kind: "clarify",
           question: result.question,
+          aiSource: turnAiSource,
         };
         setMessages((prev) => [...prev, assistant]);
       } else {
-        appendAssistantError(setMessages, result.error);
+        // An error envelope from the route means the live call failed AND
+        // the fixture lookup also missed -- so the error itself was served
+        // live (no fixture was involved).
+        appendAssistantError(setMessages, result.error, "live");
       }
       setLoading(false);
     },
@@ -205,14 +217,21 @@ export function useAiEditChat(): UseAiEditChat {
 function appendAssistantError(
   setMessages: (updater: (prev: Message[]) => Message[]) => void,
   error: AiError,
+  aiSource: "live" | "fixture",
 ): void {
   const msg: AssistantMessage = {
     id: `m_${Math.random().toString(36).slice(2, 10)}`,
     role: "assistant",
     kind: "error",
     error,
+    aiSource,
   };
   setMessages((prev) => [...prev, msg]);
+}
+
+function narrowAiSource(value: string | null): "live" | "fixture" | undefined {
+  if (value === "live" || value === "fixture") return value;
+  return undefined;
 }
 
 type Interpreted =

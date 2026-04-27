@@ -98,6 +98,10 @@ describe("<SetupExperience>", () => {
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
       if (url === "/api/generate-initial-site") {
+        // Sprint 14 (CLAUDE.md §15.9 retroactive fix): SetupExperience now
+        // reads `response.headers.get("x-ai-source")` from this 200 path.
+        // The shim fakes a Headers-shaped object so the existing test body
+        // stays verbatim.
         return {
           ok: true,
           status: 200,
@@ -107,6 +111,7 @@ describe("<SetupExperience>", () => {
             versionId: "v1",
             previewUrl: "/aurora-property-group/preview?v=v1",
           }),
+          headers: new Headers({ "x-ai-source": "live" }),
         } as Response;
       }
       if (url === "/api/sites/s1/working-version") {
@@ -202,5 +207,70 @@ describe("<SetupExperience>", () => {
       expect(screen.getByTestId("preview-panel")).toHaveAttribute("data-panel-state", "error");
     });
     expect(screen.getByTestId("preview-panel-retry")).toBeInTheDocument();
+  });
+
+  // ----- Sprint 14: x-ai-source header forwarding -----
+
+  it("Sprint 14: forwards the x-ai-source header into PreviewPanel as the [fixture] badge", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/generate-initial-site") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            siteId: "s1",
+            slug: "aurora-property-group",
+            versionId: "v1",
+            previewUrl: "/aurora-property-group/preview?v=v1",
+          }),
+          headers: new Headers({ "x-ai-source": "fixture" }),
+        } as Response;
+      }
+      if (url === "/api/sites/s1/working-version") {
+        return new Response(
+          JSON.stringify({
+            versionId: "v1",
+            config: {
+              meta: { siteName: "Aurora", siteSlug: "aurora-property-group" },
+              brand: { palette: "ocean", fontFamily: "Inter" },
+              global: {
+                navBar: { links: [], logoPlacement: "left", sticky: false },
+                footer: { columns: [], copyright: "" },
+              },
+              pages: [
+                {
+                  id: "p_home",
+                  slug: "home",
+                  name: "Home",
+                  kind: "static",
+                  rootComponent: {
+                    id: "cmp_root",
+                    type: "Section",
+                    props: {},
+                    style: {},
+                    children: [],
+                  },
+                },
+              ],
+              forms: [],
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      throw new Error(`Unexpected fetch URL ${url}`);
+    });
+    render(<SetupExperience />);
+    await fillRequiredFields();
+    await waitFor(() => expect(screen.getByTestId("setup-form-save")).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId("setup-form-save"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("preview-panel")).toHaveAttribute("data-panel-state", "generated");
+    });
+    expect(screen.getByTestId("preview-panel-ai-source")).toHaveTextContent("[fixture]");
+    vi.unstubAllEnvs();
   });
 });

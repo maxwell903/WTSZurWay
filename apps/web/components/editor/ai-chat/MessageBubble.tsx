@@ -61,6 +61,7 @@ function AssistantBubble({
       <div data-testid="assistant-ok" className="flex justify-start">
         <div className="max-w-[90%] space-y-2 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100">
           <p>{message.summary}</p>
+          <AiSourceBadge aiSource={message.aiSource} />
           {message.operations.length > 0 && (
             <ul className="list-disc space-y-0.5 pl-5 text-xs text-zinc-400">
               {message.operations.map((op, i) => (
@@ -114,18 +115,43 @@ function AssistantBubble({
   if (message.kind === "clarify") {
     return (
       <div data-testid="assistant-clarify" className="flex justify-start">
-        <div className="max-w-[90%] rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100">
-          {message.question}
+        <div className="max-w-[90%] space-y-2 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100">
+          <p>{message.question}</p>
+          <AiSourceBadge aiSource={message.aiSource} />
         </div>
       </div>
     );
   }
 
   // kind === "error"
-  return <ErrorBubble error={message.error} onRetry={onRetry} />;
+  return <ErrorBubble error={message.error} aiSource={message.aiSource} onRetry={onRetry} />;
 }
 
-function ErrorBubble({ error, onRetry }: { error: AiError; onRetry: () => void }) {
+// Sprint 14 DoD-13: dev-only `[live]`/`[fixture]` badge under the assistant
+// turn body. Production hides the element entirely. Sits inside the same
+// bubble div so the existing chip / suggested-prompts / accept-discard
+// wiring is undisturbed.
+function AiSourceBadge({ aiSource }: { aiSource: "live" | "fixture" | undefined }) {
+  if (!aiSource || process.env.NODE_ENV === "production") return null;
+  return (
+    <span
+      data-testid="ai-chat-turn-ai-source"
+      className="block text-[10px] uppercase tracking-wide text-zinc-500"
+    >
+      [{aiSource}]
+    </span>
+  );
+}
+
+function ErrorBubble({
+  error,
+  aiSource,
+  onRetry,
+}: {
+  error: AiError;
+  aiSource: "live" | "fixture" | undefined;
+  onRetry: () => void;
+}) {
   const [copied, setCopied] = useState(false);
   const showRetry = error.kind === "network_error" || error.kind === "over_quota";
   const copy = userFacingCopyForError(error);
@@ -150,6 +176,7 @@ function ErrorBubble({ error, onRetry }: { error: AiError; onRetry: () => void }
         )}
       >
         <p>{copy}</p>
+        <AiSourceBadge aiSource={aiSource} />
         <div className="flex gap-2 pt-1">
           {showRetry && (
             <Button

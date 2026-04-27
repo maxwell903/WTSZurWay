@@ -205,4 +205,34 @@ describe("RightSidebarAiChat", () => {
       "network_error",
     );
   });
+
+  // ----- Sprint 14 DoD-16(h) -----
+
+  it("Sprint 14: assistant turn renders the [fixture] badge in dev mode when x-ai-source: fixture is present", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            kind: "ok",
+            summary: "Update the hero headline",
+            operations: [],
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json", "x-ai-source": "fixture" },
+          },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<RightSidebarAiChat />);
+    await sendPrompt("change the hero");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("assistant-ok")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("ai-chat-turn-ai-source")).toHaveTextContent("[fixture]");
+    vi.unstubAllEnvs();
+  });
 });

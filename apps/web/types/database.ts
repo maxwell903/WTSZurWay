@@ -265,6 +265,24 @@ export type Database = {
           },
         ];
       };
+      demo_fixtures: {
+        Row: {
+          id: number;
+          surface: string;
+          input_hash: string;
+          response: Json;
+          created_at: string | null;
+        };
+        Insert: {
+          id?: number;
+          surface: string;
+          input_hash: string;
+          response: Json;
+          created_at?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["demo_fixtures"]["Insert"]>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

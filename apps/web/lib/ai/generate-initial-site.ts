@@ -8,24 +8,46 @@
  * failure path is mapped to a categorized `AiError` so the route handler
  * can pick an HTTP status without a second try/catch.
  *
- * Sprint 4 explicitly does NOT enforce the §9.9 soft per-site limit
- * (20 generations / 200 edits). Sprint 14 owns that. The TODO below
- * marks the integration point.
+ * Sprint 14 owns two additive surgical changes (§9.9 + §9.10):
+ *
+ *   1. A head-only count guard against `site_versions` where
+ *      `source = 'initial_generation'`. The cap is 20 GLOBALLY (no
+ *      `site_id` filter) -- per the Sprint 14 §9.9 interpretation,
+ *      "20 generations" cannot mean "per site" because every initial
+ *      generation creates a fresh site row, so a per-site cap is
+ *      indistinguishable from "no cap".
+ *
+ *   2. A fixture-fallback wrap on every error return. After the
+ *      orchestrator's own retry has been exhausted, `lookupGenerationFixture`
+ *      consults `demo_fixtures` keyed on the canonical hash of the form
+ *      payload. On a hit the orchestrator returns `{ kind: "ok",
+ *      source: "fixture" }`; on a miss it returns the original error
+ *      envelope tagged `source: "live"`. The over_quota guard is NOT
+ *      wrapped -- it's an operational / admin signal, not an outage to
+ *      mask.
  */
 
+import { createAnthropicClient } from "@/lib/ai/client";
+import { type AiError, categorizeAiError } from "@/lib/ai/errors";
+import { lookupGenerationFixture } from "@/lib/ai/fixtures";
+import { buildInitialGenerationSystemPrompt } from "@/lib/ai/prompts/initial-generation";
 import type { SetupFormValues } from "@/lib/setup-form/types";
 import { type SiteConfig, safeParseSiteConfig } from "@/lib/site-config";
+import { createServiceSupabaseClient } from "@/lib/supabase";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { ImageBlockParam, MessageParam } from "@anthropic-ai/sdk/resources/messages";
 import type { ZodIssue } from "zod";
-import { createAnthropicClient } from "./client";
-import { type AiError, categorizeAiError } from "./errors";
-import { buildInitialGenerationSystemPrompt } from "./prompts/initial-generation";
 
 const MODEL = "claude-sonnet-4-5";
 const MAX_TOKENS = 16_000;
 const TEMPERATURE = 0.4;
 const MAX_IMAGES = 4;
+
+// PROJECT_SPEC.md §9.9. Sprint 14 interpretation: GLOBAL cap, mirroring
+// Sprint 11's per-site `200` for edits in spirit (a hardcoded soft limit)
+// but applied across the table because per-site generation count is
+// always 1 by construction.
+const GENERATION_LIMIT_GLOBAL = 20;
 
 export type InspirationImage = { url: string };
 
@@ -35,12 +57,8 @@ export type InitialGenerationInput = {
 };
 
 export type GenerateInitialSiteResult =
-  | { kind: "ok"; config: SiteConfig }
-  | { kind: "error"; error: AiError };
-
-// TODO(sprint-14): per-site soft-limit per §9.9 -- consult the in-flight
-// usage counter before calling messages.create and short-circuit with an
-// `over_quota` AiError when exceeded.
+  | { kind: "ok"; config: SiteConfig; source: "live" | "fixture" }
+  | { kind: "error"; error: AiError; source: "live" | "fixture" };
 
 export async function generateInitialSite(
   input: InitialGenerationInput,
@@ -49,6 +67,21 @@ export async function generateInitialSite(
   // pass a mock.
   client: Pick<Anthropic, "messages"> = createAnthropicClient(),
 ): Promise<GenerateInitialSiteResult> {
+  // §9.9 generation soft-limit. Head-only count keeps the round trip cheap
+  // and avoids pulling row payloads we don't need.
+  const supabase = createServiceSupabaseClient();
+  const { count } = await supabase
+    .from("site_versions")
+    .select("id", { count: "exact", head: true })
+    .eq("source", "initial_generation");
+  if ((count ?? 0) >= GENERATION_LIMIT_GLOBAL) {
+    return {
+      kind: "error",
+      error: { kind: "over_quota", message: "Demo generation limit reached." },
+      source: "live",
+    };
+  }
+
   const systemPrompt = buildInitialGenerationSystemPrompt(input);
   const userInstruction = buildUserInstruction(input.form);
   const imageBlocks = buildImageBlocks(input.inspirationImages);
@@ -76,11 +109,11 @@ export async function generateInitialSite(
     firstAttemptText = text;
     const parsed = parseAndValidate(text);
     if (parsed.success) {
-      return { kind: "ok", config: parsed.config };
+      return { kind: "ok", config: parsed.config, source: "live" };
     }
     firstZodIssues = parsed.issues;
   } catch (e) {
-    return { kind: "error", error: categorizeAiError(e) };
+    return withFixtureFallback(input.form, categorizeAiError(e));
   }
 
   // Retry: include the original assistant output and the validation issues
@@ -113,25 +146,41 @@ export async function generateInitialSite(
     const text = extractText(retryResponse);
     const parsed = parseAndValidate(text);
     if (parsed.success) {
-      return { kind: "ok", config: parsed.config };
+      return { kind: "ok", config: parsed.config, source: "live" };
     }
-    return {
-      kind: "error",
-      error: {
-        kind: "invalid_output",
-        message: "Validation failed against SiteConfig schema",
-        details: JSON.stringify(parsed.issues),
-      },
-    };
+    return withFixtureFallback(input.form, {
+      kind: "invalid_output",
+      message: "Validation failed against SiteConfig schema",
+      details: JSON.stringify(parsed.issues),
+    });
   } catch (e) {
-    return { kind: "error", error: categorizeAiError(e) };
+    return withFixtureFallback(input.form, categorizeAiError(e));
   }
+}
+
+// Single chokepoint for "the live call failed -- try a fixture before
+// surfacing the error". Consults demo_fixtures by hash; on a hit, returns
+// the ok-fixture shape; on a miss, returns the original error tagged
+// source: "live" (a fixture lookup that ALSO failed is still source: "live"
+// because no fixture served the call). Per the Sprint 14 hint, this is the
+// SECOND-to-last fallback -- the actual last resort is "user retries" --
+// so it lives on the function's outermost return path, not inside the
+// retry loop.
+async function withFixtureFallback(
+  form: SetupFormValues,
+  error: AiError,
+): Promise<GenerateInitialSiteResult> {
+  const fixture = await lookupGenerationFixture(form);
+  if (fixture) {
+    return { kind: "ok", config: fixture, source: "fixture" };
+  }
+  return { kind: "error", error, source: "live" };
 }
 
 function buildUserInstruction(form: SetupFormValues): string {
   // The user-message half of the prompt -- per-request payload that varies
   // per generation. The system prompt stays identical across requests so
-  // future prompt caching (Sprint 14) can hit consistently.
+  // future prompt caching can hit consistently.
   const lines: string[] = [
     "Generate a SiteConfig for the following property management business.",
     "",

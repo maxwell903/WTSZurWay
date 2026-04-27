@@ -16,6 +16,12 @@ export type UserMessage = {
   attachments: Attachment[];
 };
 
+// Sprint 14 DoD-12: assistant messages gain an optional `aiSource` carried
+// from the dev-only `x-ai-source` header. Renders a `[live]`/`[fixture]`
+// badge when set and not in production. Error messages by definition were
+// not served by a fixture (a fixture is a known-good response), so they
+// always carry `aiSource: "live"` -- the badge surfaces explicitly so
+// dev-mode debugging is consistent across all three message kinds.
 export type AssistantOkMessage = {
   id: string;
   role: "assistant";
@@ -23,6 +29,7 @@ export type AssistantOkMessage = {
   summary: string;
   operations: Operation[];
   status: "pending" | "accepted" | "discarded";
+  aiSource?: "live" | "fixture";
 };
 
 export type AssistantClarifyMessage = {
@@ -30,6 +37,7 @@ export type AssistantClarifyMessage = {
   role: "assistant";
   kind: "clarify";
   question: string;
+  aiSource?: "live" | "fixture";
 };
 
 export type AssistantErrorMessage = {
@@ -37,6 +45,7 @@ export type AssistantErrorMessage = {
   role: "assistant";
   kind: "error";
   error: AiError;
+  aiSource?: "live" | "fixture";
 };
 
 export type AssistantMessage = AssistantOkMessage | AssistantClarifyMessage | AssistantErrorMessage;

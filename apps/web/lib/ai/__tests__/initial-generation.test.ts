@@ -3,7 +3,29 @@
 import type { SetupFormValues } from "@/lib/setup-form/types";
 import { APIConnectionError, AuthenticationError, RateLimitError } from "@anthropic-ai/sdk";
 import type { Message } from "@anthropic-ai/sdk/resources/messages";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Sprint 14 (CLAUDE.md §15.9 retroactive fix): the orchestrator now calls
+// Supabase for the §9.9 generation soft-limit guard AND consults the
+// fixture store on every error path. Tests stub both so the existing
+// suite still exercises the live Anthropic flow without a real DB.
+const supabaseCountMock = vi.fn(async () => ({ count: 0, error: null }));
+const lookupGenerationFixtureMock = vi.fn(async () => null);
+
+vi.mock("@/lib/supabase", () => ({
+  createServiceSupabaseClient: () => ({
+    from: () => ({
+      select: () => ({
+        eq: () => supabaseCountMock(),
+      }),
+    }),
+  }),
+}));
+
+vi.mock("@/lib/ai/fixtures", () => ({
+  lookupGenerationFixture: () => lookupGenerationFixtureMock(),
+}));
+
 import { generateInitialSite } from "../generate-initial-site";
 import { buildInitialGenerationSystemPrompt } from "../prompts/initial-generation";
 
@@ -86,6 +108,16 @@ function makeMockClient(responses: Array<Message | Error>) {
 }
 
 describe("generateInitialSite", () => {
+  beforeEach(() => {
+    supabaseCountMock.mockReset();
+    supabaseCountMock.mockResolvedValue({ count: 0, error: null });
+    lookupGenerationFixtureMock.mockReset();
+    lookupGenerationFixtureMock.mockResolvedValue(null);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("returns ok on the first valid response", async () => {
     const { client, create } = makeMockClient([makeMessageResponse(makeValidConfigJson())]);
     const result = await generateInitialSite(
@@ -201,6 +233,65 @@ describe("generateInitialSite", () => {
     const firstUserContent = firstCall?.messages[0]?.content ?? [];
     const imageBlocks = firstUserContent.filter((b) => b.type === "image");
     expect(imageBlocks).toHaveLength(4);
+  });
+
+  // ----- Sprint 14 DoD-16(b) -----
+
+  it("Sprint 14: cap reached (count = 20) returns over_quota without calling messages.create", async () => {
+    supabaseCountMock.mockResolvedValueOnce({ count: 20, error: null });
+    const { client, create } = makeMockClient([]);
+    const result = await generateInitialSite(
+      { form: MIN_FORM },
+      client as unknown as Parameters<typeof generateInitialSite>[1],
+    );
+    expect(create).not.toHaveBeenCalled();
+    expect(result.kind).toBe("error");
+    if (result.kind === "error") {
+      expect(result.error.kind).toBe("over_quota");
+      expect(result.source).toBe("live");
+    }
+  });
+
+  it("Sprint 14: live success returns source: live", async () => {
+    const { client } = makeMockClient([makeMessageResponse(makeValidConfigJson())]);
+    const result = await generateInitialSite(
+      { form: MIN_FORM },
+      client as unknown as Parameters<typeof generateInitialSite>[1],
+    );
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.source).toBe("live");
+    }
+  });
+
+  it("Sprint 14: live error WITH a fixture returns { kind: ok, source: fixture } carrying the fixture config", async () => {
+    const fixtureConfig = JSON.parse(makeValidConfigJson());
+    fixtureConfig.meta.siteName = "Fixture Aurora";
+    lookupGenerationFixtureMock.mockResolvedValueOnce(fixtureConfig);
+    const { client } = makeMockClient([new APIConnectionError({ message: "ECONNREFUSED" })]);
+    const result = await generateInitialSite(
+      { form: MIN_FORM },
+      client as unknown as Parameters<typeof generateInitialSite>[1],
+    );
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.source).toBe("fixture");
+      expect(result.config.meta.siteName).toBe("Fixture Aurora");
+    }
+  });
+
+  it("Sprint 14: live error WITHOUT a fixture returns { kind: error, source: live }", async () => {
+    lookupGenerationFixtureMock.mockResolvedValueOnce(null);
+    const { client } = makeMockClient([new APIConnectionError({ message: "ECONNREFUSED" })]);
+    const result = await generateInitialSite(
+      { form: MIN_FORM },
+      client as unknown as Parameters<typeof generateInitialSite>[1],
+    );
+    expect(result.kind).toBe("error");
+    if (result.kind === "error") {
+      expect(result.error.kind).toBe("network_error");
+      expect(result.source).toBe("live");
+    }
   });
 });
 

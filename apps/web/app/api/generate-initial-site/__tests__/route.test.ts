@@ -108,7 +108,11 @@ describe("POST /api/generate-initial-site", () => {
 
   it("happy path: returns 200 with siteId, slug, versionId, previewUrl", async () => {
     ensureUniqueSlugMock.mockResolvedValueOnce("aurora-property-group");
-    generateInitialSiteMock.mockResolvedValueOnce({ kind: "ok", config: VALID_CONFIG });
+    generateInitialSiteMock.mockResolvedValueOnce({
+      kind: "ok",
+      config: VALID_CONFIG,
+      source: "live",
+    });
 
     const sitesInsert = chainableInsert({
       data: { id: "site-uuid-1", slug: "aurora-property-group" },
@@ -161,7 +165,11 @@ describe("POST /api/generate-initial-site", () => {
     // path is exercised by ensureUniqueSlug's own DB checks; this test
     // verifies the route plumbs the result through unchanged.
     ensureUniqueSlugMock.mockResolvedValueOnce("aurora-property-group-2");
-    generateInitialSiteMock.mockResolvedValueOnce({ kind: "ok", config: VALID_CONFIG });
+    generateInitialSiteMock.mockResolvedValueOnce({
+      kind: "ok",
+      config: VALID_CONFIG,
+      source: "live",
+    });
 
     const sitesInsert = chainableInsert({
       data: { id: "site-uuid-2", slug: "aurora-property-group-2" },
@@ -231,8 +239,60 @@ describe("POST /api/generate-initial-site", () => {
     generateInitialSiteMock.mockResolvedValueOnce({
       kind: "error",
       error: { kind: "invalid_output", message: "Bad shape" },
+      source: "live",
     });
     const response = await POST(makeRequest(VALID_FORM));
     expect(response.status).toBe(502);
+  });
+
+  // ----- Sprint 14 DoD-16(d) -----
+
+  function setupOkPath(source: "live" | "fixture") {
+    ensureUniqueSlugMock.mockResolvedValueOnce("aurora-property-group");
+    generateInitialSiteMock.mockResolvedValueOnce({
+      kind: "ok",
+      config: VALID_CONFIG,
+      source,
+    });
+    const sitesInsert = chainableInsert({
+      data: { id: "site-uuid-1", slug: "aurora-property-group" },
+      error: null,
+    });
+    const versionsInsert = chainableInsert({
+      data: { id: "version-uuid-1" },
+      error: null,
+    });
+    fromMock.mockImplementation((table: string) => {
+      if (table === "sites") return { insert: sitesInsert.insert };
+      if (table === "site_versions") return { insert: versionsInsert.insert };
+      throw new Error(`Unexpected table: ${table}`);
+    });
+  }
+
+  it("Sprint 14: sets x-ai-source: live in dev mode when orchestrator returned source: live", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    setupOkPath("live");
+    const response = await POST(makeRequest(VALID_FORM));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-ai-source")).toBe("live");
+    vi.unstubAllEnvs();
+  });
+
+  it("Sprint 14: sets x-ai-source: fixture in dev mode when orchestrator returned source: fixture", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    setupOkPath("fixture");
+    const response = await POST(makeRequest(VALID_FORM));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-ai-source")).toBe("fixture");
+    vi.unstubAllEnvs();
+  });
+
+  it("Sprint 14: omits x-ai-source in production builds", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    setupOkPath("live");
+    const response = await POST(makeRequest(VALID_FORM));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-ai-source")).toBeNull();
+    vi.unstubAllEnvs();
   });
 });

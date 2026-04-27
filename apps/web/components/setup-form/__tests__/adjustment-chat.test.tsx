@@ -423,4 +423,33 @@ describe("<AdjustmentChat>", () => {
     expect(screen.getByTestId("adjustment-chat-send")).toBeDisabled();
     expect(screen.getByTestId("adjustment-chat-input")).toBeDisabled();
   });
+
+  // ----- Sprint 14 DoD-16(g) -----
+
+  it("Sprint 14: assistant turn renders the [fixture] badge in dev mode when the response carries x-ai-source: fixture", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    mockHydrateOk();
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ kind: "ok", summary: "Updated headline", operations: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json", "x-ai-source": "fixture" },
+      }),
+    );
+    fetchMock.mockResolvedValueOnce(noContentResponse());
+
+    render(<AdjustmentChat siteId="s1" versionId="v1" onConfigUpdated={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("adjustment-chat")).toHaveAttribute("data-chat-state", "idle");
+    });
+
+    fireEvent.change(screen.getByTestId("adjustment-chat-input"), {
+      target: { value: "change the headline" },
+    });
+    fireEvent.click(screen.getByTestId("adjustment-chat-send"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("adjustment-chat-turn-ai-source")).toHaveTextContent("[fixture]");
+    });
+    vi.unstubAllEnvs();
+  });
 });

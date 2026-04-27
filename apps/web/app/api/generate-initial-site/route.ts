@@ -118,9 +118,17 @@ export async function POST(request: Request): Promise<Response> {
     versionId: versionRow.id,
     previewUrl: `/${siteRow.slug}/preview?v=${versionRow.id}`,
   };
+  // Sprint 14 DoD-7: dev-mode `x-ai-source` header. Production omits the
+  // header entirely so the silent fallback stays silent on stage. The
+  // orchestrator's `source` field is always populated; we just elide it
+  // from the wire response in production.
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (process.env.NODE_ENV !== "production") {
+    headers["x-ai-source"] = generation.source;
+  }
   return new Response(JSON.stringify(body), {
     status: 200,
-    headers: { "content-type": "application/json" },
+    headers,
   });
 }
 

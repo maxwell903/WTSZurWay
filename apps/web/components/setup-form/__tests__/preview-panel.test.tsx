@@ -181,4 +181,59 @@ describe("<PreviewPanel>", () => {
     expect(screen.queryByTestId("preview-panel-retry")).not.toBeInTheDocument();
     expect(screen.getByTestId("preview-panel-error-copy")).toHaveTextContent(/couldn't parse/);
   });
+
+  // ----- Sprint 14 DoD-16(f) -----
+
+  it("Sprint 14: renders the [fixture] badge when aiSource is fixture and NODE_ENV is test", () => {
+    vi.stubEnv("NODE_ENV", "test");
+    render(
+      <PreviewPanel
+        state={{
+          kind: "generated",
+          previewUrl: "/aurora-cincy/preview?v=v1",
+          siteSlug: "aurora-cincy",
+          siteId: "s1",
+          versionId: "v1",
+          aiSource: "fixture",
+        }}
+      />,
+    );
+    expect(screen.getByTestId("preview-panel-ai-source")).toHaveTextContent("[fixture]");
+    vi.unstubAllEnvs();
+  });
+
+  it("Sprint 14: does NOT render the badge when aiSource is undefined", () => {
+    vi.stubEnv("NODE_ENV", "test");
+    render(
+      <PreviewPanel
+        state={{
+          kind: "generated",
+          previewUrl: "/aurora-cincy/preview?v=v1",
+          siteSlug: "aurora-cincy",
+          siteId: "s1",
+          versionId: "v1",
+        }}
+      />,
+    );
+    expect(screen.queryByTestId("preview-panel-ai-source")).not.toBeInTheDocument();
+    vi.unstubAllEnvs();
+  });
+
+  it("Sprint 14: does NOT render the badge when NODE_ENV is production", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    render(
+      <PreviewPanel
+        state={{
+          kind: "generated",
+          previewUrl: "/aurora-cincy/preview?v=v1",
+          siteSlug: "aurora-cincy",
+          siteId: "s1",
+          versionId: "v1",
+          aiSource: "fixture",
+        }}
+      />,
+    );
+    expect(screen.queryByTestId("preview-panel-ai-source")).not.toBeInTheDocument();
+    vi.unstubAllEnvs();
+  });
 });

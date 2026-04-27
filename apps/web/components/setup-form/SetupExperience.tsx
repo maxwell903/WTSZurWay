@@ -54,12 +54,16 @@ export function SetupExperience() {
         });
         return;
       }
+      // Sprint 14 DoD-10: read the dev-only `x-ai-source` header and forward
+      // it into PanelState. The header is omitted in production builds, so
+      // narrowAiSource() returns undefined and PreviewPanel skips the badge.
       setPanelState({
         kind: "generated",
         previewUrl: ok.previewUrl,
         siteSlug: ok.slug,
         siteId: ok.siteId,
         versionId: ok.versionId,
+        aiSource: narrowAiSource(response.headers.get("x-ai-source")),
       });
     } catch (e) {
       setPanelState({
@@ -85,6 +89,14 @@ export function SetupExperience() {
       </div>
     </>
   );
+}
+
+function narrowAiSource(value: string | null): "live" | "fixture" | undefined {
+  // The header is set by the route only when NODE_ENV !== "production" and
+  // the orchestrator returned a known source value. Anything outside that
+  // pair is treated as missing rather than crashing the panel.
+  if (value === "live" || value === "fixture") return value;
+  return undefined;
 }
 
 function extractError(body: unknown): AiError {

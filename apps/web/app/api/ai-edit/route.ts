@@ -140,6 +140,10 @@ export async function POST(request: Request): Promise<Response> {
     selection: body.selection ?? null,
     attachments: body.attachments,
     history: body.history,
+    // Sprint 14: forward so the fixture hash includes them. The orchestrator
+    // does not otherwise read these fields.
+    siteId: body.siteId,
+    currentVersionId: body.currentVersionId,
   });
 
   if (orchestrator.kind === "error") {
@@ -147,7 +151,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   if (orchestrator.kind === "clarify") {
-    return json(200, { kind: "clarify", question: orchestrator.question });
+    return json(200, { kind: "clarify", question: orchestrator.question }, orchestrator.source);
   }
 
   // Dry-run the proposed operations to guarantee the client receives only
@@ -169,17 +173,34 @@ export async function POST(request: Request): Promise<Response> {
     });
   }
 
-  return json(200, {
-    kind: "ok",
-    summary: orchestrator.summary,
-    operations: orchestrator.operations,
-  });
+  return json(
+    200,
+    {
+      kind: "ok",
+      summary: orchestrator.summary,
+      operations: orchestrator.operations,
+    },
+    orchestrator.source,
+  );
 }
 
-function json(status: number, body: SuccessResponseBody): Response {
+function json(
+  status: number,
+  body: SuccessResponseBody,
+  // Sprint 14 DoD-8: dev-mode `x-ai-source` header on every non-error 200
+  // (both `ok` and `clarify`). Production omits it entirely.
+  source?: "live" | "fixture",
+): Response {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+  };
+  if (source !== undefined && process.env.NODE_ENV !== "production") {
+    headers["x-ai-source"] = source;
+  }
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json", "cache-control": "no-store" },
+    headers,
   });
 }
 

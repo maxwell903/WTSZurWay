@@ -13,10 +13,20 @@
  * diff (`kind: "ok"`) or ask a clarifying question (`kind: "clarify"`). The
  * caller is responsible for surfacing each shape; this orchestrator only
  * validates and forwards.
+ *
+ * Sprint 14 wraps the orchestrator's outermost return path with a
+ * fixture-fallback lookup (PROJECT_SPEC.md §9.10). After both retries are
+ * exhausted, `lookupAiEditFixture` consults `demo_fixtures` keyed on the
+ * canonical hash of the input. On a hit the orchestrator returns the
+ * stored response tagged `source: "fixture"`; on a miss it returns the
+ * original error envelope tagged `source: "live"`. The §9.9 per-site edit
+ * cap stays at the route layer (`apps/web/app/api/ai-edit/route.ts`) per
+ * Sprint 11 -- this file does not duplicate the guard.
  */
 
 import { createAnthropicClient } from "@/lib/ai/client";
 import { type AiError, categorizeAiError } from "@/lib/ai/errors";
+import { type FixtureAiEditInput, lookupAiEditFixture } from "@/lib/ai/fixtures";
 import {
   type AiEditPromptInput,
   type AiEditSelection,
@@ -45,17 +55,40 @@ export type AiEditHistoryTurn = {
   content: string;
 };
 
+/**
+ * Sprint 14 widens the input with optional `siteId` / `currentVersionId`.
+ * The route layer (which already knows them per request) forwards them so
+ * the fixture hash can include them -- without these, two distinct sites
+ * issuing identical prompts would collide on a single fixture row.
+ * Existing callers that pre-date Sprint 14 (the unit test file) keep
+ * working because both new fields are optional.
+ */
 export type AiEditInput = {
   prompt: string;
   config: SiteConfig;
   selection: AiEditSelection | null;
   attachments?: AiEditAttachment[];
   history?: AiEditHistoryTurn[];
+  siteId?: string;
+  currentVersionId?: string;
 };
 
-export type AiEditOk = { kind: "ok"; summary: string; operations: Operation[] };
-export type AiEditClarify = { kind: "clarify"; question: string };
-export type AiEditError = { kind: "error"; error: AiError };
+export type AiEditOk = {
+  kind: "ok";
+  summary: string;
+  operations: Operation[];
+  source: "live" | "fixture";
+};
+export type AiEditClarify = {
+  kind: "clarify";
+  question: string;
+  source: "live" | "fixture";
+};
+export type AiEditError = {
+  kind: "error";
+  error: AiError;
+  source: "live" | "fixture";
+};
 export type AiEditResult = AiEditOk | AiEditClarify | AiEditError;
 
 const okResponseSchema = z.object({
@@ -103,11 +136,11 @@ export async function aiEdit(
     firstAttemptText = text;
     const parsed = parseAndValidate(text);
     if (parsed.success) {
-      return resultFromResponse(parsed.value);
+      return resultFromResponse(parsed.value, "live");
     }
     firstZodIssues = parsed.issues;
   } catch (e) {
-    return { kind: "error", error: categorizeAiError(e) };
+    return withFixtureFallback(input, categorizeAiError(e));
   }
 
   // Single retry per §9.7.
@@ -134,19 +167,37 @@ export async function aiEdit(
     const text = extractText(retryResponse);
     const parsed = parseAndValidate(text);
     if (parsed.success) {
-      return resultFromResponse(parsed.value);
+      return resultFromResponse(parsed.value, "live");
     }
-    return {
-      kind: "error",
-      error: {
-        kind: "invalid_output",
-        message: "AI Edit response failed validation",
-        details: JSON.stringify(parsed.issues),
-      },
-    };
+    return withFixtureFallback(input, {
+      kind: "invalid_output",
+      message: "AI Edit response failed validation",
+      details: JSON.stringify(parsed.issues),
+    });
   } catch (e) {
-    return { kind: "error", error: categorizeAiError(e) };
+    return withFixtureFallback(input, categorizeAiError(e));
   }
+}
+
+// Single chokepoint for "the live call failed -- try a fixture before
+// surfacing the error". Mirrors generate-initial-site.ts's helper of the
+// same shape. The fixture hash includes siteId + currentVersionId, so the
+// orchestrator forwards whatever the route handed it; tests that omit
+// these (Sprint 11's existing suite) still work because the lookup just
+// hashes `null` for missing fields and misses the fixture row, falling
+// through to the original error envelope.
+async function withFixtureFallback(input: AiEditInput, error: AiError): Promise<AiEditResult> {
+  const lookupInput: FixtureAiEditInput = {
+    prompt: input.prompt,
+    siteId: input.siteId,
+    currentVersionId: input.currentVersionId,
+    selection: input.selection,
+  };
+  const fixture = await lookupAiEditFixture(lookupInput);
+  if (fixture) {
+    return fixture;
+  }
+  return { kind: "error", error, source: "live" };
 }
 
 function buildMessages(input: AiEditInput): MessageParam[] {
@@ -242,15 +293,16 @@ function stripCodeFence(text: string): string {
   return text;
 }
 
-function resultFromResponse(response: AiEditResponse): AiEditResult {
+function resultFromResponse(response: AiEditResponse, source: "live" | "fixture"): AiEditResult {
   if (response.kind === "ok") {
     return {
       kind: "ok",
       summary: response.summary,
       operations: response.operations,
+      source,
     };
   }
-  return { kind: "clarify", question: response.question };
+  return { kind: "clarify", question: response.question, source };
 }
 
 // Internal helpers exported for unit tests only.

@@ -1,10 +1,20 @@
 // @vitest-environment node
 
-import { aiEdit } from "@/lib/ai/ai-edit";
 import type { SiteConfig } from "@/lib/site-config";
 import { APIConnectionError, AuthenticationError, RateLimitError } from "@anthropic-ai/sdk";
 import type { Message } from "@anthropic-ai/sdk/resources/messages";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Sprint 14 (CLAUDE.md §15.9 retroactive fix): the orchestrator now
+// consults the fixture store on every error path. Tests stub the lookup
+// to return null by default so the existing error-mapping tests still
+// surface the live error envelope.
+const lookupAiEditFixtureMock = vi.fn<() => Promise<unknown>>(async () => null);
+vi.mock("@/lib/ai/fixtures", () => ({
+  lookupAiEditFixture: () => lookupAiEditFixtureMock(),
+}));
+
+import { aiEdit } from "@/lib/ai/ai-edit";
 
 function makeConfig(): SiteConfig {
   return {
@@ -90,6 +100,14 @@ const CLARIFY_RESPONSE = JSON.stringify({
 });
 
 describe("aiEdit", () => {
+  beforeEach(() => {
+    lookupAiEditFixtureMock.mockReset();
+    lookupAiEditFixtureMock.mockResolvedValue(null);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("returns ok with the parsed operations on the first valid response", async () => {
     const { client, create } = makeMockClient([makeMessageResponse(OK_RESPONSE)]);
     const result = await aiEdit(
@@ -260,6 +278,53 @@ describe("aiEdit", () => {
     expect(result.kind).toBe("error");
     if (result.kind === "error") {
       expect(result.error.kind).toBe("invalid_output");
+    }
+  });
+
+  // ----- Sprint 14 DoD-16(c) -----
+
+  it("Sprint 14: live success returns source: live", async () => {
+    const { client } = makeMockClient([makeMessageResponse(OK_RESPONSE)]);
+    const result = await aiEdit(
+      { prompt: "change the hero headline", config: makeConfig(), selection: null },
+      client as unknown as Parameters<typeof aiEdit>[1],
+    );
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.source).toBe("live");
+    }
+  });
+
+  it("Sprint 14: live error WITH a fixture returns the fixture tagged source: fixture", async () => {
+    lookupAiEditFixtureMock.mockResolvedValueOnce({
+      kind: "ok",
+      summary: "Recorded summary",
+      operations: [],
+      source: "fixture",
+    });
+    const { client } = makeMockClient([new APIConnectionError({ message: "ECONNREFUSED" })]);
+    const result = await aiEdit(
+      { prompt: "down", config: makeConfig(), selection: null },
+      client as unknown as Parameters<typeof aiEdit>[1],
+    );
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.source).toBe("fixture");
+      expect(result.summary).toBe("Recorded summary");
+    }
+  });
+
+  it("Sprint 14: live error WITHOUT a fixture returns { kind: error, source: live }", async () => {
+    lookupAiEditFixtureMock.mockResolvedValueOnce(null);
+    const { client } = makeMockClient([new APIConnectionError({ message: "ECONNREFUSED" })]);
+    const result = await aiEdit(
+      { prompt: "down", config: makeConfig(), selection: null },
+      client as unknown as Parameters<typeof aiEdit>[1],
+    );
+    expect(result.kind).toBe("error");
+    if (result.kind === "error") {
+      expect(result.error.kind).toBe("network_error");
+      expect(result.source).toBe("live");
     }
   });
 });

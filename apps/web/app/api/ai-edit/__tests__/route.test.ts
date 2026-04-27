@@ -156,6 +156,7 @@ describe("POST /api/ai-edit", () => {
       kind: "ok",
       summary: "Update hero",
       operations: [{ type: "setProp", targetId: "cmp_hero", propPath: "heading", value: "Hello" }],
+      source: "live",
     });
     const response = await POST(makeRequest(VALID_BODY));
     expect(response.status).toBe(200);
@@ -173,6 +174,7 @@ describe("POST /api/ai-edit", () => {
     aiEditMock.mockResolvedValueOnce({
       kind: "clarify",
       question: "Which heading?",
+      source: "live",
     });
     const response = await POST(makeRequest({ ...VALID_BODY, prompt: "fix it" }));
     expect(response.status).toBe(200);
@@ -223,5 +225,77 @@ describe("POST /api/ai-edit", () => {
     });
     const response = await POST(makeRequest(VALID_BODY));
     expect(response.status).toBe(503);
+  });
+
+  // ----- Sprint 14 DoD-16(e) -----
+
+  function setupOk(source: "live" | "fixture") {
+    buildSupabaseMock({
+      count: { count: 0, error: null },
+      row: { data: { id: VALID_VERSION_ID, config: VALID_CONFIG }, error: null },
+    });
+    aiEditMock.mockResolvedValueOnce({
+      kind: "ok",
+      summary: "Update hero",
+      operations: [{ type: "setProp", targetId: "cmp_hero", propPath: "heading", value: "Hello" }],
+      source,
+    });
+  }
+
+  function setupClarify(source: "live" | "fixture") {
+    buildSupabaseMock({
+      count: { count: 0, error: null },
+      row: { data: { id: VALID_VERSION_ID, config: VALID_CONFIG }, error: null },
+    });
+    aiEditMock.mockResolvedValueOnce({
+      kind: "clarify",
+      question: "Which one?",
+      source,
+    });
+  }
+
+  it("Sprint 14: ok body sets x-ai-source: live in dev mode", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    setupOk("live");
+    const response = await POST(makeRequest(VALID_BODY));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-ai-source")).toBe("live");
+    vi.unstubAllEnvs();
+  });
+
+  it("Sprint 14: ok body sets x-ai-source: fixture in dev mode", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    setupOk("fixture");
+    const response = await POST(makeRequest(VALID_BODY));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-ai-source")).toBe("fixture");
+    vi.unstubAllEnvs();
+  });
+
+  it("Sprint 14: ok body omits x-ai-source in production builds", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    setupOk("live");
+    const response = await POST(makeRequest(VALID_BODY));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-ai-source")).toBeNull();
+    vi.unstubAllEnvs();
+  });
+
+  it("Sprint 14: clarify body sets x-ai-source in dev mode", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    setupClarify("fixture");
+    const response = await POST(makeRequest(VALID_BODY));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-ai-source")).toBe("fixture");
+    vi.unstubAllEnvs();
+  });
+
+  it("Sprint 14: clarify body omits x-ai-source in production builds", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    setupClarify("live");
+    const response = await POST(makeRequest(VALID_BODY));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-ai-source")).toBeNull();
+    vi.unstubAllEnvs();
   });
 });
