@@ -11,7 +11,13 @@
 
 import { cn } from "@/lib/utils";
 import { type ReactNode, createContext, useContext } from "react";
+import { parseNodeId } from "./dnd-ids";
 
+// `overId` is the RAW dnd-kit `over.id` (e.g. `node:cmp_x`,
+// `between:cmp_p:0`, `palette:Heading`). Consumers parse the prefix they
+// care about — `DropZoneIndicator` looks for the `node:` flavor;
+// `BetweenDropZone` does an exact-string match against its own
+// `between:…` id.
 export type DragStateValue = {
   activeId: string | null;
   overId: string | null;
@@ -43,14 +49,17 @@ export function useDragState(): DragStateValue {
 export function DropZoneIndicator({ id }: { id: string }) {
   const { activeId, overId, isAcceptable } = useDragState();
   if (!activeId) return null;
-  if (overId !== id) return null;
+  // Only draw the 4-px accent for node-flavored over targets; between-zone
+  // hits draw their own affordance via `BetweenDropZone`.
+  const overNodeId = parseNodeId(overId);
+  if (overNodeId !== id) return null;
   return (
     <div
       data-testid={`dropzone-indicator-${id}`}
       data-dropzone-id={id}
       data-acceptable={isAcceptable ? "true" : "false"}
       className={cn(
-        "pointer-events-none absolute -top-0.5 left-0 right-0 h-1 rounded-full",
+        "pointer-events-none absolute -top-0.5 right-0 left-0 h-1 rounded-full",
         isAcceptable ? "bg-blue-500" : "bg-zinc-500/60",
       )}
     />

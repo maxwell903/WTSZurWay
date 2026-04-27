@@ -39,7 +39,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import { DragStateProvider, type DragStateValue } from "./DropZoneIndicator";
 import { SortableProviderActive } from "./SortableNodeContext";
 import { createDefaultNode } from "./createDefaultNode";
-import { nodeId, parseNodeId, parsePaletteId } from "./dnd-ids";
+import { nodeId, parseBetweenId, parseNodeId, parsePaletteId } from "./dnd-ids";
 import { canAcceptChild } from "./dropTargetPolicy";
 
 // dev-only diagnostic helper. Sprint 7 CLAUDE.md permits a single
@@ -83,6 +83,14 @@ function findNodeInTree(root: ComponentNode, id: string): ComponentNode | null {
   return null;
 }
 
+function isInSubtree(root: ComponentNode, id: string): boolean {
+  if (root.id === id) return true;
+  for (const child of root.children ?? []) {
+    if (isInSubtree(child, id)) return true;
+  }
+  return false;
+}
+
 export function DndCanvasProvider({ children }: { children: ReactNode }) {
   const previewMode = useEditorStore((s) => s.previewMode);
   if (previewMode) return <>{children}</>;
@@ -119,6 +127,30 @@ function DndCanvasProviderInner({ children }: { children: ReactNode }) {
 
   function determineAcceptable(activeIdRaw: string, overIdRaw: string | null): boolean {
     if (!overIdRaw || !currentPage) return false;
+
+    // Between-zone target: the gap-droppable rendered between siblings.
+    const between = parseBetweenId(overIdRaw);
+    if (between) {
+      const parentNode = findNodeInTree(currentPage.rootComponent, between.parentId);
+      if (!parentNode) return false;
+
+      const paletteType = parsePaletteId(activeIdRaw);
+      if (paletteType) {
+        return canAcceptChild(parentNode, paletteType);
+      }
+      const draggedId = parseNodeId(activeIdRaw);
+      if (!draggedId) return false;
+      const draggedNode = findNodeInTree(currentPage.rootComponent, draggedId);
+      if (!draggedNode) return false;
+      // Cannot drop a node onto a between-zone of itself or one of its
+      // descendants (that would form a cycle).
+      if (isInSubtree(draggedNode, between.parentId)) return false;
+      const draggedParent = parentLookup.get(draggedId);
+      // Same-parent reorder is always policy-OK (it was accepted at insert).
+      if (draggedParent && draggedParent.parentId === between.parentId) return true;
+      return canAcceptChild(parentNode, draggedNode.type);
+    }
+
     const overNodeId = parseNodeId(overIdRaw);
     if (!overNodeId) return false;
     const overNode = findNodeInTree(currentPage.rootComponent, overNodeId);
@@ -152,7 +184,7 @@ function DndCanvasProviderInner({ children }: { children: ReactNode }) {
     const overId = event.over ? String(event.over.id) : null;
     setDragState({
       activeId,
-      overId: overId ? parseNodeIdToWrapperId(overId) : null,
+      overId,
       isAcceptable: overId ? determineAcceptable(activeId, overId) : false,
     });
   };
@@ -164,6 +196,82 @@ function DndCanvasProviderInner({ children }: { children: ReactNode }) {
 
     const activeIdRaw = String(active.id);
     const overIdRaw = String(over.id);
+
+    // ============ between-zone target (insert/move at named index) ============
+    const between = parseBetweenId(overIdRaw);
+    if (between) {
+      const parentNode = findNodeInTree(currentPage.rootComponent, between.parentId);
+      if (!parentNode) return;
+
+      const paletteType = parsePaletteId(activeIdRaw);
+      if (paletteType) {
+        if (!canAcceptChild(parentNode, paletteType)) {
+          devWarn(
+            "[between] palette drop rejected:",
+            parentNode.type,
+            "cannot accept",
+            paletteType,
+          );
+          return;
+        }
+        try {
+          addComponentChild(parentNode.id, between.index, createDefaultNode(paletteType));
+        } catch (err) {
+          devWarn("[between] addComponentChild rejected at apply time:", err);
+        }
+        return;
+      }
+
+      const draggedId = parseNodeId(activeIdRaw);
+      if (!draggedId) return;
+      const draggedNode = findNodeInTree(currentPage.rootComponent, draggedId);
+      if (!draggedNode) return;
+      if (isInSubtree(draggedNode, between.parentId)) {
+        devWarn("[between] node drop rejected: cannot move into self/descendant");
+        return;
+      }
+
+      const draggedParent = parentLookup.get(draggedId);
+      if (draggedParent && draggedParent.parentId === between.parentId) {
+        // Same-parent reorder. The between index points at the slot the user
+        // wants the dragged node to occupy AFTER the move. `arrayMove`
+        // operates on the current array, so when `oldIndex < destIndex` we
+        // shift down by one to compensate for the dragged node being
+        // removed before re-insertion.
+        const ids = (parentNode.children ?? []).map((c) => c.id);
+        const oldIndex = draggedParent.index;
+        let destIndex = between.index;
+        if (oldIndex < destIndex) destIndex -= 1;
+        if (destIndex < 0) destIndex = 0;
+        if (destIndex > ids.length - 1) destIndex = ids.length - 1;
+        if (oldIndex === destIndex) return;
+        const newOrder = arrayMove(ids, oldIndex, destIndex);
+        try {
+          reorderChildren(parentNode.id, newOrder);
+        } catch (err) {
+          devWarn("[between] reorderChildren failed:", err);
+        }
+        return;
+      }
+
+      // Cross-parent move at a specific index.
+      if (!canAcceptChild(parentNode, draggedNode.type)) {
+        devWarn(
+          "[between] node drop rejected:",
+          parentNode.type,
+          "cannot accept",
+          draggedNode.type,
+        );
+        return;
+      }
+      try {
+        moveComponent(draggedId, parentNode.id, between.index);
+      } catch (err) {
+        devWarn("[between] moveComponent rejected at apply time:", err);
+      }
+      return;
+    }
+
     const overNodeId = parseNodeId(overIdRaw);
     if (!overNodeId) return;
     const overNode = findNodeInTree(currentPage.rootComponent, overNodeId);
@@ -246,13 +354,6 @@ function DndCanvasProviderInner({ children }: { children: ReactNode }) {
       <DragOverlay>{renderDragOverlay(dragState, currentPage?.rootComponent ?? null)}</DragOverlay>
     </DndContext>
   );
-}
-
-// The DragStateContext stores the over target's BARE node id (cmp_x), not
-// the dnd-kit-prefixed string (node:cmp_x), so DropZoneIndicator can
-// compare against EditModeWrapper's `id` prop directly.
-function parseNodeIdToWrapperId(dndKitId: string): string {
-  return parseNodeId(dndKitId) ?? "";
 }
 
 function renderDragOverlay(state: DragStateValue, root: ComponentNode | null): ReactNode {

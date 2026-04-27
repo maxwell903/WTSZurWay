@@ -1,11 +1,13 @@
 "use client";
 
+import { BetweenDropZone } from "@/components/editor/canvas/dnd/BetweenDropZone";
+import { getChildrenPolicy } from "@/components/editor/canvas/dnd/dropTargetPolicy";
 import { componentRegistry } from "@/components/site-components/registry";
 import { useRow } from "@/lib/row-context";
 import { styleConfigToCss } from "@/lib/site-config";
 import { resolveTokens } from "@/lib/token-resolver";
 import type { ComponentNode } from "@/types/site-config";
-import { memo, useMemo } from "react";
+import { type ReactNode, memo, useMemo } from "react";
 import { ComponentErrorBoundary } from "./ComponentErrorBoundary";
 import { EditModeWrapper } from "./EditModeWrapper";
 
@@ -122,9 +124,42 @@ function ComponentRendererInner({
     />
   ));
 
+  // In edit mode, interleave a `BetweenDropZone` at every gap between
+  // children of any "many"-policy container so palette inserts and
+  // cross-parent moves can target a specific index — including above the
+  // first child and below the last (which is otherwise unreachable for
+  // the page-root Section because its children fully cover its area).
+  // Preview/public renders skip this entirely.
+  let childrenToRender: ReactNode = childElements;
+  if (mode === "edit" && getChildrenPolicy(node.type) === "many") {
+    const orientation: "vertical" | "horizontal" = node.type === "Row" ? "horizontal" : "vertical";
+    const elements = childElements ?? [];
+    const interleaved: ReactNode[] = [];
+    interleaved.push(
+      <BetweenDropZone
+        key={`bz-${node.id}-0`}
+        parentId={node.id}
+        index={0}
+        orientation={orientation}
+      />,
+    );
+    elements.forEach((el, i) => {
+      interleaved.push(el);
+      interleaved.push(
+        <BetweenDropZone
+          key={`bz-${node.id}-${i + 1}`}
+          parentId={node.id}
+          index={i + 1}
+          orientation={orientation}
+        />,
+      );
+    });
+    childrenToRender = interleaved;
+  }
+
   const rendered = (
     <Component node={resolvedNode} cssStyle={cssStyle}>
-      {childElements}
+      {childrenToRender}
     </Component>
   );
 
