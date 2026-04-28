@@ -3,7 +3,7 @@
 import type { SiteConfig } from "@/lib/site-config";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useAutosave } from "../autosave";
+import { useSaveDraft } from "../save-draft";
 import { __resetEditorStoreForTests, useEditorStore } from "../store";
 
 function makeFixtureConfig(): SiteConfig {
@@ -42,34 +42,32 @@ function hydrate(): void {
   });
 }
 
-describe("useAutosave", () => {
+describe("useSaveDraft", () => {
   beforeEach(() => {
     __resetEditorStoreForTests();
-    vi.useFakeTimers();
   });
 
   afterEach(() => {
-    vi.useRealTimers();
     vi.clearAllMocks();
   });
 
-  it("debounces mutations and PATCHes once after the debounce window", async () => {
+  it("PATCHes the working version with the current draftConfig and flips saveState to saved", async () => {
     hydrate();
     const fetcher = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }));
-    renderHook(() => useAutosave({ fetcher, debounceMs: 1000 }));
+    const { result } = renderHook(() => useSaveDraft({ fetcher }));
 
     act(() => {
       useEditorStore.getState().setSiteName("Aurora Demo");
     });
+    expect(useEditorStore.getState().saveState).toBe("dirty");
     expect(fetcher).not.toHaveBeenCalled();
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000);
+      await result.current();
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
     const firstCall = fetcher.mock.calls[0];
-    expect(firstCall).toBeDefined();
     if (!firstCall) throw new Error("fetcher not called");
     const [url, init] = firstCall;
     expect(url).toBe("/api/sites/site-1/working-version");
@@ -81,54 +79,24 @@ describe("useAutosave", () => {
     expect(useEditorStore.getState().lastSavedAt).toBeGreaterThan(0);
   });
 
-  it("collapses multiple in-window mutations into a single PATCH with the latest snapshot", async () => {
-    hydrate();
-    const fetcher = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }));
-    renderHook(() => useAutosave({ fetcher, debounceMs: 1000 }));
-
-    act(() => {
-      useEditorStore.getState().setSiteName("Step 1");
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(400);
-    });
-    act(() => {
-      useEditorStore.getState().setSiteName("Step 2");
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000);
-    });
-
-    expect(fetcher).toHaveBeenCalledTimes(1);
-    const firstCall = fetcher.mock.calls[0];
-    if (!firstCall) throw new Error("fetcher not called");
-    const init = firstCall[1];
-    const body = JSON.parse(String(init?.body));
-    expect(body.config.meta.siteName).toBe("Step 2");
-  });
-
   it("flips saveState to error on a non-2xx response", async () => {
     hydrate();
     const fetcher = vi.fn<typeof fetch>(async () => new Response("nope", { status: 500 }));
-    renderHook(() => useAutosave({ fetcher, debounceMs: 1000 }));
+    const { result } = renderHook(() => useSaveDraft({ fetcher }));
 
     act(() => {
       useEditorStore.getState().setSiteName("X");
     });
+
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000);
+      await result.current();
     });
 
     expect(useEditorStore.getState().saveState).toBe("error");
     expect(useEditorStore.getState().saveError).toMatch(/500/);
   });
 
-  it("re-flips saveState to dirty after an in-flight save resolves with a queued mutation", async () => {
-    // Coalesce invariant: when a mutation arrives during a save, the save's
-    // finally block re-flips saveState to "dirty" so the autosave hook
-    // schedules a follow-up. We assert the invariant directly here; the
-    // separate "debounces" test confirms the timer-driven re-fire flows
-    // through to a second PATCH.
+  it("ignores re-entrant calls while a save is in flight", async () => {
     hydrate();
     const responses: Array<(res: Response) => void> = [];
     const fetcher = vi.fn<typeof fetch>(() => {
@@ -136,35 +104,41 @@ describe("useAutosave", () => {
         responses.push(resolve);
       });
     });
-
-    renderHook(() => useAutosave({ fetcher, debounceMs: 1000 }));
+    const { result } = renderHook(() => useSaveDraft({ fetcher }));
 
     act(() => {
       useEditorStore.getState().setSiteName("First");
     });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000);
-    });
 
-    expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(useEditorStore.getState().saveState).toBe("saving");
-
-    // A new mutation lands while saving.
+    let firstSave: Promise<void> | undefined;
     act(() => {
-      useEditorStore.getState().setSiteName("Second");
+      firstSave = result.current();
     });
+    expect(useEditorStore.getState().saveState).toBe("saving");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    // Re-entrant click while saving — should be a no-op.
+    await act(async () => {
+      await result.current();
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       responses[0]?.(new Response(null, { status: 204 }));
-      await vi.advanceTimersByTimeAsync(0);
-      await vi.advanceTimersByTimeAsync(0);
+      await firstSave;
     });
 
-    // The finally block re-flipped saveState to dirty because a mutation
-    // arrived during the save. The debounce timer for the follow-up has been
-    // scheduled by the autosave hook; downstream flow is exercised by the
-    // "debounces mutations and PATCHes once" test.
-    expect(useEditorStore.getState().saveState).toBe("dirty");
-    expect(useEditorStore.getState().draftConfig.meta.siteName).toBe("Second");
+    expect(useEditorStore.getState().saveState).toBe("saved");
+  });
+
+  it("does nothing when siteId is empty (store not yet hydrated)", async () => {
+    const fetcher = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }));
+    const { result } = renderHook(() => useSaveDraft({ fetcher }));
+
+    await act(async () => {
+      await result.current();
+    });
+
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });

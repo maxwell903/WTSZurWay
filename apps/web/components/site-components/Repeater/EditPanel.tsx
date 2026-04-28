@@ -2,8 +2,8 @@
 
 // Sprint 9 (PROJECT_SPEC.md §8.9): the Repeater Content tab. Six sections —
 // Data Source, Filters, Connected Inputs, Sort, Limit, Empty State — each
-// driving a single `setComponentDataBinding` call so the autosave loop
-// (Sprint 6) picks up the change on the next tick.
+// driving a single `setComponentDataBinding` call so the topbar Save action
+// picks up the change on the next user click.
 
 import { NumberInput } from "@/components/editor/edit-panels/controls/NumberInput";
 import { SelectInput } from "@/components/editor/edit-panels/controls/SelectInput";

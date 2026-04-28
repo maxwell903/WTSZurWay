@@ -6,7 +6,7 @@ import { LeftSidebar } from "@/components/editor/sidebar/LeftSidebar";
 import { RightSidebar } from "@/components/editor/sidebar/RightSidebar";
 import { TopBar } from "@/components/editor/topbar/TopBar";
 import { Toaster } from "@/components/ui/sonner";
-import { useAutosave, useEditorStore } from "@/lib/editor-state";
+import { useEditorStore } from "@/lib/editor-state";
 import type { SiteConfig } from "@/lib/site-config";
 import { useEffect } from "react";
 
@@ -28,8 +28,6 @@ export function EditorShell({
   useEffect(() => {
     hydrate({ siteId, siteSlug, workingVersionId, initialConfig });
   }, [hydrate, siteId, siteSlug, workingVersionId, initialConfig]);
-
-  useAutosave();
 
   return (
     <div className="flex h-screen flex-col bg-zinc-950 text-zinc-100">

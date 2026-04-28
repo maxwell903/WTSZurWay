@@ -24,6 +24,13 @@ type Props = {
   selected?: boolean;
   onSelect?: (id: string) => void;
   onContextMenu?: (id: string) => void;
+  // Layout-affecting style values that need to be on the OUTER (wrapper)
+  // element so the parent's flex / grid container sees them — NOT on the
+  // inner rendered component. Computed by `ComponentRenderer` per node:
+  // see `computeWrapperPassthroughStyle` for the rules. Without this, a
+  // Column's `flex: <span>` lands on the inner div but the wrapper sits
+  // between it and the parent Row, breaking the flex chain.
+  passthroughStyle?: CSSProperties;
   children: ReactNode;
 };
 
@@ -34,6 +41,7 @@ export function EditModeWrapper({
   selected,
   onSelect,
   onContextMenu,
+  passthroughStyle,
   children,
 }: Props) {
   // Sprint 7: when wrapped in a DndCanvasProvider, this returns dnd-kit's
@@ -103,6 +111,11 @@ export function EditModeWrapper({
       }
     : {};
 
+  // Merge passthrough layout styles UNDER sortableStyle so that an in-flight
+  // drag transform always wins. The pass-through values are layout-shaping
+  // (flex / width / height) and don't conflict with transform/opacity.
+  const wrapperStyle: CSSProperties = { ...passthroughStyle, ...sortableStyle };
+
   // Sprint 7 "Known risks": dnd-kit's listeners spread BEFORE the explicit
   // onClick / onContextMenu / onKeyDown so the Sprint-6/8 handlers win the
   // dispatch race. The pointer sensor's 10-px activation distance keeps
@@ -134,7 +147,7 @@ export function EditModeWrapper({
       onKeyDown={handleKeyDown}
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}
-      style={sortableStyle}
+      style={wrapperStyle}
       className={cn(
         "relative outline-offset-2 transition-[outline-color] duration-100",
         // Visual priority: selection > hover > x-ray > none.

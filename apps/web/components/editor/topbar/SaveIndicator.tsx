@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { useEditorStore } from "@/lib/editor-state";
+import { useEditorStore, useSaveDraft } from "@/lib/editor-state";
 import { useEffect, useState } from "react";
 
 function formatRelative(now: number, savedAt: number): string {
@@ -14,7 +14,7 @@ function formatRelative(now: number, savedAt: number): string {
 export function SaveIndicator() {
   const saveState = useEditorStore((s) => s.saveState);
   const lastSavedAt = useEditorStore((s) => s.lastSavedAt);
-  const draftConfig = useEditorStore((s) => s.draftConfig);
+  const saveDraft = useSaveDraft();
 
   // Re-render every second so "Saved 3s ago" advances. Cheaper than a full
   // store subscription and doesn't pay the cost when the editor isn't focused
@@ -36,9 +36,16 @@ export function SaveIndicator() {
 
   if (saveState === "dirty") {
     return (
-      <span data-testid="save-indicator" className="text-xs text-zinc-400">
-        Unsaved changes
-      </span>
+      <button
+        type="button"
+        data-testid="save-indicator"
+        onClick={() => {
+          void saveDraft();
+        }}
+        className="cursor-pointer rounded-sm text-xs text-blue-400 underline underline-offset-2 hover:text-blue-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400"
+      >
+        Save changes
+      </button>
     );
   }
 
@@ -52,11 +59,7 @@ export function SaveIndicator() {
           variant="outline"
           className="h-6 px-2 text-xs"
           onClick={() => {
-            // Re-flip to dirty; the autosave hook re-fires.
-            useEditorStore.setState({ saveState: "dirty", saveError: null });
-            // draftConfig is read above so the linter sees it's used; touching
-            // it ensures the latest snapshot is in the closure when retry fires.
-            void draftConfig;
+            void saveDraft();
           }}
         >
           Retry

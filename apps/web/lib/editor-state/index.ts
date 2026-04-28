@@ -1,4 +1,4 @@
-export { useAutosave, type UseAutosaveOptions } from "./autosave";
+export { useSaveDraft, type SaveDraftFn, type UseSaveDraftOptions } from "./save-draft";
 export {
   applyAddComponentChild,
   applyAddPage,

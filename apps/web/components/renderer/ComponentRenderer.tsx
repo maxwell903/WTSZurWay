@@ -8,9 +8,40 @@ import { useRow } from "@/lib/row-context";
 import { styleConfigToCss } from "@/lib/site-config";
 import { resolveTokens } from "@/lib/token-resolver";
 import type { ComponentNode } from "@/types/site-config";
-import { type ReactNode, memo, useMemo } from "react";
+import { type CSSProperties, type ReactNode, memo, useMemo } from "react";
 import { ComponentErrorBoundary } from "./ComponentErrorBoundary";
 import { EditModeWrapper } from "./EditModeWrapper";
+
+// In edit mode, every component is wrapped in an `<EditModeWrapper>` (a plain
+// `<div>`) before being inserted into its parent. Without help, that wrapper
+// is `display: block` with no flex / width / height of its own, so the
+// parent's flex container sees a block-level wrapper instead of the
+// component itself — and the component's own `flex: …` / `width: …` styling
+// no longer reaches the parent. Result: Columns with `flex: span` stack
+// vertically inside a flex `Row` instead of laying out side-by-side. Preview
+// mode is unaffected because there's no wrapper.
+//
+// `computeWrapperPassthroughStyle` extracts the *layout-affecting* subset of
+// the node's effective style and hands it back so `<EditModeWrapper>` can
+// apply it to its own div. The inner component still applies the same
+// values to its own root element — duplication is intentional and
+// idempotent for `flex`, `width`, and `height` (margin is deliberately NOT
+// passed through because that would double-apply on the wrapper *and*
+// inside it).
+function computeWrapperPassthroughStyle(node: ComponentNode): CSSProperties {
+  const out: CSSProperties = {};
+  const cssStyle = styleConfigToCss(node.style);
+  if (cssStyle.width !== undefined) out.width = cssStyle.width;
+  if (cssStyle.height !== undefined) out.height = cssStyle.height;
+  // Column writes `flex: <span>` on its own root; mirror it to the wrapper
+  // so the parent Row's flex layout applies. Other component types compute
+  // no outer-affecting flex value today.
+  if (node.type === "Column") {
+    const span = (node.props as { span?: unknown }).span;
+    if (typeof span === "number") out.flex = span;
+  }
+  return out;
+}
 
 export type Mode = "edit" | "preview" | "public";
 
@@ -188,6 +219,7 @@ function ComponentRendererInner({
         selected={isSelected}
         onSelect={onSelect}
         onContextMenu={onContextMenu}
+        passthroughStyle={computeWrapperPassthroughStyle(node)}
       >
         {rendered}
       </EditModeWrapper>

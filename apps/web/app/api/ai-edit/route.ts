@@ -10,8 +10,8 @@
  * returns the §9.6 discriminated-union response.
  *
  * The endpoint NEVER applies operations to the database -- the client owns
- * that step via `commitAiEditOperations` + the autosave PATCH. We only
- * validate, route, and reply.
+ * that step via `commitAiEditOperations` + the topbar Save action's PATCH.
+ * We only validate, route, and reply.
  *
  * Mirrors `apps/web/app/api/generate-initial-site/route.ts`'s module shape
  * (Sprint 4) including the `runtime = "nodejs"` declaration and the
