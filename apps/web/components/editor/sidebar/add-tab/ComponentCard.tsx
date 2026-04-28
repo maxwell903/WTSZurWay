@@ -66,7 +66,10 @@ export function ComponentCard({ entry, selected, onSelect }: ComponentCardProps)
                 {entry.description}
               </span>
             </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-xs">
+            <TooltipContent
+              side="top"
+              className="max-w-xs border-zinc-700 bg-zinc-900 text-zinc-100"
+            >
               {entry.description}
             </TooltipContent>
           </Tooltip>
