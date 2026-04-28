@@ -1,8 +1,10 @@
 import { ButtonEditPanel } from "@/components/site-components/Button/EditPanel";
 import { FooterEditPanel } from "@/components/site-components/Footer/EditPanel";
+import { GalleryEditPanel } from "@/components/site-components/Gallery/EditPanel";
 import { HeadingEditPanel } from "@/components/site-components/Heading/EditPanel";
 import { ImageEditPanel } from "@/components/site-components/Image/EditPanel";
 import { InputFieldEditPanel } from "@/components/site-components/InputField/EditPanel";
+import { LogoEditPanel } from "@/components/site-components/Logo/EditPanel";
 import { NavBarEditPanel } from "@/components/site-components/NavBar/EditPanel";
 import { ParagraphEditPanel } from "@/components/site-components/Paragraph/EditPanel";
 import { __resetEditorStoreForTests, useEditorStore } from "@/lib/editor-state/store";
@@ -61,6 +63,18 @@ function makeFixtureConfig(): SiteConfig {
               id: "cmp_input",
               type: "InputField",
               props: { name: "field", inputType: "text" },
+              style: {},
+            },
+            {
+              id: "cmp_gallery",
+              type: "Gallery",
+              props: { images: [], columns: 3, gap: 8 },
+              style: {},
+            },
+            {
+              id: "cmp_logo",
+              type: "Logo",
+              props: { source: "primary", alt: "Logo", height: 32 },
               style: {},
             },
           ],
@@ -231,5 +245,43 @@ describe("InputFieldEditPanel", () => {
     expect(getNode("cmp_input").props.defaultValueFromQueryParam).toBe("propertyId");
     fireEvent.change(screen.getByTestId("input-default-from-query"), { target: { value: "" } });
     expect(getNode("cmp_input").props.defaultValueFromQueryParam).toBeUndefined();
+  });
+});
+
+describe("LogoEditPanel", () => {
+  it("switching source to 'custom' exposes the customUrl field; editing alt/height writes through", () => {
+    render(<PanelHost id="cmp_logo" Panel={LogoEditPanel} />);
+    // Custom URL field is hidden until source=custom.
+    expect(screen.queryByTestId("logo-custom-url-url")).toBeNull();
+    fireEvent.click(screen.getByTestId("logo-source-custom"));
+    expect(getNode("cmp_logo").props.source).toBe("custom");
+    fireEvent.change(screen.getByTestId("logo-custom-url-url"), {
+      target: { value: "https://cdn.test/brand.png" },
+    });
+    fireEvent.change(screen.getByTestId("logo-alt"), { target: { value: "Aurora" } });
+    fireEvent.change(screen.getByTestId("logo-height"), { target: { value: "48" } });
+    const p = getNode("cmp_logo").props;
+    expect(p.customUrl).toBe("https://cdn.test/brand.png");
+    expect(p.alt).toBe("Aurora");
+    expect(p.height).toBe(48);
+  });
+});
+
+describe("GalleryEditPanel", () => {
+  it("adding a slide, editing src/alt, and changing columns/gap all write through the store", () => {
+    render(<PanelHost id="cmp_gallery" Panel={GalleryEditPanel} />);
+    fireEvent.click(screen.getByTestId("gallery-images-add"));
+    fireEvent.change(screen.getByTestId("gallery-images-src-0-url"), {
+      target: { value: "https://example.com/g.png" },
+    });
+    fireEvent.change(screen.getByTestId("gallery-images-alt-0"), {
+      target: { value: "Lobby" },
+    });
+    fireEvent.change(screen.getByTestId("gallery-columns"), { target: { value: "4" } });
+    fireEvent.change(screen.getByTestId("gallery-gap"), { target: { value: "16" } });
+    const p = getNode("cmp_gallery").props;
+    expect(p.images).toEqual([{ src: "https://example.com/g.png", alt: "Lobby" }]);
+    expect(p.columns).toBe(4);
+    expect(p.gap).toBe(16);
   });
 });

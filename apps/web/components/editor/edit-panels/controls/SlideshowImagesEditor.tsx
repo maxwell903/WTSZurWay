@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, Trash2 } from "lucide-react";
+import { MediaInput } from "./MediaInput";
 
 export type SlideshowImage = { src: string; alt?: string };
 
@@ -61,13 +62,12 @@ export function SlideshowImagesEditor({
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
             </div>
-            <Input
+            <MediaInput
               id={`${id}-src-${idx}`}
-              data-testid={testId ? `${testId}-src-${idx}` : undefined}
               value={entry.src}
-              placeholder="https://..."
-              onChange={(e) => update(idx, { src: e.target.value })}
-              className="h-8 bg-zinc-950 text-xs text-zinc-100"
+              placeholder="https://... or upload"
+              testId={testId ? `${testId}-src-${idx}` : undefined}
+              onChange={(next) => update(idx, { src: next })}
             />
             <Input
               id={`${id}-alt-${idx}`}

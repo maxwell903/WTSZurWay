@@ -119,7 +119,7 @@ describe("HeroBannerEditPanel — slideshow images editor", () => {
   it("editing a slide src writes through to the store", () => {
     hydrateWith({ heading: "Hi", images: [{ src: "", alt: "" }] });
     render(<PanelHost id="cmp_hero" Panel={HeroBannerEditPanel} />);
-    fireEvent.change(screen.getByTestId("hero-slides-src-0"), {
+    fireEvent.change(screen.getByTestId("hero-slides-src-0-url"), {
       target: { value: "https://example.com/a.png" },
     });
     const images = getNode("cmp_hero").props.images as { src: string; alt?: string }[];
