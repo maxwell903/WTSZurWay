@@ -118,7 +118,13 @@ export function EditModeWrapper({
   // context menu (matches OS conventions). Keyboard always emits a single
   // (non-double) context menu event — repeating Shift+F10 should not be
   // interpreted as a broadcast intent.
+  //
+  // CRITICAL: only handle Enter/Space when the wrapper itself has focus.
+  // Without this guard, typing a space inside a TipTap contenteditable
+  // child bubbles up here, gets preventDefault'd, and the user can't type
+  // spaces. Same pattern Canvas.tsx uses for its global Esc handler.
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       onSelect?.(id);

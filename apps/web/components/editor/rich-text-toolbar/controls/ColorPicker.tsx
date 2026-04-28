@@ -2,6 +2,7 @@
 
 import type { ToolbarCommands } from "@/components/editor/rich-text-toolbar/hooks/useToolbarCommands";
 import { cn } from "@/lib/utils";
+import { useEffect, useState } from "react";
 
 export type ColorPickerVariant = "text" | "highlight";
 
@@ -23,6 +24,17 @@ const PRESETS = [
   "#ec4899",
 ];
 
+// Accept #fff, #ffff, #ffffff, or #ffffffff (with optional leading #).
+// Anchored at start + end so partial garbage doesn't sneak through.
+const HEX_RE = /^#?[0-9a-fA-F]{3,8}$/;
+
+function normalizeHex(input: string): string | null {
+  const trimmed = input.trim();
+  if (trimmed === "") return null;
+  if (!HEX_RE.test(trimmed)) return null;
+  return trimmed.startsWith("#") ? trimmed.toLowerCase() : `#${trimmed.toLowerCase()}`;
+}
+
 export function ColorPicker({ commands, variant }: ColorPickerProps) {
   const disabled = !commands.active;
   const ariaLabel = variant === "text" ? "Text color" : "Highlight color";
@@ -32,6 +44,15 @@ export function ColorPicker({ commands, variant }: ColorPickerProps) {
       ? (commands.getMarkAttr("textStyle", "color") ?? null)
       : (commands.getMarkAttr("highlight", "color") ?? null);
 
+  // Free-form hex input. Initialized from the live value when the popover
+  // opens; the user can type a custom hex like "#f0e928" and press Enter
+  // (or blur the field) to commit. Invalid input is silently ignored —
+  // the field shakes by reverting to the live value on blur.
+  const [hexDraft, setHexDraft] = useState<string>(current ?? "");
+  useEffect(() => {
+    setHexDraft(current ?? "");
+  }, [current]);
+
   const setColor = (value: string | null) => {
     if (variant === "text") {
       if (value === null) commands.unsetMarkAttr("textStyle", "color");
@@ -40,6 +61,16 @@ export function ColorPicker({ commands, variant }: ColorPickerProps) {
       if (value === null) commands.toggleMark("highlight", { color: null });
       else commands.setMarkAttr("highlight", { color: value });
     }
+  };
+
+  const commitHex = () => {
+    const normalized = normalizeHex(hexDraft);
+    if (normalized === null) {
+      // Revert to live value on invalid input.
+      setHexDraft(current ?? "");
+      return;
+    }
+    setColor(normalized);
   };
 
   return (
@@ -60,24 +91,79 @@ export function ColorPicker({ commands, variant }: ColorPickerProps) {
           }}
         />
       </summary>
-      <div className="absolute left-0 top-full z-50 mt-1 grid grid-cols-5 gap-1 rounded border border-zinc-700 bg-zinc-900 p-1.5 shadow-lg">
-        {PRESETS.map((color) => (
-          <button
-            key={color ?? "__none__"}
-            type="button"
-            aria-label={color === null ? "No color" : color}
-            title={color === null ? "Clear" : color}
-            onClick={() => setColor(color)}
-            className="h-5 w-5 rounded-sm border border-zinc-700"
+      {/*
+        Grid layout via inline styles, NOT Tailwind classes. Tailwind v4's
+        on-demand class generation occasionally misses dynamically-rendered
+        popover classes. Inline `gridTemplateColumns` is bulletproof.
+      */}
+      <div
+        className="absolute left-0 top-full z-50 mt-1 rounded border border-zinc-700 bg-zinc-900 p-1.5 shadow-lg"
+        style={{ width: "max-content" }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(5, 1.25rem)",
+            gap: "0.25rem",
+          }}
+        >
+          {PRESETS.map((color) => (
+            <button
+              key={color ?? "__none__"}
+              type="button"
+              aria-label={color === null ? "No color" : color}
+              title={color === null ? "Clear" : color}
+              onClick={() => setColor(color)}
+              className="rounded-sm border border-zinc-700"
+              style={{
+                width: "1.25rem",
+                height: "1.25rem",
+                padding: 0,
+                background: color ?? "transparent",
+                backgroundImage:
+                  color === null
+                    ? "linear-gradient(45deg, transparent calc(50% - 1px), #ef4444 50%, transparent calc(50% + 1px))"
+                    : undefined,
+              }}
+            />
+          ))}
+        </div>
+        {/*
+          Free-form hex input — supports `#f0e928`, `#fff`, `#ffffffaa`,
+          and the same without the `#`. Invalid input reverts to the live
+          value on blur (no toast / shake; silent revert is fine for a
+          power-user field). `commands.setMarkAttr` writes through the
+          unified ToolbarCommands so single + broadcast modes both work.
+        */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.25rem", marginTop: "0.5rem" }}>
+          <span style={{ fontSize: 11, color: "#a1a1aa" }}>Hex</span>
+          <input
+            type="text"
+            aria-label={`${ariaLabel} (hex)`}
+            placeholder="#f0e928"
+            value={hexDraft}
+            onChange={(e) => setHexDraft(e.target.value)}
+            onBlur={commitHex}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitHex();
+              }
+            }}
+            // Avoid shrinking smaller than 9ch. Inline width keeps the
+            // popover compact regardless of CSS environment.
             style={{
-              background: color ?? "transparent",
-              backgroundImage:
-                color === null
-                  ? "linear-gradient(45deg, transparent calc(50% - 1px), #ef4444 50%, transparent calc(50% + 1px))"
-                  : undefined,
+              width: "9ch",
+              height: "1.5rem",
+              padding: "0 0.375rem",
+              fontSize: 11,
+              borderRadius: "0.25rem",
+              border: "1px solid #3f3f46",
+              background: "#09090b",
+              color: "#e4e4e7",
             }}
           />
-        ))}
+        </div>
       </div>
     </details>
   );

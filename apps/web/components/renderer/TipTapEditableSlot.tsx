@@ -23,7 +23,14 @@ import { extractPlainText } from "@/lib/rich-text/extract-plain-text";
 import { synthesizeDoc } from "@/lib/rich-text/synthesize-doc";
 import type { RichTextDoc } from "@/lib/site-config";
 import { EditorContent, useEditor } from "@tiptap/react";
-import { type CSSProperties, type ElementType, useEffect, useRef } from "react";
+import {
+  type CSSProperties,
+  type ElementType,
+  type MouseEvent,
+  type PointerEvent,
+  useEffect,
+  useRef,
+} from "react";
 
 export type TipTapEditableSlotProps = {
   nodeId: string;
@@ -105,9 +112,27 @@ export function TipTapEditableSlot({
     };
   }, [editor, nodeId, propKey]);
 
+  // The wrapping EditModeWrapper attaches dnd-kit's pointer-sensor
+  // listeners (with a 10px activation distance). Without intervention, a
+  // user-initiated text-selection drag inside the editor would be
+  // interpreted as a component drag once it crossed 10px. Stop pointer +
+  // mousedown propagation so dnd-kit never sees pointer events that
+  // originated inside the active editor. Click events still propagate
+  // (selection / right-click handlers above us still fire on click +
+  // contextmenu).
+  const swallowPointer = (e: PointerEvent<HTMLElement> | MouseEvent<HTMLElement>) => {
+    e.stopPropagation();
+  };
+
   const Tag = (as ?? "div") as ElementType;
   return (
-    <Tag {...(passthroughAttrs ?? {})} style={style} className={className}>
+    <Tag
+      {...(passthroughAttrs ?? {})}
+      style={style}
+      className={className}
+      onPointerDown={swallowPointer}
+      onMouseDown={swallowPointer}
+    >
       <EditorContent editor={editor} />
     </Tag>
   );
