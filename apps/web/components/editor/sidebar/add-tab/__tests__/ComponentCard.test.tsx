@@ -1,6 +1,7 @@
+import { useEditorStore } from "@/lib/editor-state";
 import { fireEvent, render } from "@testing-library/react";
 import { Box } from "lucide-react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ComponentCard } from "../ComponentCard";
 import type { ComponentCatalogEntry } from "../component-catalog";
 
@@ -13,7 +14,22 @@ const sampleEntry: ComponentCatalogEntry = {
 };
 
 describe("<ComponentCard>", () => {
-  it("renders the entry's label and description", () => {
+  afterEach(() => {
+    if (useEditorStore.getState().showComponentTypes) {
+      useEditorStore.getState().toggleShowComponentTypes();
+    }
+  });
+
+  it("renders the entry's label and hides the description by default (x-ray off)", () => {
+    const { getByText, queryByText } = render(
+      <ComponentCard entry={sampleEntry} selected={false} onSelect={() => {}} />,
+    );
+    expect(getByText("Heading")).toBeInTheDocument();
+    expect(queryByText("A title or subtitle")).not.toBeInTheDocument();
+  });
+
+  it("renders the entry's label and description when x-ray mode is on", () => {
+    useEditorStore.getState().toggleShowComponentTypes();
     const { getByText } = render(
       <ComponentCard entry={sampleEntry} selected={false} onSelect={() => {}} />,
     );
