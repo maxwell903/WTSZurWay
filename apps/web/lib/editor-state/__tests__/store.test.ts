@@ -604,18 +604,20 @@ describe("editor store -- Sprint 11 commitAiEditOperations", () => {
 // Phase 6 Task 6.1 -- showComponentTypes toggle
 // ---------------------------------------------------------------------------
 
-describe("showComponentTypes toggle (Task 6.1)", () => {
-  it("defaults to true", () => {
+describe("showComponentTypes toggle (X-ray mode)", () => {
+  // Default flipped to false on the 2026-04-27 evening
+  // progressive-disclosure pivot — see DECISIONS.md.
+  it("defaults to false", () => {
     __resetEditorStoreForTests();
-    expect(useEditorStore.getState().showComponentTypes).toBe(true);
+    expect(useEditorStore.getState().showComponentTypes).toBe(false);
   });
 
-  it("toggles between true and false", () => {
+  it("toggles between false and true", () => {
     __resetEditorStoreForTests();
     useEditorStore.getState().toggleShowComponentTypes();
-    expect(useEditorStore.getState().showComponentTypes).toBe(false);
-    useEditorStore.getState().toggleShowComponentTypes();
     expect(useEditorStore.getState().showComponentTypes).toBe(true);
+    useEditorStore.getState().toggleShowComponentTypes();
+    expect(useEditorStore.getState().showComponentTypes).toBe(false);
   });
 });
 
@@ -644,14 +646,26 @@ function makeMultiPageConfig(): SiteConfig {
         slug: "about",
         name: "About",
         kind: "static",
-        rootComponent: { id: "cmp_root_about", type: "Section", props: {}, style: {}, children: [] },
+        rootComponent: {
+          id: "cmp_root_about",
+          type: "Section",
+          props: {},
+          style: {},
+          children: [],
+        },
       },
       {
         id: "p_contact",
         slug: "contact",
         name: "Contact",
         kind: "static",
-        rootComponent: { id: "cmp_root_contact", type: "Section", props: {}, style: {}, children: [] },
+        rootComponent: {
+          id: "cmp_root_contact",
+          type: "Section",
+          props: {},
+          style: {},
+          children: [],
+        },
       },
     ],
     forms: [],
@@ -670,14 +684,12 @@ describe("addComponentChild auto-populates the first NavBar with all static page
   });
 
   it("seeds links with one page entry per static page when the site has no NavBar yet", () => {
-    useEditorStore
-      .getState()
-      .addComponentChild("cmp_root_home", 0, {
-        id: "cmp_nav1",
-        type: "NavBar",
-        props: { links: [], logoPlacement: "left", sticky: false },
-        style: {},
-      });
+    useEditorStore.getState().addComponentChild("cmp_root_home", 0, {
+      id: "cmp_nav1",
+      type: "NavBar",
+      props: { links: [], logoPlacement: "left", sticky: false },
+      style: {},
+    });
     const home = useEditorStore.getState().draftConfig.pages.find((p) => p.slug === "home");
     const nav = home?.rootComponent.children?.[0];
     expect(nav?.type).toBe("NavBar");
@@ -689,22 +701,18 @@ describe("addComponentChild auto-populates the first NavBar with all static page
   });
 
   it("does NOT auto-populate a second NavBar after the first exists", () => {
-    useEditorStore
-      .getState()
-      .addComponentChild("cmp_root_home", 0, {
-        id: "cmp_nav1",
-        type: "NavBar",
-        props: { links: [], logoPlacement: "left", sticky: false },
-        style: {},
-      });
-    useEditorStore
-      .getState()
-      .addComponentChild("cmp_root_about", 0, {
-        id: "cmp_nav2",
-        type: "NavBar",
-        props: { links: [], logoPlacement: "left", sticky: false },
-        style: {},
-      });
+    useEditorStore.getState().addComponentChild("cmp_root_home", 0, {
+      id: "cmp_nav1",
+      type: "NavBar",
+      props: { links: [], logoPlacement: "left", sticky: false },
+      style: {},
+    });
+    useEditorStore.getState().addComponentChild("cmp_root_about", 0, {
+      id: "cmp_nav2",
+      type: "NavBar",
+      props: { links: [], logoPlacement: "left", sticky: false },
+      style: {},
+    });
     const about = useEditorStore.getState().draftConfig.pages.find((p) => p.slug === "about");
     const nav2 = about?.rootComponent.children?.[0];
     expect(nav2?.type).toBe("NavBar");
@@ -712,14 +720,12 @@ describe("addComponentChild auto-populates the first NavBar with all static page
   });
 
   it("leaves non-NavBar components unchanged on insert", () => {
-    useEditorStore
-      .getState()
-      .addComponentChild("cmp_root_home", 0, {
-        id: "cmp_h",
-        type: "Heading",
-        props: { text: "Hi" },
-        style: {},
-      });
+    useEditorStore.getState().addComponentChild("cmp_root_home", 0, {
+      id: "cmp_h",
+      type: "Heading",
+      props: { text: "Hi" },
+      style: {},
+    });
     const home = useEditorStore.getState().draftConfig.pages.find((p) => p.slug === "home");
     const node = home?.rootComponent.children?.[0];
     expect(node?.type).toBe("Heading");
@@ -775,7 +781,9 @@ describe("locked NavBar replication: setComponentProps + setComponentStyle propa
   });
 
   it("setComponentStyle on a locked NavBar replicates style to siblings", () => {
-    useEditorStore.getState().setComponentStyle("nav_a", { background: { kind: "color", value: "#ff0" } });
+    useEditorStore
+      .getState()
+      .setComponentStyle("nav_a", { background: { kind: "color", value: "#ff0" } });
     const about = useEditorStore.getState().draftConfig.pages.find((p) => p.slug === "about");
     const navB = about?.rootComponent.children?.[0];
     expect(navB?.style.background).toEqual({ kind: "color", value: "#ff0" });

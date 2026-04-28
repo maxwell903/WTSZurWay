@@ -47,12 +47,20 @@ Five interlocking changes ship as one feature set:
 1. **X-axis resize handles** on every component, with hybrid units (% for containers, px for leaves). § 4.
 2. **Side-by-side layout** at any depth via "drop on right edge" — implemented by an internal `FlowGroup` wrapper that the engine creates and dissolves automatically. § 5.
 3. **Parent-bound resize** — hard clamp + brief "Bounded by parent" tooltip on a child resize; auto-shrink on a parent resize. § 6.
-4. **Always-visible dotted-grey dropzones** that double as the drag-snap indicator (replacing today's blue accent line); 2× larger; only in valid drop areas. § 7.
-5. **Show Component Types** toggle in the TopBar — defaults ON, transient. § 8.
+4. **Drag-driven dotted-grey dropzones** that double as the drag-snap indicator (replacing today's blue accent line); 2× larger; invisible at idle, fade in across all valid targets when a drag begins. § 7.
+5. **X-ray** toggle in the TopBar (formerly "Show Component Types") — defaults OFF, transient; restores the always-on labelled view as an explicit inspection mode. § 8.
+
+> **Revision note (2026-04-27 evening).** §7 and §8 were originally specified
+> as always-visible / default-ON. The user reversed direction after the visual
+> chaos of always-on overlays became apparent in practice (edit mode looked
+> nothing like preview). The new model is **progressive disclosure**: idle
+> edit mode is visually identical to preview mode; affordances appear on
+> hover, selection, or active drag. See `DECISIONS.md` (2026-04-27 evening).
+> §4–§6 and §9–§12 are unaffected.
 
 Cross-cutting:
 
-- All five features are **edit-mode only**. Preview and deployed renders are unchanged: overlays are gone, outlines are gone, FlowGroups still render as flex rows but the user can't see them as such.
+- All five features are **edit-mode only**. Preview and deployed renders are unchanged: overlays are gone, outlines are gone, FlowGroups still render as flex rows but the user can't see them as such. Per the 2026-04-27 evening revision, edit-mode at **idle** is also visually identical to preview — overlays and outlines only appear on hover, selection, or active drag.
 - All five features keep using the **single-source-of-truth** model: the site-config JSON drives everything, and `applyOperations` (in [ops.ts](../../../apps/web/lib/site-config/ops.ts)) remains the only path that mutates the draft config.
 
 ---
@@ -177,81 +185,120 @@ Clamping logic only fires inside the resize-handle code paths in [ResizeHandles.
 
 ---
 
-## 7. Always-Visible Dotted Dropzones (and Drag-Snap Indicator)
+## 7. Drag-Driven Dotted Dropzones (and Drag-Snap Indicator)
 
-This rebuilds two existing pieces — [BetweenDropZone.tsx](../../../apps/web/components/editor/canvas/dnd/BetweenDropZone.tsx) and [DropZoneIndicator.tsx](../../../apps/web/components/editor/canvas/dnd/DropZoneIndicator.tsx) — into a single visual system.
+This rebuilds two existing pieces — [BetweenDropZone.tsx](../../../apps/web/components/editor/canvas/dnd/BetweenDropZone.tsx) and [DropZoneIndicator.tsx](../../../apps/web/components/editor/canvas/dnd/DropZoneIndicator.tsx) — into a single visual system that is **invisible at idle and fades in during a drag**.
 
 ### 7.1 Visual spec
 
-- **Style:** `1px dashed rgba(120,120,120,0.35)` border + `rgba(120,120,120,0.08)` fill. Dotted-grey, semi-transparent.
-- **Idle state:** visible at all times in edit mode.
-- **Drag-hover state** (cursor is over a dropzone with a draggable that can validly drop there): fill animates up to `rgba(59,130,246,0.18)` (subtle blue tint) and border to `rgba(59,130,246,0.6)` solid, over **120 ms**.
-- **Drag-hover invalid** (drop is rejected by `canAcceptChild`): fill animates to `rgba(239,68,68,0.12)` (subtle red).
+- **Idle style (drag NOT in progress):** **invisible** — `opacity: 0`, no border, no fill, no layout impact. The DOM nodes still mount; the dnd-kit `useDroppable` registration still resolves.
+- **Drag-active idle style** (a drag is in progress, cursor is NOT over this zone): `1px dashed rgba(120,120,120,0.35)` border + `rgba(120,120,120,0.08)` fill, faded in over **120 ms**. Dotted-grey, semi-transparent — this is the "all valid targets light up at once" state.
+- **Drag-hover valid** (cursor is over a dropzone whose `canAcceptChild` returns `true`): fill animates up to `rgba(59,130,246,0.18)` (subtle blue tint), border to `rgba(59,130,246,0.6)` solid, over **120 ms**.
+- **Drag-hover invalid** (`canAcceptChild` returns `false`): fill animates to `rgba(239,68,68,0.12)` (subtle red).
+- **Drag end:** fade back to opacity 0 over **150 ms**.
 - **The existing 4-px solid blue accent line** from `DropZoneIndicator` is **removed** — the overlay's hover state replaces it.
 
-### 7.2 Where overlays appear (only in valid drop areas — not the whole page)
+### 7.2 Where overlays appear (geometry unchanged, visibility tied to drag-in-progress + selection)
 
-1. **Between siblings** — existing between-zones, **doubled in size**: 16 px tall (was ~ 8 px) for vertical neighbours, 16 px wide for horizontal neighbours inside a `FlowGroup`.
-2. **Side dropzones around each component** — 12 px wide vertical strips on the left/right edges and 12 px tall horizontal strips on the top/bottom (these are the "drop on right edge → side-by-side" affordances from §5). These wrap **every** component, leaves included — dropping a Heading on the right edge of an existing Heading wraps both in a `FlowGroup` exactly the same way it does for Sections.
-3. **Empty container slots** — when a `Section` / `Row` / `Column` / `FlowGroup` has zero children, the entire interior gets the overlay with a centered "Drop a component here" hint label.
-4. **Tail of the page root** — after the last top-level child, a generous (≥ 48 px tall) overlay so users see "more goes here."
-5. **Open canvas around the page** — the empty space surrounding the 1280-px page frame in the canvas viewport gets the same overlay so users can tell "this isn't a section, it's just empty canvas."
+1. **Between siblings** — existing between-zones, **doubled in size**: 16 px tall (was ~ 8 px) for vertical neighbours, 16 px wide for horizontal neighbours inside a `FlowGroup`. Visibility tied to drag-in-progress.
+2. **Side dropzones around each component** — 12 px wide vertical strips on the left/right edges and 12 px tall horizontal strips on the top/bottom (these are the "drop on right edge → side-by-side" affordances from §5). These wrap **every** component, leaves included.
+   - **Visible during a drag** (same fade rule as between-zones).
+   - **Visible on the selected component even without a drag**, so the user can deliberately pick up a side handle to insert a sibling on a chosen edge.
+3. **Empty container slots** — when a `Section` / `Row` / `Column` / `FlowGroup` has zero children, the entire interior gets the overlay with a centered "Drop a component here" hint label. Visibility: **always shown** at idle in edit mode (this is the one exception — empty containers need a visible target so the user can see where to drop the first child). Hidden in preview.
+4. **Tail of the page root** — after the last top-level child, a generous (≥ 48 px tall) overlay so users see "more goes here." Visibility tied to drag-in-progress.
+5. **Open canvas around the page** — the empty space surrounding the 1280-px page frame in the canvas viewport gets the same overlay so users can tell "this isn't a section, it's just empty canvas." Visibility tied to drag-in-progress.
 
 ### 7.3 Visibility rules
 
-| Mode | Overlays |
-|---|---|
-| Edit | Always visible (independent of the Show Component Types toggle). |
-| Preview | Hidden; between-zones collapse to 0; layout matches deployed exactly. |
-| Public / deployed | Same as preview. |
+| Mode | Trigger | Overlays |
+|---|---|---|
+| Edit | Idle, no drag, no selection | Invisible everywhere except empty-container slots. |
+| Edit | Component selected | Side dropzones around the **selected** component visible. Between-zones still invisible. |
+| Edit | Drag in progress | All valid targets fade in to dotted-grey; cursor's target tints blue (or red if invalid). |
+| Preview | Any | Hidden; between-zones collapse to 0; layout matches deployed exactly. |
+| Public / deployed | Any | Same as preview. |
 
-### 7.4 Interaction
+### 7.4 Drag-state plumbing
 
-- Overlays are `pointer-events: none` for normal clicks (so they don't block component selection) — but they remain hit-testable during a drag via dnd-kit's collision detection (the existing `useDroppable` registration on each zone is preserved).
+- Visibility is driven by the existing `DragStateContext` / `useDragState()` hook in [DropZoneIndicator.tsx](../../../apps/web/components/editor/canvas/dnd/DropZoneIndicator.tsx). The hook already returns whether a drag is in progress; we are switching from "always show" to "show when `dragInProgress === true`."
+- The `useDragState()` value is consumed at the leaf overlay level so only the overlay re-renders on drag start/end — `EditModeWrapper` itself does not re-render.
+- Use CSS transitions (`transition-opacity duration-150` or `duration-120`) on the overlay's outer div so the fade is GPU-driven rather than rerender-driven.
+
+### 7.5 Interaction
+
+- Overlays are `pointer-events: none` for normal clicks (so they don't block component selection) — but they remain hit-testable during a drag via dnd-kit's collision detection (the existing `useDroppable` registration on each zone is preserved at all times, regardless of CSS opacity).
 - Tab / keyboard navigation skips them.
 
-### 7.5 Performance
+### 7.6 Discoverability fallback (out of scope, noted for future work)
 
-This adds ~ 4 overlay divs per component plus container/canvas overlays. For a 50-component page that is ~ 200 extra DOM nodes — fine. They render via the same `EditModeWrapper` that already exists, so no new render passes.
+With idle-invisible side zones, a first-time user may not realise components have edges to drop on. If this turns out to be a UX problem, add a hold-`Alt` key reveal that momentarily forces all overlays visible. Not implemented in this pass.
+
+### 7.7 Performance
+
+This adds ~ 4 overlay divs per component plus container/canvas overlays. For a 50-component page that is ~ 200 extra DOM nodes — fine. They render via the same `EditModeWrapper` that already exists, so no new render passes. CSS-driven opacity changes do not invalidate the React tree.
 
 ---
 
-## 8. "Show Component Types" Toggle
+## 8. "X-ray" Toggle (formerly "Show Component Types")
+
+The toggle still exists, but its meaning is inverted: it is now an explicit
+inspection mode the user can opt into, not the default visual state. The
+default edit-mode look is governed by §8.5 (Hover / selection chrome) below,
+which is the progressive-disclosure replacement for what was previously
+always-on chrome.
 
 ### 8.1 TopBar placement
 
 Add a new icon button in the right-side cluster of [TopBar.tsx](../../../apps/web/components/editor/topbar/TopBar.tsx), positioned **immediately before** `<PreviewToggle />`:
 
 ```
-[ SaveIndicator ] [ ShowComponentTypesToggle ] [ PreviewToggle ] [ DeployButton ]
+[ SaveIndicator ] [ XRayToggle ] [ PreviewToggle ] [ DeployButton ]
 ```
 
-- **Icon:** `LayoutGrid` from lucide-react.
+- **Icon:** `LayoutGrid` from lucide-react (unchanged from the original spec).
 - **Behaviour:** standard toggle button. Active state uses the same `text-orange-400` highlight as the brand mark for visual consistency.
-- **Tooltip:** `"Show component types"` when off, `"Hide component types"` when on.
+- **Tooltip:** `"X-ray mode (off)"` when off, `"X-ray mode (on)"` when on.
 - **Keyboard shortcut:** none (avoids conflicts; can add later if requested).
 
 ### 8.2 State
 
 Lives in [editor-state/store.ts](../../../apps/web/lib/editor-state/store.ts):
 
-- New field `showComponentTypes: boolean`.
-- Default `true` on store initialisation.
-- **No persistence** — not written to localStorage, not in the Supabase site config. Each fresh editor load starts with it ON.
-- New action `toggleShowComponentTypes()`.
+- Field `showComponentTypes: boolean` — kept under the original name to avoid an invasive rename across existing tests and selectors.
+- **Default `false`** on store initialisation (changed from `true` in the original spec).
+- **No persistence** — not written to localStorage, not in the Supabase site config. Each fresh editor load starts with it OFF.
+- Action `toggleShowComponentTypes()` (unchanged signature).
 
-### 8.3 Visual when ON (in edit mode only)
+### 8.3 Visual when X-ray is ON (in edit mode only)
 
-- Each rendered component gets a **1-px dashed grey outline** (CSS `outline:`, not `border:`, so it doesn't shift layout — important because borders push siblings around and would change the page geometry depending on toggle state).
+When the user explicitly turns this on, every component receives the
+"labelled tree" treatment as originally specified, so the user can inspect
+the component structure of the page at a glance:
+
+- Each rendered component gets a **1-px dashed grey outline** (CSS `outline:`, not `border:`, so it doesn't shift layout).
 - Outline colour: `rgba(120, 120, 120, 0.7)` — same grey family as the dropzone overlays for visual cohesion.
 - A small **type label** is positioned at `top: 0; left: 50%; transform: translate(-50%, -100%)` — so it floats just above the component's top edge.
   - Background `bg-zinc-800/90`, white text, `text-[10px]`, `px-1.5 py-0.5`, `rounded-sm`, `pointer-events: none`.
 - Label text is the component type from the registry: `"Section"`, `"Row"`, `"Column"`, `"PropertyCard"`, etc. **`FlowGroup` is never shown** (FlowGroups are invisible to the user per §5).
-- Implementation: rendered inside `EditModeWrapper`, conditional on `useEditorStore(s => s.showComponentTypes) && mode === "edit"`.
+- Implementation: rendered inside `EditModeWrapper`, conditional on `useEditorStore(s => s.showComponentTypes) && mode === "edit"`. **Unchanged from the original spec — the only change is the default value.**
 
 ### 8.4 Disabled in preview / deployed
 
 Same gating as the dropzone overlays — `mode !== "edit"` short-circuits the render.
+
+### 8.5 Hover / selection chrome (new — replaces "always-on" outlines)
+
+This subsection is the progressive-disclosure replacement for the original §8's "labelled by default" model. Lives in `EditModeWrapper.tsx`:
+
+- **Idle (no hover, not selected, X-ray off):** no outline, no type label, no chrome whatsoever. The component renders identically to its preview-mode appearance.
+- **Hovered (`onPointerEnter` fires, not selected):** thin blue outline (`outline outline-1 outline-blue-300` — already in code) + a single type-label pill (same visual as §8.3) appears above the hovered component. Both fade in over ~120 ms via CSS transition. `onPointerLeave` fades them out over the same duration.
+- **Selected** (the component matches `useEditorStore(s => s.selectedComponentId)`): blue selection ring (`outline outline-2 outline-blue-500` — already in code) + type-label pill + ResizeHandles (already gated on selection in `ResizeHandles.tsx`) + side dropzone handles (per §7.2 point 2).
+- **X-ray ON** (regardless of hover/selection): every component shows the dashed grey outline + type pill simultaneously, per §8.3.
+- Hover state is **component-local React state** (a `useState<boolean>` inside `EditModeWrapper`), not a store field — only one component is hovered at a time and there is no need for global state.
+
+### 8.6 Why the toggle is kept
+
+A user who has built a complex nested layout and wants to check the structure (e.g., "is that a Column inside a Row, or a Section directly?") still benefits from the everything-labelled view. Keeping the toggle as an explicit inspection mode preserves that affordance without making it the default.
 
 ---
 
@@ -299,8 +346,8 @@ Same gating as the dropzone overlays — `mode !== "edit"` short-circuits the re
   - Corner handle drives both axes in one batched update (one undo step).
 - **`dropTargetPolicy.test.ts`** — `FlowGroup` accept rules.
 - **New `FlowGroup.test.tsx`** — wrap on right-edge drop; dissolve on single-child drop-out.
-- **New `dropzone-overlay.test.tsx`** — overlay visibility per mode; idle/hover/invalid colour states.
-- **New `show-component-types.test.tsx`** — toggle default ON; outline + label render only in edit mode; FlowGroup never labelled.
+- **New `dropzone-overlay.test.tsx`** — overlay visibility per mode and per drag state: invisible at idle in edit mode (computed `opacity: 0`), visible on `useDragState().dragInProgress = true`, side-zones visible when their wrapper is selected, empty-container slots visible at idle, all hidden in preview. `useDroppable` registration present at idle (hit-testable invisibly).
+- **New `show-component-types.test.tsx`** — X-ray toggle defaults OFF; OFF + no hover + not selected → no outline and no pill; OFF + hover → outline + pill on the hovered component only; OFF + selected → selection ring + pill; ON → dashed outline + pill on every component; outline + label render only in edit mode; FlowGroup never labelled.
 
 ### 10.2 Build / typecheck / lint
 
@@ -309,13 +356,16 @@ Same gating as the dropzone overlays — `mode !== "edit"` short-circuits the re
 
 ### 10.3 Manual smoke (added to the sprint's smoke script)
 
-1. Drag a Heading onto the right edge of an existing Section → side-by-side layout appears.
-2. Resize a Column past its Row's right edge → handle stops at edge, "Bounded by parent" tooltip appears after a moment.
-3. Shrink a Row that contains two 60% / 40% Columns → both Columns shrink proportionally, no error.
-4. Drag the same wide child OUT of its parent and into a wider container → drag succeeds (no clamp during DnD).
-5. Toggle Show Component Types off, then on → outlines and labels appear/disappear; layout does not shift.
-6. Switch to Preview → all overlays, outlines, labels disappear; sections collapse with no gaps; deployed-mode parity confirmed.
-7. Delete one half of a side-by-side pair → FlowGroup auto-dissolves; surviving child reflows as a normal vertical section.
+1. Open the editor on a fresh site → canvas at idle is visually indistinguishable from clicking the Preview toggle. No dashed outlines, no type pills, no grey drop zones (except inside any empty container).
+2. Hover a Heading → thin blue outline + "Heading" pill appear on that one component. Move cursor away → both fade out within ~150 ms.
+3. Click a Heading → blue selection ring + ResizeHandles + side-edge insertion handles appear.
+4. Pick up a draggable from the sidebar → every valid drop target on the canvas tints in to dotted-grey simultaneously. Hover one → it tints blue. Drop on the right edge of an existing Section → side-by-side layout appears via `FlowGroup` (§5); all tints fade out.
+5. Resize a Column past its Row's right edge → handle stops at edge, "Bounded by parent" tooltip appears after a moment.
+6. Shrink a Row that contains two 60% / 40% Columns → both Columns shrink proportionally, no error.
+7. Drag the same wide child OUT of its parent and into a wider container → drag succeeds (no clamp during DnD).
+8. Toggle X-ray (formerly Show Component Types) ON → every component gets the dashed outline + type pill at once. Toggle OFF → back to clean idle. Layout does not shift in either direction.
+9. Switch to Preview → visually identical to the edit-mode idle state; deployed-mode parity confirmed. Switch back to edit → no jank.
+10. Delete one half of a side-by-side pair → FlowGroup auto-dissolves; surviving child reflows as a normal vertical section.
 
 ### 10.4 Playwright
 
@@ -334,13 +384,15 @@ The existing demo-flow E2E test must still pass unchanged. No new E2E required f
 
 This is a single, atomic feature set — none of the five pieces is independently shippable without the others (e.g. side-by-side layout without a parent-bound clamp would let users drag a 600 px Column outside a 300 px Section). The implementation plan should split it into review-checkpointed phases, but the merge unit is the whole thing.
 
-Suggested phase boundaries for the implementation plan (not binding here):
+Suggested phase boundaries for the implementation plan (not binding here). The 2026-04-27 evening revision reorders these so the visual cleanup lands first, before the FlowGroup / x-axis structural work goes on top of it:
 
-1. Schema + `FlowGroup` type + dissolve invariant.
-2. X-axis resize handle on every component (no parent clamp yet).
-3. Parent-bound clamp + tooltip + cascade on parent shrink.
-4. Always-visible dotted dropzones (replaces blue accent line).
-5. Side-edge dropzones + auto-wrap into FlowGroup.
-6. Show Component Types toggle.
+1. **Visual cleanup A — `showComponentTypes` default flip** + tooltip relabel to "X-ray mode". After this single commit alone, edit mode is dramatically less noisy. (§8.2)
+2. **Visual cleanup B — hover-driven outline + pill** in `EditModeWrapper`. (§8.5)
+3. **Visual cleanup C — drag-driven dropzones** in `BetweenDropZone`, `SideDropZones`, `CanvasDropOverlay`; idle opacity 0, fade in via `useDragState()`. (§7)
+4. **Visual cleanup tests + §15.7 gate.** Update existing tests written for always-on visibility; add new hover/selection/drag-state tests. Run full quality gate.
+5. Schema + `FlowGroup` type + dissolve invariant. (§5, §9.1, §9.3)
+6. X-axis resize handle on every component (no parent clamp yet). (§4)
+7. Parent-bound clamp + tooltip + cascade on parent shrink. (§6)
+8. Side-edge dropzones + auto-wrap into FlowGroup. (§5.4, §5.5, §7.2)
 
 Each phase ships behind a working `pnpm build` + `pnpm test` per [CLAUDE.md](../../../CLAUDE.md) §15.7.

@@ -8,7 +8,14 @@ import { useEditorStore } from "@/lib/editor-state";
 import type { ComponentType } from "@/lib/site-config";
 import { cn } from "@/lib/utils";
 import { CSS } from "@dnd-kit/utilities";
-import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from "react";
+import {
+  type CSSProperties,
+  type KeyboardEvent,
+  type MouseEvent,
+  type PointerEvent,
+  type ReactNode,
+  useState,
+} from "react";
 
 type Props = {
   id: string;
@@ -36,11 +43,21 @@ export function EditModeWrapper({
   const sortable = useNodeSortable(id);
   const showComponentTypes = useEditorStore((s) => s.showComponentTypes);
 
-  // Show the dashed outline + type label when: edit mode, overlay toggled on,
-  // and the component is not FlowGroup (engine-internal, invisible to users).
-  // Uses CSS outline (not border) so toggling never shifts layout.
-  // When the component is selected, the blue selection outline takes priority.
-  const showOverlay = mode === "edit" && showComponentTypes && type !== "FlowGroup";
+  // Hover is tracked in React state (not relied on via Tailwind ":hover")
+  // because the type-pill below is a sibling DOM node, not a CSS pseudo-element,
+  // and JSDOM does not evaluate ":hover" — tests can only assert hover behaviour
+  // via React state.
+  const [hovered, setHovered] = useState(false);
+
+  // Pill visibility (progressive disclosure — see DECISIONS.md 2026-04-27 evening):
+  // shown in edit mode when the component is selected, hovered, OR X-ray is on.
+  // FlowGroup never shows a pill (engine-internal, invisible to users).
+  const showPill =
+    mode === "edit" && type !== "FlowGroup" && (Boolean(selected) || hovered || showComponentTypes);
+  // X-ray dashed outline: only when X-ray ON, not selected, not hovered (the
+  // hover/selection blue rings take priority).
+  const showXrayOutline =
+    mode === "edit" && showComponentTypes && type !== "FlowGroup" && !selected && !hovered;
 
   const handleClick = (e: MouseEvent<HTMLDivElement>) => {
     // Anchor clicks must bubble up to the canvas-level link interceptor
@@ -90,6 +107,17 @@ export function EditModeWrapper({
   // onClick / onContextMenu / onKeyDown so the Sprint-6/8 handlers win the
   // dispatch race. The pointer sensor's 10-px activation distance keeps
   // single clicks from being interpreted as drags.
+  // Hover handlers — only meaningful in edit mode; preview/public renders
+  // never run this branch because EditModeWrapper isn't mounted there.
+  const handlePointerEnter = (_e: PointerEvent<HTMLDivElement>) => {
+    if (mode !== "edit") return;
+    setHovered(true);
+  };
+  const handlePointerLeave = (_e: PointerEvent<HTMLDivElement>) => {
+    if (mode !== "edit") return;
+    setHovered(false);
+  };
+
   return (
     <div
       ref={sortable?.setNodeRef ?? undefined}
@@ -97,24 +125,27 @@ export function EditModeWrapper({
       {...(sortable?.listeners ?? {})}
       data-edit-id={id}
       data-edit-selected={selected ? "true" : undefined}
+      data-edit-hovered={hovered ? "true" : undefined}
       // biome-ignore lint/a11y/useSemanticElements: a real <button> cannot legally contain block-level children (sections, paragraphs, etc.) — EditModeWrapper makes those interactive in edit mode only.
       role="button"
       tabIndex={0}
       onClick={handleClick}
       onContextMenu={handleContextMenu}
       onKeyDown={handleKeyDown}
+      onPointerEnter={handlePointerEnter}
+      onPointerLeave={handlePointerLeave}
       style={sortableStyle}
       className={cn(
-        "relative outline-offset-2",
-        selected
-          ? "outline outline-2 outline-blue-500"
-          : "hover:outline hover:outline-1 hover:outline-blue-300",
-        // Show Component Types overlay — outline wins over hover-outline but
-        // blue selection outline takes highest priority (gated on !selected).
-        showOverlay && !selected && "outline outline-1 outline-dashed outline-zinc-400/70",
+        "relative outline-offset-2 transition-[outline-color] duration-100",
+        // Visual priority: selection > hover > x-ray > none.
+        // Hover ring is driven by React state (not Tailwind ":hover") so JSDOM
+        // tests can assert it; see comment on `hovered` above.
+        selected && "outline outline-2 outline-blue-500",
+        !selected && hovered && "outline outline-1 outline-blue-300",
+        showXrayOutline && "outline outline-1 outline-dashed outline-zinc-400/70",
       )}
     >
-      {showOverlay ? (
+      {showPill ? (
         <span
           data-testid={`type-label-${id}`}
           className="pointer-events-none absolute -top-4 left-1/2 z-40 -translate-x-1/2 rounded-sm bg-zinc-800/90 px-1.5 py-0.5 text-[10px] text-white"

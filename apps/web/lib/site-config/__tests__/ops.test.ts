@@ -1098,7 +1098,9 @@ describe("isFirstNavBar / buildAutoPopulatedNavLinks", () => {
     const config: SiteConfig = {
       ...baseConfig,
       pages: baseConfig.pages.map((p) =>
-        p.slug === "units" ? { ...p, kind: "detail" as const, detailDataSource: "units" as const } : p,
+        p.slug === "units"
+          ? { ...p, kind: "detail" as const, detailDataSource: "units" as const }
+          : p,
       ),
     };
     const links = buildAutoPopulatedNavLinks(config);
@@ -1174,7 +1176,7 @@ describe("isFirstNavBar / buildAutoPopulatedNavLinks", () => {
               logoPlacement: "center",
               sticky: true,
             },
-            style: { background: "blue" },
+            style: { background: { kind: "color", value: "blue" } },
           },
         ],
       },
@@ -1244,18 +1246,14 @@ describe("isFirstNavBar / buildAutoPopulatedNavLinks", () => {
         type: "Section",
         props: {},
         style: {},
-        children: [
-          { id: "nav_home", type: "NavBar", props: { links: [] }, style: {} },
-        ],
+        children: [{ id: "nav_home", type: "NavBar", props: { links: [] }, style: {} }],
       },
       about: {
         id: "s_about",
         type: "Section",
         props: {},
         style: {},
-        children: [
-          { id: "nav_about", type: "NavBar", props: { links: [] }, style: {} },
-        ],
+        children: [{ id: "nav_about", type: "NavBar", props: { links: [] }, style: {} }],
       },
     });
     const next = replicateLockedNavBarToAllPages(config);
@@ -1390,10 +1388,7 @@ describe("syncLockedNavBars / findLockedNavBar / applyGlobalNavBarLocked", () =>
 
   it("applyGlobalNavBarLocked(true) prepends a NavBar onto pages that lacked one", () => {
     const a = navBarNode("nav_a", { sticky: true, links: [{ label: "Home", href: "/" }] });
-    const config = buildConfig(
-      [pageWith("home", a), pageWith("about", null)],
-      false,
-    );
+    const config = buildConfig([pageWith("home", a), pageWith("about", null)], false);
     const next = applyGlobalNavBarLocked(config, true);
     const aboutPage = next.pages.find((p) => p.slug === "about");
     const aboutNav = aboutPage?.rootComponent.children?.find((c) => c.type === "NavBar");

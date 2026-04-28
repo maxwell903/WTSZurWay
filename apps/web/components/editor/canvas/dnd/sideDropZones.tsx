@@ -34,6 +34,7 @@ function SideDropZone({ targetId, side }: { targetId: string; side: Side }) {
   const id = sideId(targetId, side);
   const { setNodeRef, isOver } = useDroppable({ id });
   const { activeId, isAcceptable, overId } = useDragState();
+  const dragInProgress = activeId !== null;
   // `acceptable` is derived from context state alone so it is deterministic in
   // tests and SSR — dnd-kit's `isOver` only becomes true during live pointer
   // events, which makes it unreliable for data-attribute assertions in jsdom.
@@ -44,12 +45,18 @@ function SideDropZone({ targetId, side }: { targetId: string; side: Side }) {
       data-testid={`side-dropzone-${targetId}-${side}`}
       data-side-id={id}
       data-acceptable={acceptable ? "true" : undefined}
+      data-drag-in-progress={dragInProgress ? "true" : undefined}
       className={cn(
         SIDE_GEOMETRY[side],
-        "rounded-sm border border-dashed transition-all duration-100",
-        "border-zinc-400/30 bg-zinc-400/[0.05]",
-        activeId && acceptable && "border-blue-500/60 bg-blue-500/15",
-        activeId && isOver && !acceptable && "border-red-500/60 bg-red-500/15",
+        "rounded-sm transition-opacity duration-150",
+        // Idle (no drag): fully invisible. The useDroppable registration
+        // stays — collisions resolve correctly the moment a drag starts.
+        // Drag in progress: dotted-grey idle look fades in.
+        dragInProgress
+          ? "border border-dashed border-zinc-400/30 bg-zinc-400/[0.05] opacity-100"
+          : "opacity-0",
+        dragInProgress && acceptable && "border-blue-500/60 bg-blue-500/15",
+        dragInProgress && isOver && !acceptable && "border-red-500/60 bg-red-500/15",
       )}
     />
   );

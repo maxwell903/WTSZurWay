@@ -1613,3 +1613,110 @@ Each fix was minimal, behaviour-preserving, and limited to the smallest change n
 **Affected sprints' files touched:** Sprint 5 (registry test), Sprint 6 (catalog test), Sprint 7 (RESIZE_MATRIX), Sprint 8 (ContentTabHost), Sprint 11 (suggested-prompts, AI catalog), Sprint 14.5 (next.config.mjs).
 
 **No Deviation Reports were required** — every fix was test/config housekeeping that fits §15.9's carve-out (under ~5 lines per file, no runtime-behaviour change).
+
+## 2026-04-27 (evening) — Sprint X-axis-resize — Reverse course on always-on edit-mode chrome
+
+**Context:** During the same day the morning's design doc
+(`docs/superpowers/specs/2026-04-27-x-axis-resize-and-edit-overlays-design.md`)
+was approved with §7 specifying "always-visible" dotted-grey dropzones
+and §8 specifying a Show Component Types toggle that defaults ON. The
+user reported that the resulting edit-mode canvas had become visually
+chaotic — dashed outlines and black type-label pills on every component,
+plus dotted-grey overlays around every component at idle — to the point
+that the editor "looks nothing like" the preview/deployed render and the
+user could no longer tell what they were building. Two side-by-side
+screenshots were attached comparing edit-mode vs. preview-mode output of
+the same three PropertyCard-style components.
+
+**Original plan:** §7 + §8 of the 2026-04-27 design doc. Always-visible
+overlays at idle. `showComponentTypes` defaults `true`. Type-label pill +
+dashed outline on every component on every editor load.
+
+**What changed:** Pivot to a **progressive-disclosure model** (Option B
+from this evening's exploratory brainstorm):
+- §7 rewritten: dropzones at idle become invisible (`opacity: 0`); they
+  fade in across all valid targets when a drag begins. Empty-container
+  slots remain visible at idle (the one exception). Side-zones remain
+  visible on the selected component.
+- §8 rewritten: toggle is renamed "X-ray mode" (TopBar tooltip change
+  only — the store field stays `showComponentTypes` to avoid an invasive
+  rename). Default flips to OFF. The chrome that used to be always-on
+  is now driven by hover state inside `EditModeWrapper`: a single blue
+  outline + type pill appears on the hovered component, and the existing
+  blue selection ring + ResizeHandles continue to gate on selection.
+- §12 phase order updated so the visual cleanup ships before the
+  FlowGroup / x-axis-resize structural work goes on top of it.
+- §3, §10.1, §10.3 updated to match.
+- §4–§6 (sizing, FlowGroup, parent-bound resize), §9 (schema +
+  actions), §11 (open questions), and the architectural overview's
+  bullets 1–3 are unchanged.
+
+**Rationale:** Always-on overlays + always-on labelled outlines made the
+edit canvas qualitatively unusable as a "what am I building" view. The
+AI edit pipeline (`apps/web/lib/ai/`, `apps/web/lib/site-config/`) has
+zero coupling to the visual layer — verified by a Phase-1 explore — so
+overhauling edit-mode chrome does not break the AI's contract, the AI
+fixtures, or `applyOperations`. The progressive-disclosure model
+(idle = preview-look, hover/select/drag reveal affordances) is the
+standard for modern web builders (Webflow, Framer, Wix Editor) and
+gives the user back a "what does my page actually look like" view at
+the cost of slightly reduced first-time discoverability of side
+dropzones (mitigation noted in §7.6: hold-`Alt` reveal, future work).
+
+**User approval (verbatim):** AskUserQuestion answers — "Option B:
+progressive disclosure (Recommended)", "All valid targets light up at
+once (Recommended)", "Revise §7 + §8, keep the rest (Recommended)" —
+followed by ExitPlanMode approval of
+`C:\Users\maxwa\.claude\plans\lazy-knitting-pillow.md` ("User has
+approved your plan").
+
+**Trade-offs accepted:**
+- Gain: edit mode at idle visually matches preview mode; users can
+  see what they are building. The morning's FlowGroup + x-axis-resize
+  + parent-bound-clamp design work (§4–§6) is preserved on top of the
+  new visual model. The `EditModeWrapper` wrapper architecture is
+  preserved (no render+control-layer rewrite).
+- Lose: idle-invisible side dropzones cost some first-time
+  discoverability of "drop on right edge → side-by-side" (per §7.6,
+  mitigation deferred). Existing tests written for always-on
+  visibility (`dropzone-overlay.test.tsx`, `show-component-types.test.tsx`,
+  any snapshot tests over `EditModeWrapper`) will need updating.
+- Risk: subtle drag-state bugs if `useDragState()` ever returns stale
+  values across react-dnd contexts; mitigated by the drag-state
+  context already being a tested code path used by today's
+  `BetweenDropZone`. CSS-driven opacity transitions add no new
+  re-render cost.
+
+**Affected files / modules (planned, not yet implemented):**
+- `apps/web/lib/editor-state/store.ts` — `showComponentTypes` default
+  flips `true` → `false`.
+- `apps/web/components/renderer/EditModeWrapper.tsx` — local hover
+  state; outline + type pill driven by `selected || hovered ||
+  showComponentTypes`.
+- `apps/web/components/editor/canvas/dnd/BetweenDropZone.tsx`,
+  `SideDropZones.tsx`, `Canvas.tsx`'s `CanvasDropOverlay` — idle
+  opacity 0, fade in on `useDragState().dragInProgress`.
+- `apps/web/components/editor/topbar/ShowComponentTypesToggle.tsx` —
+  tooltip text update only.
+- `docs/superpowers/specs/2026-04-27-x-axis-resize-and-edit-overlays-design.md`
+  — §3, §7, §8, §10.1, §10.3, §12 revised in this same commit.
+
+**Cross-sprint impact:** Subsequent phases of the X-axis-resize sprint
+(FlowGroup, parent-bound clamp, side-edge auto-wrap) build on top of
+this visual model rather than the original always-on one. The
+implementation plan
+(`docs/superpowers/plans/2026-04-27-x-axis-resize-and-edit-overlays.md`,
+referenced in the prior 2026-04-27 entry above) needs its phase
+ordering revised to match §12's new sequence — visual cleanup phases
+1–4 ship before structural phases 5–8.
+
+**Retroactive cross-sprint fix applied (CLAUDE.md §15.9):**
+
+- `apps/web/lib/site-config/__tests__/ops.test.ts:1177` — pre-existing
+  typecheck error (`style: { background: "blue" }` no longer matched
+  the `background: { kind: "color", value } | { kind: "gradient", ... }`
+  schema). Fixed by wrapping the literal: `{ kind: "color", value: "blue" }`.
+  One-line, behaviour-preserving, test-file housekeeping per §15.9's
+  carve-out. Verified pre-existing by `git stash` + isolated typecheck
+  before applying. Without this fix, `pnpm typecheck` could not pass
+  for this sprint's progressive-disclosure work.

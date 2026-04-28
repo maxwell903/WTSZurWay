@@ -65,8 +65,10 @@ const creator: StateCreator<EditorStore> = (set) => ({
   saveState: "idle",
   lastSavedAt: null,
   saveError: null,
-  // Phase 6 Task 6.1 — transient; defaults ON each editor load (no persistence).
-  showComponentTypes: true,
+  // Transient X-ray flag (no persistence). Default OFF after the
+  // 2026-04-27 evening progressive-disclosure pivot — see DECISIONS.md.
+  // ON gives the everything-labelled inspection view.
+  showComponentTypes: false,
 
   // -------- non-mutating actions --------
   hydrate: (input) =>
@@ -441,7 +443,7 @@ export function __resetEditorStoreForTests(): void {
     saveState: "idle",
     lastSavedAt: null,
     saveError: null,
-    showComponentTypes: true,
+    showComponentTypes: false,
   });
 }
 

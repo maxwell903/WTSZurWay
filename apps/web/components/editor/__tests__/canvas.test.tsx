@@ -182,7 +182,11 @@ function makeFlowGroupFixtureConfig(): SiteConfig {
   };
 }
 
-describe("Show Component Types overlay (Task 6.3)", () => {
+describe("X-ray mode + hover-driven type labels (progressive disclosure)", () => {
+  // Defaults flipped to OFF on the 2026-04-27 evening progressive-disclosure
+  // pivot — see DECISIONS.md. The pill now appears only when X-ray is ON, the
+  // component is selected, or the component is hovered.
+
   beforeEach(() => {
     __resetEditorStoreForTests();
     useEditorStore.getState().hydrate({
@@ -193,21 +197,37 @@ describe("Show Component Types overlay (Task 6.3)", () => {
     });
   });
 
-  it("renders the 'Section' type label when toggle is on (default)", () => {
-    render(<Canvas />);
-    // cmp_root is a Section — its label should be visible in edit mode.
-    expect(screen.queryByTestId("type-label-cmp_root")).toBeInTheDocument();
-  });
-
-  it("hides the type label when toggle is off", () => {
-    act(() => {
-      useEditorStore.getState().toggleShowComponentTypes();
-    });
+  it("hides every type label at idle (X-ray off, no hover, nothing selected)", () => {
     render(<Canvas />);
     expect(screen.queryByTestId("type-label-cmp_root")).toBeNull();
   });
 
-  it("never renders the label for FlowGroup", () => {
+  it("renders the 'Section' type label when X-ray is toggled on", () => {
+    act(() => {
+      useEditorStore.getState().toggleShowComponentTypes();
+    });
+    render(<Canvas />);
+    expect(screen.queryByTestId("type-label-cmp_root")).toBeInTheDocument();
+  });
+
+  it("renders the type label only on the hovered component", () => {
+    render(<Canvas />);
+    const wrapper = document.querySelector<HTMLDivElement>('[data-edit-id="cmp_root"]');
+    expect(wrapper).not.toBeNull();
+    if (wrapper) {
+      // JSDOM has no PointerEvent constructor; React's pointerEnter handler
+      // is invoked by testing-library's fireEvent.pointerEnter, which builds
+      // a synthetic event compatible with React's pointer interface.
+      fireEvent.pointerEnter(wrapper);
+    }
+    expect(screen.queryByTestId("type-label-cmp_root")).toBeInTheDocument();
+    if (wrapper) {
+      fireEvent.pointerLeave(wrapper);
+    }
+    expect(screen.queryByTestId("type-label-cmp_root")).toBeNull();
+  });
+
+  it("never renders the label for FlowGroup, even with X-ray on", () => {
     __resetEditorStoreForTests();
     useEditorStore.getState().hydrate({
       siteId: "s",
@@ -215,16 +235,20 @@ describe("Show Component Types overlay (Task 6.3)", () => {
       workingVersionId: "v",
       initialConfig: makeFlowGroupFixtureConfig(),
     });
+    act(() => {
+      useEditorStore.getState().toggleShowComponentTypes();
+    });
     render(<Canvas />);
     // FlowGroup is engine-internal — no label for it.
     expect(screen.queryByTestId("type-label-cmp_fg")).toBeNull();
-    // The two Heading children still get labels.
+    // The two Heading children still get labels because X-ray is on.
     expect(screen.queryByTestId("type-label-cmp_h1")).toBeInTheDocument();
     expect(screen.queryByTestId("type-label-cmp_h2")).toBeInTheDocument();
   });
 
-  it("hides the label in preview mode regardless of toggle state", () => {
+  it("hides every label in preview mode regardless of X-ray state", () => {
     act(() => {
+      useEditorStore.getState().toggleShowComponentTypes();
       useEditorStore.getState().setPreviewMode(true);
     });
     render(<Canvas />);
