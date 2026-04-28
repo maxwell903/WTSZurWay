@@ -174,7 +174,7 @@ describe("ButtonEditPanel", () => {
 describe("ImageEditPanel", () => {
   it("editing src/alt/fit writes through the store", () => {
     render(<PanelHost id="cmp_img" Panel={ImageEditPanel} />);
-    fireEvent.change(screen.getByTestId("image-src"), { target: { value: "/y.png" } });
+    fireEvent.change(screen.getByTestId("image-src-url"), { target: { value: "/y.png" } });
     fireEvent.change(screen.getByTestId("image-alt"), { target: { value: "Y" } });
     fireEvent.change(screen.getByTestId("image-fit"), { target: { value: "contain" } });
     const p = getNode("cmp_img").props;

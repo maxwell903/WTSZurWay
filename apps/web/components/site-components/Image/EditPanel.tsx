@@ -1,5 +1,6 @@
 "use client";
 
+import { MediaInput } from "@/components/editor/edit-panels/controls/MediaInput";
 import { SelectInput } from "@/components/editor/edit-panels/controls/SelectInput";
 import { TextInput } from "@/components/editor/edit-panels/controls/TextInput";
 import { useEditorStore } from "@/lib/editor-state";
@@ -24,7 +25,7 @@ export function ImageEditPanel({ node }: ImageEditPanelProps) {
 
   return (
     <div data-component-edit-panel="Image" className="space-y-3">
-      <TextInput
+      <MediaInput
         id="image-src"
         label="Src"
         value={readString(node.props, "src")}

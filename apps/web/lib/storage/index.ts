@@ -14,6 +14,7 @@ export type UploadResult = { url: string; path: string };
 
 export const LOGO_BUCKET = "logos";
 export const ATTACHMENT_BUCKET = "ai-attachments";
+export const SITE_MEDIA_BUCKET = "site-media";
 
 // Lowercase, swap whitespace for `-`, drop anything that isn't `[a-z0-9._-]`.
 // Combined with a `Date.now()` prefix this makes paths unambiguous and
@@ -55,4 +56,8 @@ export function uploadLogo(file: File): Promise<UploadResult> {
 
 export function uploadAttachment(file: File): Promise<UploadResult> {
   return uploadTo(ATTACHMENT_BUCKET, file);
+}
+
+export function uploadSiteMedia(file: File): Promise<UploadResult> {
+  return uploadTo(SITE_MEDIA_BUCKET, file);
 }

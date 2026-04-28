@@ -63,7 +63,8 @@ const CATALOG: Record<ComponentType, ComponentDoc> = {
     category: "Media",
     childrenPolicy: "none",
     description: "Static image.",
-    props: "{ src: string; alt: string; objectFit?: 'cover' | 'contain' }",
+    props:
+      "{ src: string; alt: string; fit?: 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' }",
   },
   Logo: {
     category: "Media",
