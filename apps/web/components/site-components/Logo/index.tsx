@@ -1,3 +1,4 @@
+import { useBrand } from "@/components/renderer/BrandContext";
 import type { ComponentNode } from "@/types/site-config";
 import type { CSSProperties } from "react";
 import { z } from "zod";
@@ -14,19 +15,25 @@ type LogoProps = {
   cssStyle: CSSProperties;
 };
 
-// Sprint 5 ships the Logo with a placeholder when the requested logo source
-// is `primary` or `secondary` because the renderer does not pass siteConfig
-// down to leaf components yet. Sprint 6 (or 8) will add the wiring that
-// resolves siteConfig.brand.primaryLogoUrl / secondaryLogoUrl. Until then the
-// `custom` source with a `customUrl` is the only path that produces a real
-// image; the other two intentionally render the rectangular placeholder.
 export function Logo({ node, cssStyle }: LogoProps) {
+  const brand = useBrand();
   const parsed = logoPropsSchema.safeParse(node.props);
   const data = parsed.success
     ? parsed.data
     : { source: "primary" as const, customUrl: undefined, alt: "Logo", height: 32 };
 
-  const resolvedUrl = data.source === "custom" ? data.customUrl : undefined;
+  // source=custom uses the per-instance customUrl; primary/secondary resolve
+  // against brand context. Outside a BrandProvider (useBrand returns null),
+  // primary/secondary fall through to the placeholder — same behavior as
+  // when the brand fields are unset.
+  let resolvedUrl: string | undefined;
+  if (data.source === "custom") {
+    resolvedUrl = data.customUrl;
+  } else if (data.source === "primary") {
+    resolvedUrl = brand?.primaryLogoUrl;
+  } else {
+    resolvedUrl = brand?.secondaryLogoUrl;
+  }
 
   if (resolvedUrl) {
     const finalStyle: CSSProperties = {

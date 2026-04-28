@@ -4,6 +4,7 @@ import { RowContextProvider } from "@/lib/row-context";
 import { backgroundToCss, resolveCanvas, shadowPresetToCss } from "@/lib/site-config";
 import type { SiteConfig } from "@/types/site-config";
 import type { CSSProperties } from "react";
+import { BrandProvider } from "./BrandContext";
 import { ComponentRenderer, type Mode } from "./ComponentRenderer";
 import { RenderModeProvider } from "./RenderModeContext";
 import { SiteConfigProvider } from "./SiteConfigContext";
@@ -97,7 +98,9 @@ export function Renderer({
 
   return (
     <SiteConfigProvider config={config}>
-      <RenderModeProvider value={mode}>{withRowContext}</RenderModeProvider>
+      <BrandProvider brand={config.brand}>
+        <RenderModeProvider value={mode}>{withRowContext}</RenderModeProvider>
+      </BrandProvider>
     </SiteConfigProvider>
   );
 }

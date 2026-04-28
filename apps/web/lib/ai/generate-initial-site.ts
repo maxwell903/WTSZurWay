@@ -119,7 +119,11 @@ export async function generateInitialSite(
     firstAttemptText = text;
     const parsed = parseAndValidate(text);
     if (parsed.success) {
-      return { kind: "ok", config: ensureLockedNavBarOnHome(parsed.config), source: "live" };
+      return {
+        kind: "ok",
+        config: finalizeConfig(parsed.config, input.form),
+        source: "live",
+      };
     }
     firstZodIssues = parsed.issues;
   } catch (e) {
@@ -156,7 +160,11 @@ export async function generateInitialSite(
     const text = extractText(retryResponse);
     const parsed = parseAndValidate(text);
     if (parsed.success) {
-      return { kind: "ok", config: ensureLockedNavBarOnHome(parsed.config), source: "live" };
+      return {
+        kind: "ok",
+        config: finalizeConfig(parsed.config, input.form),
+        source: "live",
+      };
     }
     return withFixtureFallback(input.form, {
       kind: "invalid_output",
@@ -182,9 +190,40 @@ async function withFixtureFallback(
 ): Promise<GenerateInitialSiteResult> {
   const fixture = await lookupGenerationFixture(form);
   if (fixture) {
-    return { kind: "ok", config: ensureLockedNavBarOnHome(fixture), source: "fixture" };
+    return { kind: "ok", config: finalizeConfig(fixture, form), source: "fixture" };
   }
   return { kind: "error", error, source: "live" };
+}
+
+// Overwrites brand.primaryLogoUrl / secondaryLogoUrl with the URLs the user
+// uploaded in the setup form. The AI is told about these URLs in the user
+// instruction, but it isn't *guaranteed* to wire them through to the brand
+// object — the catalog hint doesn't enforce it and we've seen the model
+// silently drop them. Doing the overwrite deterministically here means the
+// user's uploaded asset always lands in `brand.*LogoUrl`, which in turn means
+// `<Logo source="primary">` resolves to the actual asset via BrandContext.
+// Existing values (set by the AI or carried from a fixture) are preserved
+// only when the form provides nothing.
+function applyBrandFromForm(config: SiteConfig, form: SetupFormValues): SiteConfig {
+  const primary = form.logoPrimary?.url;
+  const secondary = form.logoSecondary?.url;
+  if (!primary && !secondary) return config;
+  return {
+    ...config,
+    brand: {
+      ...config.brand,
+      ...(primary ? { primaryLogoUrl: primary } : {}),
+      ...(secondary ? { secondaryLogoUrl: secondary } : {}),
+    },
+  };
+}
+
+// Single chokepoint for "the AI returned a config, finalize it before
+// surfacing to the caller". Order matters: brand fixups first so any
+// downstream NavBar logic that wants to read brand.primaryLogoUrl already
+// sees the user-supplied asset, then the NavBar normalization.
+function finalizeConfig(config: SiteConfig, form: SetupFormValues): SiteConfig {
+  return ensureLockedNavBarOnHome(applyBrandFromForm(config, form));
 }
 
 // After the AI returns a config we (a) guarantee a NavBar exists on the

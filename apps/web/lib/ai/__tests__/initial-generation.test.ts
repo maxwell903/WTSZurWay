@@ -144,9 +144,7 @@ describe("generateInitialSite", () => {
       const firstChild = home?.rootComponent.children?.[0];
       expect(firstChild?.type).toBe("NavBar");
       // Sprint 13 — auto-populated with one page link per static page.
-      expect(firstChild?.props.links).toEqual([
-        { kind: "page", pageSlug: "home", label: "Home" },
-      ]);
+      expect(firstChild?.props.links).toEqual([{ kind: "page", pageSlug: "home", label: "Home" }]);
       expect(firstChild?.props.overrideShared).toBe(false);
     }
   });
@@ -231,6 +229,85 @@ describe("generateInitialSite", () => {
       const detailNav = detail?.rootComponent.children?.find((c) => c.type === "NavBar");
       expect(detailNav).toBeDefined();
       expect(detailNav?.props.links).toEqual(expectedLinks);
+    }
+  });
+
+  it("overwrites brand.primaryLogoUrl/secondaryLogoUrl with the URLs the form supplied", async () => {
+    // The AI returns a config that omits brand.primaryLogoUrl entirely AND
+    // sets secondaryLogoUrl to a stale value — both common failure modes.
+    // The form-supplied URLs must take precedence in both cases so <Logo>
+    // resolves to what the user actually uploaded.
+    const configJson = JSON.stringify({
+      meta: { siteName: "Aurora Property Group", siteSlug: "aurora-property-group" },
+      brand: {
+        palette: "ocean",
+        fontFamily: "Inter",
+        secondaryLogoUrl: "https://stale.example/secondary.png",
+      },
+      global: {
+        navBar: { links: [], logoPlacement: "left", sticky: false },
+        footer: { columns: [], copyright: "" },
+      },
+      pages: [
+        {
+          id: "p_home",
+          slug: "home",
+          name: "Home",
+          kind: "static",
+          rootComponent: { id: "cmp_root", type: "Section", props: {}, style: {} },
+        },
+      ],
+      forms: [],
+    });
+    const { client } = makeMockClient([makeMessageResponse(configJson)]);
+    const result = await generateInitialSite(
+      {
+        form: {
+          ...MIN_FORM,
+          logoPrimary: { name: "primary.png", url: "https://cdn.test/uploaded-primary.png" },
+          logoSecondary: { name: "secondary.svg", url: "https://cdn.test/uploaded-secondary.svg" },
+        },
+      },
+      client as unknown as Parameters<typeof generateInitialSite>[1],
+    );
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.config.brand.primaryLogoUrl).toBe("https://cdn.test/uploaded-primary.png");
+      expect(result.config.brand.secondaryLogoUrl).toBe("https://cdn.test/uploaded-secondary.svg");
+    }
+  });
+
+  it("leaves brand logo URLs untouched when the form provides none", async () => {
+    const configJson = JSON.stringify({
+      meta: { siteName: "Aurora Property Group", siteSlug: "aurora-property-group" },
+      brand: {
+        palette: "ocean",
+        fontFamily: "Inter",
+        primaryLogoUrl: "https://ai.example/ai-supplied.png",
+      },
+      global: {
+        navBar: { links: [], logoPlacement: "left", sticky: false },
+        footer: { columns: [], copyright: "" },
+      },
+      pages: [
+        {
+          id: "p_home",
+          slug: "home",
+          name: "Home",
+          kind: "static",
+          rootComponent: { id: "cmp_root", type: "Section", props: {}, style: {} },
+        },
+      ],
+      forms: [],
+    });
+    const { client } = makeMockClient([makeMessageResponse(configJson)]);
+    const result = await generateInitialSite(
+      { form: MIN_FORM },
+      client as unknown as Parameters<typeof generateInitialSite>[1],
+    );
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.config.brand.primaryLogoUrl).toBe("https://ai.example/ai-supplied.png");
     }
   });
 

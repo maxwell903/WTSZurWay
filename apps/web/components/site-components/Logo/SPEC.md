@@ -1,9 +1,11 @@
 # Logo
 
-Renders the brand's logo image. In Sprint 5 the renderer does not pass
-`siteConfig` down, so `source: "primary"` and `source: "secondary"` render a
-neutral grey rectangular placeholder. Sprint 6 (or 8) wires the real
-`siteConfig.brand.primaryLogoUrl` / `secondaryLogoUrl` lookup.
+Renders the brand's logo image. `source: "primary"` and `source: "secondary"`
+resolve against the surrounding `BrandProvider` context (siteConfig.brand);
+when the corresponding `primaryLogoUrl` / `secondaryLogoUrl` is unset, or
+when `<Logo>` renders outside a `BrandProvider`, the component falls back to
+a neutral grey rectangular placeholder. `source: "custom"` always uses the
+per-instance `customUrl`.
 
 ## Props
 
@@ -31,7 +33,9 @@ Invalid props fall back silently to the defaults. When `source === "custom"` and
 
 ## Data binding
 
-None — `siteConfig.brand.*` lookup is deferred to Sprint 6 / 8.
+`source: "primary" | "secondary"` resolves against `BrandContext` (provided
+by the renderer root from `siteConfig.brand`). Outside a provider the
+component falls back to its placeholder.
 
 ## Children policy
 
