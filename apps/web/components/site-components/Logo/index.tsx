@@ -37,9 +37,9 @@ export function Logo({ node, cssStyle }: LogoProps) {
 
   if (resolvedUrl) {
     const finalStyle: CSSProperties = {
-      ...cssStyle,
       height: `${data.height}px`,
       width: "auto",
+      ...cssStyle,
     };
     return (
       <img
