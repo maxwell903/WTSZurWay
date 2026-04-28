@@ -25,6 +25,7 @@
 
 import { cn } from "@/lib/utils";
 import { useDroppable } from "@dnd-kit/core";
+import type { CSSProperties } from "react";
 import { useDragState } from "./DropZoneIndicator";
 import { betweenId } from "./dnd-ids";
 
@@ -32,9 +33,23 @@ type Props = {
   parentId: string;
   index: number;
   orientation?: "vertical" | "horizontal";
+  // The parent container's CSS `gap` value (in px). Each interleaved
+  // BetweenDropZone sits between two real children of a flex parent, and
+  // CSS `gap` would normally apply on BOTH sides of the BZ — turning one
+  // gap-between-cards into two. Applying a negative margin equal to the
+  // parent's gap on the main-axis-start side cancels exactly one of those
+  // duplicated gaps, so the cumulative inter-card spacing in edit mode
+  // matches preview mode (which has no BZs). Defaults to 0 for parents
+  // with no flex gap (Section in block layout, Form, etc.).
+  parentGap?: number;
 };
 
-export function BetweenDropZone({ parentId, index, orientation = "vertical" }: Props) {
+export function BetweenDropZone({
+  parentId,
+  index,
+  orientation = "vertical",
+  parentGap = 0,
+}: Props) {
   const id = betweenId(parentId, index);
   const { setNodeRef, isOver } = useDroppable({ id });
   const { activeId, isAcceptable, overId } = useDragState();
@@ -44,6 +59,16 @@ export function BetweenDropZone({ parentId, index, orientation = "vertical" }: P
   // events, which makes it unreliable for data-attribute assertions in jsdom.
   const acceptable = isAcceptable && overId === id;
 
+  // Negative margin to cancel one of the two surrounding gaps (see comment
+  // on `parentGap` above). Applied via inline style so callers can pass any
+  // numeric gap value without us needing matching Tailwind classes.
+  const gapAbsorbStyle: CSSProperties =
+    parentGap > 0
+      ? orientation === "horizontal"
+        ? { marginLeft: -parentGap }
+        : { marginTop: -parentGap }
+      : {};
+
   if (orientation === "horizontal") {
     return (
       <div
@@ -52,6 +77,7 @@ export function BetweenDropZone({ parentId, index, orientation = "vertical" }: P
         data-between-id={id}
         data-acceptable={acceptable ? "true" : undefined}
         data-drag-in-progress={dragInProgress ? "true" : undefined}
+        style={gapAbsorbStyle}
         className={cn(
           "relative shrink-0 self-stretch rounded-sm transition-opacity duration-150",
           dragInProgress
@@ -72,6 +98,7 @@ export function BetweenDropZone({ parentId, index, orientation = "vertical" }: P
       data-between-id={id}
       data-acceptable={acceptable ? "true" : undefined}
       data-drag-in-progress={dragInProgress ? "true" : undefined}
+      style={gapAbsorbStyle}
       className={cn(
         "relative w-full rounded-sm transition-opacity duration-150",
         // Idle: collapsed + invisible so edit-mode layout matches preview.

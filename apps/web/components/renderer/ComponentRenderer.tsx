@@ -89,6 +89,27 @@ function stripMarginFromCss(css: CSSProperties): CSSProperties {
   return rest;
 }
 
+// Read the parent container's effective `gap` (in px) for use by interleaved
+// BetweenDropZones. Each BZ absorbs one of its two surrounding gaps via
+// negative margin so the cumulative inter-card spacing in edit mode matches
+// preview mode exactly. Components without a flex `gap` (Section in normal
+// block layout, Form, etc.) return 0 and BetweenDropZone applies no
+// compensation.
+function readParentGap(node: ComponentNode): number {
+  // Row and Column both expose a numeric `gap` prop with sane defaults.
+  if (node.type === "Row") {
+    const g = (node.props as { gap?: unknown }).gap;
+    return typeof g === "number" ? g : 16;
+  }
+  if (node.type === "Column") {
+    const g = (node.props as { gap?: unknown }).gap;
+    return typeof g === "number" ? g : 8;
+  }
+  // Other "many"-policy parents (Section block layout, Form, FlowGroup)
+  // either don't use CSS gap or don't double-count; treat as 0.
+  return 0;
+}
+
 export type Mode = "edit" | "preview" | "public";
 
 export type ComponentRendererProps = {
@@ -232,6 +253,14 @@ function ComponentRendererInner({
   );
   if (!showEmpty && mode === "edit" && policy === "many") {
     const orientation: "vertical" | "horizontal" = node.type === "Row" ? "horizontal" : "vertical";
+    // Gap-doubling fix: the parent (Row, Column, etc.) applies CSS `gap`
+    // between every pair of adjacent flex items. Interleaving an invisible
+    // BetweenDropZone turns one gap (between two cards) into two gaps
+    // (card→BZ→card), making edit mode total horizontal/vertical space
+    // larger than preview by `(numCards - 1) * gap` extra. Pass the
+    // parent's gap value so BetweenDropZone can apply a compensating
+    // negative margin and the layouts match preview exactly.
+    const parentGap = readParentGap(node);
     const elements = childElements ?? [];
     const interleaved: ReactNode[] = [];
     interleaved.push(
@@ -240,6 +269,7 @@ function ComponentRendererInner({
         parentId={node.id}
         index={0}
         orientation={orientation}
+        parentGap={parentGap}
       />,
     );
     elements.forEach((el, i) => {
@@ -250,6 +280,7 @@ function ComponentRendererInner({
           parentId={node.id}
           index={i + 1}
           orientation={orientation}
+          parentGap={parentGap}
         />,
       );
     });
