@@ -43,12 +43,21 @@ function computeWrapperPassthroughStyle(node: ComponentNode): CSSProperties {
   if (cssStyle.marginRight !== undefined) out.marginRight = cssStyle.marginRight;
   if (cssStyle.marginBottom !== undefined) out.marginBottom = cssStyle.marginBottom;
   if (cssStyle.marginLeft !== undefined) out.marginLeft = cssStyle.marginLeft;
-  // Column writes `flex: <span>` on its own root; mirror it to the wrapper
-  // so the parent Row's flex layout applies. Other component types compute
-  // no outer-affecting flex value today.
+  // Column's own `flex` value depends on whether an explicit width is set
+  // (see `Column/index.tsx`): `flex: 0 0 <width>` when width is explicit,
+  // otherwise `flex: <span>` for legacy proportional sharing. The wrapper
+  // MUST mirror that exactly, otherwise the wrapper grows to its flex-grow
+  // share inside a flex Row in edit mode while preview renders the inner
+  // at its literal pixel width — making edit and preview disagree on
+  // layout (cards visually fill the Row in edit, then collapse + overlap
+  // in preview).
   if (node.type === "Column") {
-    const span = (node.props as { span?: unknown }).span;
-    if (typeof span === "number") out.flex = span;
+    if (cssStyle.width !== undefined) {
+      out.flex = `0 0 ${cssStyle.width}`;
+    } else {
+      const span = (node.props as { span?: unknown }).span;
+      if (typeof span === "number") out.flex = span;
+    }
   }
   return out;
 }
