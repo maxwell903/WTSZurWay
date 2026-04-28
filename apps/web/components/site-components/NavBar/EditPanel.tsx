@@ -1,12 +1,12 @@
 "use client";
 
+import { MediaInput } from "@/components/editor/edit-panels/controls/MediaInput";
 import {
   type NavLinkEntry,
   NavLinksEditor,
 } from "@/components/editor/edit-panels/controls/NavLinksEditor";
 import { SelectInput } from "@/components/editor/edit-panels/controls/SelectInput";
 import { SwitchInput } from "@/components/editor/edit-panels/controls/SwitchInput";
-import { TextInput } from "@/components/editor/edit-panels/controls/TextInput";
 import { useEditorStore } from "@/lib/editor-state";
 import type { ComponentNode } from "@/lib/site-config";
 
@@ -110,7 +110,7 @@ export function NavBarEditPanel({ node }: NavBarEditPanelProps) {
         testId="navbar-sticky"
         onChange={(next) => writePartial({ sticky: next })}
       />
-      <TextInput
+      <MediaInput
         id="navbar-logo-src"
         label="Logo URL"
         value={readString(node.props, "logoSrc")}
