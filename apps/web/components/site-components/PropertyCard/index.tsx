@@ -1,3 +1,5 @@
+import { EditableTextSlot } from "@/components/renderer/EditableTextSlot";
+import { richTextDocSchema } from "@/lib/site-config";
 import type { ComponentNode } from "@/types/site-config";
 import type { CSSProperties } from "react";
 import { z } from "zod";
@@ -7,9 +9,13 @@ const propertyCardPropsSchema = z.object({
   // card from `lib/rm-api/` when the binding lands.
   propertyId: z.number().int().nonnegative().optional(),
   heading: z.string().default("Property Name"),
+  // Rich-text Phase 4: optional formatted variants alongside each plain field.
+  richHeading: richTextDocSchema.optional(),
   body: z.string().default("Property description goes here."),
+  richBody: richTextDocSchema.optional(),
   imageSrc: z.string().default(""),
   ctaLabel: z.string().default("View Details"),
+  richCtaLabel: richTextDocSchema.optional(),
   ctaHref: z.string().default("#"),
 });
 
@@ -25,9 +31,12 @@ export function PropertyCard({ node, cssStyle }: PropertyCardProps) {
     : {
         propertyId: undefined,
         heading: "Property Name",
+        richHeading: undefined,
         body: "Property description goes here.",
+        richBody: undefined,
         imageSrc: "",
         ctaLabel: "View Details",
+        richCtaLabel: undefined,
         ctaHref: "#",
       };
 
@@ -58,8 +67,28 @@ export function PropertyCard({ node, cssStyle }: PropertyCardProps) {
         />
       )}
       <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "16px" }}>
-        <h3 style={{ fontSize: "18px", fontWeight: 600, margin: 0 }}>{data.heading}</h3>
-        <p style={{ fontSize: "14px", margin: 0, color: "#4b5563" }}>{data.body}</p>
+        <EditableTextSlot
+          nodeId={node.id}
+          propKey="heading"
+          richKey="richHeading"
+          doc={data.richHeading}
+          fallback={data.heading}
+          fullProps={node.props}
+          profile="block"
+          as="h3"
+          style={{ fontSize: "18px", fontWeight: 600, margin: 0 }}
+        />
+        <EditableTextSlot
+          nodeId={node.id}
+          propKey="body"
+          richKey="richBody"
+          doc={data.richBody}
+          fallback={data.body}
+          fullProps={node.props}
+          profile="block"
+          as="p"
+          style={{ fontSize: "14px", margin: 0, color: "#4b5563" }}
+        />
         <a
           href={data.ctaHref}
           style={{
@@ -70,7 +99,16 @@ export function PropertyCard({ node, cssStyle }: PropertyCardProps) {
             textDecoration: "none",
           }}
         >
-          {data.ctaLabel}
+          <EditableTextSlot
+            nodeId={node.id}
+            propKey="ctaLabel"
+            richKey="richCtaLabel"
+            doc={data.richCtaLabel}
+            fallback={data.ctaLabel}
+            fullProps={node.props}
+            profile="inline"
+            as="span"
+          />
         </a>
       </div>
     </article>

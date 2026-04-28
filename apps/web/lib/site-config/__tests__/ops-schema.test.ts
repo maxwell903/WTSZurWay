@@ -1,8 +1,8 @@
 // @vitest-environment node
 //
 // Verifies the operationSchema Zod discriminated union accepts every op type
-// listed in PROJECT_SPEC.md §9.4 + §8.12 (count: 25) and rejects misspellings
-// and shape mismatches.
+// listed in PROJECT_SPEC.md §9.4 + §8.12 plus the rich-text addition
+// `setRichText` (Phase 1, 2026-04-28). Total count: 26.
 
 import { OPERATION_TYPES, operationSchema } from "@/lib/site-config/ops";
 import { describe, expect, it } from "vitest";
@@ -31,6 +31,17 @@ const SAMPLES: Record<(typeof OPERATION_TYPES)[number], unknown> = {
   setAnimation: { type: "setAnimation", targetId: "x", on: "enter", preset: "fadeIn" },
   setVisibility: { type: "setVisibility", targetId: "x", visibility: "always" },
   setText: { type: "setText", targetId: "x", text: "hi" },
+  setRichText: {
+    type: "setRichText",
+    targetId: "x",
+    propKey: "richText",
+    doc: { type: "doc", content: [{ type: "paragraph" }] },
+  },
+  applyTextFormat: {
+    type: "applyTextFormat",
+    targetIds: ["x"],
+    format: { kind: "mark", markType: "bold", mode: "toggle" },
+  },
   bindRMField: {
     type: "bindRMField",
     targetId: "x",
@@ -82,8 +93,8 @@ const SAMPLES: Record<(typeof OPERATION_TYPES)[number], unknown> = {
 };
 
 describe("operationSchema", () => {
-  it("declares exactly 25 op variants", () => {
-    expect(OPERATION_TYPES).toHaveLength(25);
+  it("declares exactly 27 op variants", () => {
+    expect(OPERATION_TYPES).toHaveLength(27);
   });
 
   it.each(OPERATION_TYPES)("accepts a minimal valid payload for %s", (opType) => {

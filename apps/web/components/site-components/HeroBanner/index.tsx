@@ -1,5 +1,7 @@
 "use client";
 
+import { EditableTextSlot } from "@/components/renderer/EditableTextSlot";
+import { richTextDocSchema } from "@/lib/site-config";
 import type { ComponentNode } from "@/types/site-config";
 import { type CSSProperties, useEffect, useState } from "react";
 import { z } from "zod";
@@ -11,8 +13,14 @@ const slideshowImageSchema = z.object({
 
 const heroBannerPropsSchema = z.object({
   heading: z.string().default("Welcome"),
+  // Rich-text Phase 4: optional formatted variants of heading/subheading/ctaLabel.
+  // Renderer prefers each rich doc; plain strings remain the fallback.
+  richHeading: richTextDocSchema.optional(),
   subheading: z.string().default(""),
+  richSubheading: richTextDocSchema.optional(),
   ctaLabel: z.string().default(""),
+  // Inline profile (CTA renders inside <a>) — matches Button.
+  richCtaLabel: richTextDocSchema.optional(),
   ctaHref: z.string().default("#"),
   backgroundImage: z.string().optional(),
   overlay: z.boolean().default(true),
@@ -30,8 +38,11 @@ type HeroBannerData = z.infer<typeof heroBannerPropsSchema>;
 
 const FALLBACK_DATA: HeroBannerData = {
   heading: "Welcome",
+  richHeading: undefined,
   subheading: "",
+  richSubheading: undefined,
   ctaLabel: "",
+  richCtaLabel: undefined,
   ctaHref: "#",
   backgroundImage: undefined,
   overlay: true,
@@ -91,10 +102,8 @@ function useSlideshow({
   }, [count, autoplay, intervalMs, loop, paused, prefersReducedMotion]);
 
   const goTo = (i: number) => setIndex(Math.max(0, Math.min(i, Math.max(0, count - 1))));
-  const next = () =>
-    setIndex((i) => (loop ? (i + 1) % count : Math.min(i + 1, count - 1)));
-  const prev = () =>
-    setIndex((i) => (loop ? (i - 1 + count) % count : Math.max(i - 1, 0)));
+  const next = () => setIndex((i) => (loop ? (i + 1) % count : Math.min(i + 1, count - 1)));
+  const prev = () => setIndex((i) => (loop ? (i - 1 + count) % count : Math.max(i - 1, 0)));
 
   return { index, goTo, next, prev };
 }
@@ -154,24 +163,21 @@ export function HeroBanner({ node, cssStyle }: HeroBannerProps) {
         {data.backgroundImage && data.overlay ? (
           <div data-hero-overlay="true" style={overlayStyle} />
         ) : null}
-        <div style={contentStyle}>
-          <h1 style={{ fontSize: "40px", fontWeight: 700, margin: 0 }}>{data.heading}</h1>
-          {data.subheading ? (
-            <p style={{ fontSize: "18px", margin: 0, maxWidth: "640px" }}>{data.subheading}</p>
-          ) : null}
-          {data.ctaLabel ? (
-            <a href={data.ctaHref} style={ctaStyle}>
-              {data.ctaLabel}
-            </a>
-          ) : null}
-        </div>
+        <HeroContent node={node} data={data} contentStyle={contentStyle} ctaStyle={ctaStyle} />
       </section>
     );
   }
 
   return (
-    <SlideshowHero key={data.images.length} data={data} node={node} containerStyle={containerStyle}
-      overlayStyle={overlayStyle} contentStyle={contentStyle} ctaStyle={ctaStyle} />
+    <SlideshowHero
+      key={data.images.length}
+      data={data}
+      node={node}
+      containerStyle={containerStyle}
+      overlayStyle={overlayStyle}
+      contentStyle={contentStyle}
+      ctaStyle={ctaStyle}
+    />
   );
 }
 
@@ -239,17 +245,7 @@ function SlideshowHero({
         />
       ))}
       {data.overlay ? <div data-hero-overlay="true" style={overlayStyle} /> : null}
-      <div style={contentStyle}>
-        <h1 style={{ fontSize: "40px", fontWeight: 700, margin: 0 }}>{data.heading}</h1>
-        {data.subheading ? (
-          <p style={{ fontSize: "18px", margin: 0, maxWidth: "640px" }}>{data.subheading}</p>
-        ) : null}
-        {data.ctaLabel ? (
-          <a href={data.ctaHref} style={ctaStyle}>
-            {data.ctaLabel}
-          </a>
-        ) : null}
-      </div>
+      <HeroContent node={node} data={data} contentStyle={contentStyle} ctaStyle={ctaStyle} />
       {data.showArrows && data.images.length > 1 ? (
         <>
           <button
@@ -342,5 +338,61 @@ function SlideshowHero({
         </div>
       ) : null}
     </section>
+  );
+}
+
+// Shared content (heading + subheading + CTA) used by both the static and
+// slideshow render paths. Each text field is rendered through
+// `EditableTextSlot` so right-clicking the heading on the canvas opens the
+// rich-text toolbar; the visitor render is read-only `RichTextRenderer`.
+type HeroContentProps = {
+  node: ComponentNode;
+  data: HeroBannerData;
+  contentStyle: CSSProperties;
+  ctaStyle: CSSProperties;
+};
+
+function HeroContent({ node, data, contentStyle, ctaStyle }: HeroContentProps) {
+  return (
+    <div style={contentStyle}>
+      <EditableTextSlot
+        nodeId={node.id}
+        propKey="heading"
+        richKey="richHeading"
+        doc={data.richHeading}
+        fallback={data.heading}
+        fullProps={node.props}
+        profile="block"
+        as="h1"
+        style={{ fontSize: "40px", fontWeight: 700, margin: 0 }}
+      />
+      {data.subheading || data.richSubheading ? (
+        <EditableTextSlot
+          nodeId={node.id}
+          propKey="subheading"
+          richKey="richSubheading"
+          doc={data.richSubheading}
+          fallback={data.subheading}
+          fullProps={node.props}
+          profile="block"
+          as="p"
+          style={{ fontSize: "18px", margin: 0, maxWidth: "640px" }}
+        />
+      ) : null}
+      {data.ctaLabel || data.richCtaLabel ? (
+        <a href={data.ctaHref} style={ctaStyle}>
+          <EditableTextSlot
+            nodeId={node.id}
+            propKey="ctaLabel"
+            richKey="richCtaLabel"
+            doc={data.richCtaLabel}
+            fallback={data.ctaLabel}
+            fullProps={node.props}
+            profile="inline"
+            as="span"
+          />
+        </a>
+      ) : null}
+    </div>
   );
 }

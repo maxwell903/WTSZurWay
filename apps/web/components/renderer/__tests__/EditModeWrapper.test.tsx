@@ -73,7 +73,7 @@ describe("<EditModeWrapper> — Sprint 5/6/8 behavior (no provider)", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it("invokes onContextMenu with the id on right-click and prevents the default", () => {
+  it("invokes onContextMenu with the id and meta on right-click and prevents the default", () => {
     const onContextMenu = vi.fn();
     const { container } = render(
       <EditModeWrapper id="cmp_x" type="Heading" mode="edit" onContextMenu={onContextMenu}>
@@ -85,7 +85,24 @@ describe("<EditModeWrapper> — Sprint 5/6/8 behavior (no provider)", () => {
     if (wrapper) {
       fireEvent.contextMenu(wrapper);
     }
-    expect(onContextMenu).toHaveBeenCalledWith("cmp_x");
+    // Rich-text Phase 1 (2026-04-28) — onContextMenu now takes a meta object
+    // with `isDouble`. A single right-click reports false.
+    expect(onContextMenu).toHaveBeenCalledWith("cmp_x", { isDouble: false });
+  });
+
+  it("flags the second right-click on the same node within 400ms as a double", () => {
+    const onContextMenu = vi.fn();
+    const { container } = render(
+      <EditModeWrapper id="cmp_x" type="Heading" mode="edit" onContextMenu={onContextMenu}>
+        <span>x</span>
+      </EditModeWrapper>,
+    );
+    const wrapper = container.querySelector("[data-edit-id='cmp_x']");
+    if (!wrapper) return;
+    fireEvent.contextMenu(wrapper);
+    fireEvent.contextMenu(wrapper);
+    expect(onContextMenu).toHaveBeenNthCalledWith(1, "cmp_x", { isDouble: false });
+    expect(onContextMenu).toHaveBeenNthCalledWith(2, "cmp_x", { isDouble: true });
   });
 });
 

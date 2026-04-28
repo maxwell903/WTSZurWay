@@ -1002,8 +1002,8 @@ describe("applyOperations", () => {
     }
   });
 
-  it("OPERATION_TYPES enumerates exactly 25 names", () => {
-    expect(new Set(OPERATION_TYPES).size).toBe(25);
+  it("OPERATION_TYPES enumerates exactly 27 names", () => {
+    expect(new Set(OPERATION_TYPES).size).toBe(27);
   });
 });
 
@@ -1199,7 +1199,12 @@ describe("isFirstNavBar / buildAutoPopulatedNavLinks", () => {
     expect(aboutNav?.props.logoPlacement).toBe("center");
     expect(aboutNav?.props.sticky).toBe(true);
     expect(aboutNav?.props.overrideShared).toBe(false);
-    expect(aboutNav?.style).toEqual({ background: "blue" });
+    // 2026-04-28 (rich-text Phase 1, §15.9 retroactive fix): match the
+    // schema-correct shape used at line 1179 (the input config). Same
+    // mechanical fix the 2026-04-27 entry in DECISIONS.md applied to
+    // line 1177 — applied here too because the same pattern was missed
+    // in that earlier sprint's pass.
+    expect(aboutNav?.style).toEqual({ background: { kind: "color", value: "blue" } });
   });
 
   it("replicateLockedNavBarToAllPages is a no-op when the global lock is off", () => {

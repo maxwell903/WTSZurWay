@@ -69,6 +69,8 @@ const creator: StateCreator<EditorStore> = (set) => ({
   // 2026-04-27 evening progressive-disclosure pivot — see DECISIONS.md.
   // ON gives the everything-labelled inspection view.
   showComponentTypes: false,
+  // Rich-text Phase 1 — toolbar closed by default.
+  textEditingScope: null,
 
   // -------- non-mutating actions --------
   hydrate: (input) =>
@@ -87,6 +89,7 @@ const creator: StateCreator<EditorStore> = (set) => ({
       saveState: "idle",
       lastSavedAt: null,
       saveError: null,
+      textEditingScope: null,
     }),
 
   selectComponent: (id) => set({ selectedComponentId: id }),
@@ -417,6 +420,27 @@ const creator: StateCreator<EditorStore> = (set) => ({
       }
       return { draftConfig: next, saveState: "dirty" };
     }),
+
+  // Rich-text Phase 1 — opens the floating toolbar over a single
+  // text-bearing component. Also keeps the existing element-edit panel
+  // open so the user sees both surfaces at once.
+  enterTextEditing: (id, propKey) =>
+    set({
+      selectedComponentId: id,
+      leftSidebarMode: "element-edit",
+      elementEditTab: "content",
+      textEditingScope: { mode: "single", id, propKey },
+    }),
+
+  enterBroadcastTextEditing: (rootId, ids) =>
+    set({
+      selectedComponentId: rootId,
+      leftSidebarMode: "element-edit",
+      elementEditTab: "content",
+      textEditingScope: { mode: "broadcast", rootId, ids },
+    }),
+
+  exitTextEditing: () => set({ textEditingScope: null }),
 });
 
 // Sprint 6: zustand devtools middleware was deferred -- the conditional-wrap
@@ -444,6 +468,7 @@ export function __resetEditorStoreForTests(): void {
     lastSavedAt: null,
     saveError: null,
     showComponentTypes: false,
+    textEditingScope: null,
   });
 }
 

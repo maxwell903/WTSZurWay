@@ -707,6 +707,12 @@ describe("addComponentChild auto-populates the first NavBar with all static page
       props: { links: [], logoPlacement: "left", sticky: false },
       style: {},
     });
+    // 2026-04-28 (rich-text Phase 1, §15.9 retroactive fix): the global
+    // NavBar lock defaults to ON, so without this line a second NavBar
+    // inherits the first's (auto-populated) links via lock-replication —
+    // not via the auto-populate path this test is meant to exercise.
+    // Disabling the lock isolates the auto-populate behavior under test.
+    useEditorStore.getState().setGlobalNavBarLocked(false);
     useEditorStore.getState().addComponentChild("cmp_root_about", 0, {
       id: "cmp_nav2",
       type: "NavBar",

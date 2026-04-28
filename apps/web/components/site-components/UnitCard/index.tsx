@@ -1,3 +1,5 @@
+import { EditableTextSlot } from "@/components/renderer/EditableTextSlot";
+import { richTextDocSchema } from "@/lib/site-config";
 import type { ComponentNode } from "@/types/site-config";
 import type { CSSProperties } from "react";
 import { z } from "zod";
@@ -7,12 +9,15 @@ const unitCardPropsSchema = z.object({
   // card from `lib/rm-api/getUnits` when the binding lands.
   unitId: z.number().int().nonnegative().optional(),
   heading: z.string().default("Unit Name"),
+  // Rich-text Phase 4: optional formatted heading + CTA label.
+  richHeading: richTextDocSchema.optional(),
   beds: z.number().nonnegative().default(0),
   baths: z.number().nonnegative().default(0),
   sqft: z.number().nonnegative().default(0),
   rent: z.number().nonnegative().default(0),
   imageSrc: z.string().default(""),
   ctaLabel: z.string().default("View Unit"),
+  richCtaLabel: richTextDocSchema.optional(),
   ctaHref: z.string().default("#"),
 });
 
@@ -34,12 +39,14 @@ export function UnitCard({ node, cssStyle }: UnitCardProps) {
     : {
         unitId: undefined,
         heading: "Unit Name",
+        richHeading: undefined,
         beds: 0,
         baths: 0,
         sqft: 0,
         rent: 0,
         imageSrc: "",
         ctaLabel: "View Unit",
+        richCtaLabel: undefined,
         ctaHref: "#",
       };
 
@@ -73,7 +80,17 @@ export function UnitCard({ node, cssStyle }: UnitCardProps) {
         />
       )}
       <div style={{ display: "flex", flexDirection: "column", gap: "6px", padding: "16px" }}>
-        <h3 style={{ fontSize: "18px", fontWeight: 600, margin: 0 }}>{data.heading}</h3>
+        <EditableTextSlot
+          nodeId={node.id}
+          propKey="heading"
+          richKey="richHeading"
+          doc={data.richHeading}
+          fallback={data.heading}
+          fullProps={node.props}
+          profile="block"
+          as="h3"
+          style={{ fontSize: "18px", fontWeight: 600, margin: 0 }}
+        />
         <div data-unit-stats="true" style={{ fontSize: "13px", color: "#4b5563" }}>
           {stats}
         </div>
@@ -90,7 +107,16 @@ export function UnitCard({ node, cssStyle }: UnitCardProps) {
             textDecoration: "none",
           }}
         >
-          {data.ctaLabel}
+          <EditableTextSlot
+            nodeId={node.id}
+            propKey="ctaLabel"
+            richKey="richCtaLabel"
+            doc={data.richCtaLabel}
+            fallback={data.ctaLabel}
+            fullProps={node.props}
+            profile="inline"
+            as="span"
+          />
         </a>
       </div>
     </article>

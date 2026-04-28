@@ -73,9 +73,56 @@ the model may emit so error reports can reference a specific op.
               "visibility": "mobile" }\`
 - \`setText({ targetId, text })\` -- convenience for Heading / Paragraph
   (writes \`props.text\`) or Button (writes \`props.label\`). Other types
-  reject the op.
+  reject the op. setText is PLAIN TEXT ONLY -- it clears any existing
+  rich-text formatting (\`props.richText\` / \`props.richLabel\`) on the
+  target. To author formatted text, use \`setRichText\` instead. Do NOT
+  embed HTML tags ("<b>...</b>") inside the \`text\` argument; they are
+  rendered literally.
   Example: \`{ "type": "setText", "targetId": "cmp_about_heading",
               "text": "About Us" }\`
+- \`setRichText({ targetId, propKey, doc })\` -- replace formatted text
+  content. Use this when the user wants formatting (bold, italic,
+  alignment, lists). \`propKey\` is "richText" for Heading and Paragraph,
+  "richLabel" for Button. \`doc\` is a TipTap JSON doc:
+  \`{ type: "doc", content: [<block nodes>] }\` where block nodes are
+  \`paragraph\` / \`heading\` / \`bulletList\` / \`orderedList\` / \`listItem\`,
+  inline children are \`{ type: "text", text: "...", marks?: [...] }\` or
+  \`{ type: "hardBreak" }\`, and supported marks are \`bold\`, \`italic\`,
+  \`underline\`, \`strike\`, plus \`textAlign\` as a node attribute on
+  paragraphs / headings via \`attrs.textAlign: "left" | "center" |
+  "right" | "justify"\`. The plain-text fallback (\`props.text\` /
+  \`props.label\`) is updated automatically.
+  Example: \`{ "type": "setRichText", "targetId": "cmp_bio",
+              "propKey": "richText",
+              "doc": { "type": "doc", "content": [
+                { "type": "paragraph", "content": [
+                  { "type": "text", "text": "Hello " },
+                  { "type": "text", "text": "world",
+                    "marks": [{ "type": "bold" }] } ] } ] } }\`
+- \`applyTextFormat({ targetIds, format })\` -- apply a single formatting
+  change to one or many text-bearing components in one op. Same code path
+  the human toolbar's broadcast mode uses. Use this when the user asks to
+  "make all the headings bold", "center this paragraph", "italicize every
+  button on the home page", etc. Do NOT use for authoring brand-new
+  content -- use \`setRichText\` for that.
+  \`format\` is a discriminated union on \`kind\`:
+    - \`{ kind: "mark", markType: "bold"|"italic"|"underline"|"strike"|"subscript"|"superscript", mode: "set"|"unset"|"toggle" }\`
+    - \`{ kind: "color", markType: "color"|"highlight", value: <hex> }\`
+    - \`{ kind: "fontFamily", value: <css family list> }\`
+    - \`{ kind: "fontSize", value: <css length> }\`
+    - \`{ kind: "alignment", value: "left"|"center"|"right"|"justify" }\`
+    - \`{ kind: "list", listType: "bulletList"|"orderedList", mode: "wrap"|"unwrap" }\`
+    - \`{ kind: "lineHeight", value: <css value or null> }\`
+    - \`{ kind: "letterSpacing", value: <css value or null> }\`
+    - \`{ kind: "case", value: "uppercase"|"lowercase"|"capitalize"|null }\`
+    - \`{ kind: "direction", value: "ltr"|"rtl" }\`
+  Examples:
+    \`{ "type": "applyTextFormat",
+        "targetIds": ["cmp_h1","cmp_h2","cmp_h3"],
+        "format": { "kind": "mark", "markType": "bold", "mode": "toggle" } }\`
+    \`{ "type": "applyTextFormat",
+        "targetIds": ["cmp_para"],
+        "format": { "kind": "alignment", "value": "center" } }\`
 - \`bindRMField({ targetId, propPath, fieldExpression })\` -- writes
   \`"{{ <fieldExpression> }}"\` into \`props[propPath]\`. Use this when the
   user wants a per-row value piped through a token.
@@ -233,7 +280,17 @@ AI's suggested changes wouldn't work on this page." Specifically:
 - \`removeComponent\`: cannot target a page root.
 - \`moveComponent\`: target's id is preserved; cannot move into its own
   descendants.
-- \`setText\`: only Heading / Paragraph / Button.
+- \`setText\`: only Heading / Paragraph / Button. Plain text only;
+  \`text\` is stored verbatim and any existing rich-text formatting on the
+  target is cleared.
+- \`setRichText\`: only Heading / Paragraph / Button. \`propKey\` must be
+  "richText" for Heading / Paragraph and "richLabel" for Button. The doc
+  must be a valid TipTap JSON tree (validation rejects unknown nodes /
+  marks).
+- \`applyTextFormat\`: each id in \`targetIds\` must reference a component
+  whose registered metadata declares text fields (today: Heading,
+  Paragraph, Button). Inline-profile targets (Button) skip block-only
+  formats like \`list\`; that's a no-op, not an error.
 - \`addPage\`: always static; the home page cannot be removed; slugs are
   unique per kind.
 - \`setLinkMode\` / \`setDetailPageSlug\`: Button only.

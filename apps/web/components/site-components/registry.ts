@@ -38,12 +38,45 @@ export type SiteComponentProps = {
   children?: ReactNode;
 };
 
+// Rich-text Phase 1 + 4.5 — descriptors for components that have editable
+// text. Discriminated by `kind`:
+//
+//   "flat"  — a single (propKey, richKey) pair on the component's props.
+//             Used for Heading.text/richText, Button.label/richLabel, etc.
+//   "array" — a (itemPropKey, itemRichKey) pair on each item of an array
+//             prop. Used for NavBar.links[i].label/richLabel and
+//             Footer.columns[i].title/richTitle. The runtime addresses a
+//             specific item via path-style propKey: "links.2.richLabel".
+//
+// `kind` defaults to "flat" so existing entries don't need updating.
+// `profile` selects the extension set (block = paragraphs/lists/headings
+// allowed, inline = marks-only for legal HTML inside <button>/<a>).
+export type FlatTextFieldDescriptor = {
+  kind?: "flat";
+  propKey: string;
+  richKey: string;
+  label: string;
+  profile: "block" | "inline";
+};
+
+export type ArrayTextFieldDescriptor = {
+  kind: "array";
+  arrayKey: string; // e.g. "links" | "columns"
+  itemPropKey: string; // e.g. "label" | "title"
+  itemRichKey: string; // e.g. "richLabel" | "richTitle"
+  label: string;
+  profile: "block" | "inline";
+};
+
+export type TextFieldDescriptor = FlatTextFieldDescriptor | ArrayTextFieldDescriptor;
+
 export type RegistryEntry = {
   Component: ReactComponentType<SiteComponentProps>;
   meta: {
     displayName: string;
     category: SiteComponentCategory;
     childrenPolicy: ChildrenPolicy;
+    textFields?: readonly TextFieldDescriptor[];
   };
 };
 
@@ -78,11 +111,35 @@ export const componentRegistry: Record<ComponentType, RegistryEntry> = {
   },
   Heading: {
     Component: Heading,
-    meta: { displayName: "Heading", category: "Content", childrenPolicy: "none" },
+    meta: {
+      displayName: "Heading",
+      category: "Content",
+      childrenPolicy: "none",
+      textFields: [
+        {
+          propKey: "text",
+          richKey: "richText",
+          label: "Heading text",
+          profile: "block",
+        },
+      ],
+    },
   },
   Paragraph: {
     Component: Paragraph,
-    meta: { displayName: "Paragraph", category: "Content", childrenPolicy: "none" },
+    meta: {
+      displayName: "Paragraph",
+      category: "Content",
+      childrenPolicy: "none",
+      textFields: [
+        {
+          propKey: "text",
+          richKey: "richText",
+          label: "Body text",
+          profile: "block",
+        },
+      ],
+    },
   },
   Image: {
     Component: Image,
@@ -98,14 +155,112 @@ export const componentRegistry: Record<ComponentType, RegistryEntry> = {
   },
   Row: { Component: Row, meta: placeholderMeta.Row },
   Column: { Component: Column, meta: placeholderMeta.Column },
-  Button: { Component: Button, meta: placeholderMeta.Button },
+  Button: {
+    Component: Button,
+    meta: {
+      ...placeholderMeta.Button,
+      textFields: [
+        {
+          propKey: "label",
+          richKey: "richLabel",
+          label: "Button label",
+          profile: "inline",
+        },
+      ],
+    },
+  },
   Logo: { Component: Logo, meta: placeholderMeta.Logo },
-  NavBar: { Component: NavBar, meta: placeholderMeta.NavBar },
+  NavBar: {
+    Component: NavBar,
+    meta: {
+      ...placeholderMeta.NavBar,
+      textFields: [
+        {
+          kind: "array",
+          arrayKey: "links",
+          itemPropKey: "label",
+          itemRichKey: "richLabel",
+          label: "Link label",
+          profile: "inline",
+        },
+      ],
+    },
+  },
   FlowGroup: { Component: FlowGroup, meta: placeholderMeta.FlowGroup },
-  Footer: { Component: Footer, meta: placeholderMeta.Footer },
-  HeroBanner: { Component: HeroBanner, meta: placeholderMeta.HeroBanner },
-  PropertyCard: { Component: PropertyCard, meta: placeholderMeta.PropertyCard },
-  UnitCard: { Component: UnitCard, meta: placeholderMeta.UnitCard },
+  Footer: {
+    Component: Footer,
+    meta: {
+      ...placeholderMeta.Footer,
+      textFields: [
+        {
+          kind: "array",
+          arrayKey: "columns",
+          itemPropKey: "title",
+          itemRichKey: "richTitle",
+          label: "Column title",
+          profile: "block",
+        },
+        {
+          propKey: "copyright",
+          richKey: "richCopyright",
+          label: "Copyright",
+          profile: "inline",
+        },
+      ],
+    },
+  },
+  HeroBanner: {
+    Component: HeroBanner,
+    meta: {
+      ...placeholderMeta.HeroBanner,
+      textFields: [
+        { propKey: "heading", richKey: "richHeading", label: "Hero heading", profile: "block" },
+        {
+          propKey: "subheading",
+          richKey: "richSubheading",
+          label: "Hero subheading",
+          profile: "block",
+        },
+        {
+          propKey: "ctaLabel",
+          richKey: "richCtaLabel",
+          label: "CTA label",
+          profile: "inline",
+        },
+      ],
+    },
+  },
+  PropertyCard: {
+    Component: PropertyCard,
+    meta: {
+      ...placeholderMeta.PropertyCard,
+      textFields: [
+        { propKey: "heading", richKey: "richHeading", label: "Card heading", profile: "block" },
+        { propKey: "body", richKey: "richBody", label: "Card body", profile: "block" },
+        {
+          propKey: "ctaLabel",
+          richKey: "richCtaLabel",
+          label: "CTA label",
+          profile: "inline",
+        },
+      ],
+    },
+  },
+  UnitCard: {
+    Component: UnitCard,
+    meta: {
+      ...placeholderMeta.UnitCard,
+      textFields: [
+        { propKey: "heading", richKey: "richHeading", label: "Unit heading", profile: "block" },
+        {
+          propKey: "ctaLabel",
+          richKey: "richCtaLabel",
+          label: "CTA label",
+          profile: "inline",
+        },
+      ],
+    },
+  },
   Repeater: { Component: Repeater, meta: placeholderMeta.Repeater },
   InputField: { Component: InputField, meta: placeholderMeta.InputField },
   Form: { Component: Form, meta: placeholderMeta.Form },
@@ -123,4 +278,15 @@ export function getRegistryEntry(type: ComponentType): RegistryEntry {
 
 export function isRegisteredType(type: string): type is ComponentType {
   return (COMPONENT_TYPES as readonly string[]).includes(type);
+}
+
+// Rich-text Phase 1 — convenience lookup. Returns `[]` for components that
+// don't carry editable text (vs `undefined`) so callers can iterate
+// without null-checking.
+export function getTextFields(type: ComponentType): readonly TextFieldDescriptor[] {
+  return componentRegistry[type].meta.textFields ?? [];
+}
+
+export function hasTextFields(type: ComponentType): boolean {
+  return getTextFields(type).length > 0;
 }

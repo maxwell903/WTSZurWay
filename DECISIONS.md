@@ -1720,3 +1720,39 @@ ordering revised to match §12's new sequence — visual cleanup phases
   carve-out. Verified pre-existing by `git stash` + isolated typecheck
   before applying. Without this fix, `pnpm typecheck` could not pass
   for this sprint's progressive-disclosure work.
+
+## 2026-04-28 — Rich Text Phase 1 — TipTap v3 instead of v2
+
+**Context:** Rich-text editing feature, Phase 1. Plan's "Risks & Open Questions"
+section said "Pin `^2.x` for now; upgrade is a one-sprint task and most
+extensions are API-stable." On running `pnpm add @tiptap/react ...` with no
+version pin, pnpm resolved to v3.22.5 (the current latest stable).
+
+**Original plan:** TipTap pinned to `^2.x`. Plan was drafted assuming v3 was
+still pre-release.
+
+**What changed:** Stay on the v3.22.5 that resolved. Remove the separate
+`@tiptap/extension-underline` package — Underline is included in StarterKit
+in v3.
+
+**Rationale:** TipTap v2 entered maintenance mode in late 2025; pinning to it
+would create migration debt. v3's API is largely compatible for the surface
+this sprint uses (`useEditor`, `EditorContent`, `StarterKit`, `generateHTML`).
+
+**User approval (verbatim):** "approved"
+
+**Trade-offs accepted:**
+- Gain: Latest stable, no migration debt later, cleaner StarterKit (Underline
+  included).
+- Lose: Nothing material — Phase 1 doesn't use any v2-only feature.
+- Risk: v3 is younger; fewer Stack Overflow hits than v2. If a custom
+  extension footgun appears in Phase 2 (font-size / line-spacing / etc.), a
+  follow-up deviation may be needed then.
+
+**Affected files / modules:**
+- `apps/web/package.json` — `@tiptap/*` and `isomorphic-dompurify` versions;
+  `@tiptap/extension-underline` removed.
+
+**Cross-sprint impact:** Phase 2 custom extensions will be written against
+v3's extension API, not v2. Phase 3 broadcast transformers are pure JSON,
+unaffected.

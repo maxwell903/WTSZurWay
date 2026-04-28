@@ -1,6 +1,8 @@
 "use client";
 
+import { EditableTextSlot } from "@/components/renderer/EditableTextSlot";
 import { useSiteConfigContext } from "@/components/renderer/SiteConfigContext";
+import { richTextDocSchema } from "@/lib/site-config";
 import type { ComponentNode } from "@/types/site-config";
 import type { CSSProperties } from "react";
 import { z } from "zod";
@@ -9,9 +11,11 @@ import { z } from "zod";
 // its own safeParse so malformed `node.props` falls back to defaults rather
 // than crashing the whole canvas. Keep the two shapes in sync. `kind` is
 // optional; `undefined` is treated as "external" so legacy configs parse.
+// Phase 4.5 adds `richLabel` (TipTap JSON doc) alongside `label`.
 const navLinkSchema = z
   .object({
     label: z.string(),
+    richLabel: richTextDocSchema.optional(),
     kind: z.enum(["page", "external"]).optional(),
     href: z.string().optional(),
     pageSlug: z.string().optional(),
@@ -87,7 +91,13 @@ export function NavBar({ node, cssStyle }: NavBarProps) {
     />
   ) : null;
 
-  type RenderedLink = { key: string; href: string; label: string; pageSlug?: string };
+  type RenderedLink = {
+    key: string;
+    href: string;
+    label: string;
+    pageSlug?: string;
+    sourceIndex: number; // original position in node.props.links
+  };
   const rendered: RenderedLink[] = [];
   data.links.forEach((link, index) => {
     const r = resolveLink(link, siteCtx?.pages, index);
@@ -105,17 +115,37 @@ export function NavBar({ node, cssStyle }: NavBarProps) {
         padding: 0,
       }}
     >
-      {rendered.map((link) => (
-        <li key={link.key}>
-          <a
-            href={link.href}
-            data-internal-page-slug={link.pageSlug}
-            style={{ color: "inherit", textDecoration: "none" }}
-          >
-            {link.label}
-          </a>
-        </li>
-      ))}
+      {rendered.map((link) => {
+        const sourceLink = data.links[link.sourceIndex];
+        return (
+          <li key={link.key}>
+            <a
+              href={link.href}
+              data-internal-page-slug={link.pageSlug}
+              style={{ color: "inherit", textDecoration: "none" }}
+            >
+              <EditableTextSlot
+                nodeId={node.id}
+                propKey={`links.${link.sourceIndex}.label`}
+                richKey={`links.${link.sourceIndex}.richLabel`}
+                doc={sourceLink?.richLabel}
+                fallback={link.label}
+                fullProps={node.props}
+                profile="inline"
+                as="span"
+                buildWritePatch={(json, plain) => {
+                  // Deep patch into props.links[sourceIndex]: preserve
+                  // every other link untouched.
+                  const nextLinks = data.links.map((l, i) =>
+                    i === link.sourceIndex ? { ...l, label: plain, richLabel: json } : l,
+                  );
+                  return { links: nextLinks };
+                }}
+              />
+            </a>
+          </li>
+        );
+      })}
     </ul>
   );
 
@@ -150,7 +180,13 @@ function resolveLink(
   link: ParsedNavLink,
   pages: readonly { kind: string; slug: string; name: string }[] | undefined,
   index: number,
-): { key: string; href: string; label: string; pageSlug?: string } | null {
+): {
+  key: string;
+  href: string;
+  label: string;
+  pageSlug?: string;
+  sourceIndex: number;
+} | null {
   const effectiveKind = link.kind ?? "external";
   if (effectiveKind === "page") {
     const pageSlug = link.pageSlug;
@@ -165,9 +201,10 @@ function resolveLink(
       href: `/${pageSlug}`,
       label: link.label || page?.name || pageSlug,
       pageSlug,
+      sourceIndex: index,
     };
   }
   // external (or kind === undefined, treated as external)
   const href = link.href ?? "";
-  return { key: `ext-${href}-${index}`, href, label: link.label };
+  return { key: `ext-${href}-${index}`, href, label: link.label, sourceIndex: index };
 }

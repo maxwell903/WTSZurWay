@@ -10,7 +10,7 @@ import { resolveTokens } from "@/lib/token-resolver";
 import type { ComponentNode } from "@/types/site-config";
 import { type CSSProperties, type ReactNode, memo, useMemo } from "react";
 import { ComponentErrorBoundary } from "./ComponentErrorBoundary";
-import { EditModeWrapper } from "./EditModeWrapper";
+import { type ContextMenuMeta, EditModeWrapper } from "./EditModeWrapper";
 
 // In edit mode, every component is wrapped in an `<EditModeWrapper>` (a plain
 // `<div>`) before being inserted into its parent. Without help, that wrapper
@@ -117,7 +117,7 @@ export type ComponentRendererProps = {
   mode: Mode;
   selection?: string[];
   onSelect?: (id: string) => void;
-  onContextMenu?: (id: string) => void;
+  onContextMenu?: (id: string, meta: ContextMenuMeta) => void;
 };
 
 // Sprint 9: opt-in token resolver. When no row is in scope (`useRow()`

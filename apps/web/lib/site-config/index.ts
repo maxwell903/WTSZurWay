@@ -52,3 +52,10 @@ export type { SafeParseSiteConfigResult } from "./parse";
 export { backgroundToCss, shadowPresetToCss, styleConfigToCss } from "./style";
 export { newComponentId } from "./ids";
 export { resolveCanvas, type ResolvedCanvas } from "./canvas";
+export {
+  richTextDocSchema,
+  richTextNodeSchema,
+  type RichTextDoc,
+  type RichTextMark,
+  type RichTextNode,
+} from "./rich-text-schema";

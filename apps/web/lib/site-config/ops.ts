@@ -17,6 +17,15 @@
  */
 
 import { canAcceptChild } from "@/components/editor/canvas/dnd/dropTargetPolicy";
+import { componentRegistry } from "@/components/site-components/registry";
+import {
+  applyMarkToAllLeaves,
+  setBlockAttrAll,
+  unwrapListAll,
+  wrapInListAll,
+} from "@/lib/rich-text/broadcast";
+import { extractPlainText } from "@/lib/rich-text/extract-plain-text";
+import { synthesizeDoc } from "@/lib/rich-text/synthesize-doc";
 import type { PaletteId } from "@/lib/setup-form/types";
 import {
   ANIMATION_PRESETS,
@@ -27,6 +36,7 @@ import {
   type NavLink,
   type Page,
   type PageKind,
+  type RichTextDoc,
   type SiteConfig,
   type StyleConfig,
   componentNodeSchema,
@@ -34,6 +44,7 @@ import {
   newComponentId,
   pageKindSchema,
   paletteIdSchema,
+  richTextDocSchema,
   styleConfigSchema,
 } from "@/lib/site-config";
 import {
@@ -125,6 +136,54 @@ export type SetTextOp = OpBase & {
   type: "setText";
   targetId: ComponentId;
   text: string;
+};
+
+// Rich-text Phase 1 + 4. Replaces both the JSON doc (`propKey`) and the
+// denormalized plain-text fallback on any text-bearing component. `propKey`
+// must match a TextFieldDescriptor.richKey on the target's registry entry
+// (e.g., "richText" for Heading/Paragraph, "richLabel" for Button,
+// "richHeading" / "richSubheading" / "richCtaLabel" for HeroBanner, etc.).
+// The handler is registry-driven, so new components are picked up
+// automatically once they declare `textFields` in their meta.
+export type SetRichTextOp = OpBase & {
+  type: "setRichText";
+  targetId: ComponentId;
+  propKey: string;
+  doc: RichTextDoc;
+};
+
+// Rich-text Phase 3 — broadcast-style transformation. Apply a single
+// formatting change to one or many text-bearing targets. The same code
+// path the human toolbar uses in broadcast mode (see broadcast.ts).
+// Single-target and multi-target are the same op — AI doesn't need a
+// separate single-mode operation.
+export type TextFormatPayload =
+  | {
+      kind: "mark";
+      markType: "bold" | "italic" | "underline" | "strike" | "subscript" | "superscript";
+      mode: "set" | "unset" | "toggle";
+    }
+  | {
+      kind: "color";
+      markType: "color" | "highlight";
+      value: string; // hex
+    }
+  | { kind: "fontFamily"; value: string }
+  | { kind: "fontSize"; value: string }
+  | {
+      kind: "alignment";
+      value: "left" | "center" | "right" | "justify";
+    }
+  | { kind: "list"; listType: "bulletList" | "orderedList"; mode: "wrap" | "unwrap" }
+  | { kind: "lineHeight"; value: string | null }
+  | { kind: "letterSpacing"; value: string | null }
+  | { kind: "case"; value: "uppercase" | "lowercase" | "capitalize" | null }
+  | { kind: "direction"; value: "ltr" | "rtl" };
+
+export type ApplyTextFormatOp = OpBase & {
+  type: "applyTextFormat";
+  targetIds: ComponentId[];
+  format: TextFormatPayload;
 };
 
 export type BindRMFieldOp = OpBase & {
@@ -246,6 +305,8 @@ export type Operation =
   | SetAnimationOp
   | SetVisibilityOp
   | SetTextOp
+  | SetRichTextOp
+  | ApplyTextFormatOp
   | BindRMFieldOp
   | AddPageOp
   | RemovePageOp
@@ -275,6 +336,8 @@ export const OPERATION_TYPES = [
   "setAnimation",
   "setVisibility",
   "setText",
+  "setRichText",
+  "applyTextFormat",
   "bindRMField",
   "addPage",
   "removePage",
@@ -372,6 +435,55 @@ const setTextSchema = z.object({
   type: z.literal("setText"),
   targetId: componentIdField,
   text: z.string(),
+});
+
+const setRichTextSchema = z.object({
+  id: idField,
+  type: z.literal("setRichText"),
+  targetId: componentIdField,
+  // Loose at the schema layer; the apply handler checks the propKey
+  // matches one of the target's registered textFields and rejects
+  // unknown keys with a precise error message.
+  propKey: z.string().min(1),
+  doc: richTextDocSchema,
+});
+
+const textFormatPayloadSchema: z.ZodType<TextFormatPayload> = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("mark"),
+    markType: z.enum(["bold", "italic", "underline", "strike", "subscript", "superscript"]),
+    mode: z.enum(["set", "unset", "toggle"]),
+  }),
+  z.object({
+    kind: z.literal("color"),
+    markType: z.enum(["color", "highlight"]),
+    value: z.string().min(1),
+  }),
+  z.object({ kind: z.literal("fontFamily"), value: z.string().min(1) }),
+  z.object({ kind: z.literal("fontSize"), value: z.string().min(1) }),
+  z.object({
+    kind: z.literal("alignment"),
+    value: z.enum(["left", "center", "right", "justify"]),
+  }),
+  z.object({
+    kind: z.literal("list"),
+    listType: z.enum(["bulletList", "orderedList"]),
+    mode: z.enum(["wrap", "unwrap"]),
+  }),
+  z.object({ kind: z.literal("lineHeight"), value: z.string().nullable() }),
+  z.object({ kind: z.literal("letterSpacing"), value: z.string().nullable() }),
+  z.object({
+    kind: z.literal("case"),
+    value: z.enum(["uppercase", "lowercase", "capitalize"]).nullable(),
+  }),
+  z.object({ kind: z.literal("direction"), value: z.enum(["ltr", "rtl"]) }),
+]);
+
+const applyTextFormatSchema = z.object({
+  id: idField,
+  type: z.literal("applyTextFormat"),
+  targetIds: z.array(componentIdField).min(1),
+  format: textFormatPayloadSchema,
 });
 
 const bindRMFieldSchema = z.object({
@@ -506,6 +618,8 @@ export const operationSchema: z.ZodType<Operation> = z.discriminatedUnion("type"
   setAnimationSchema,
   setVisibilitySchema,
   setTextSchema,
+  setRichTextSchema,
+  applyTextFormatSchema,
   bindRMFieldSchema,
   addPageSchema,
   removePageSchema,
@@ -919,12 +1033,19 @@ function applySetVisibility(config: SiteConfig, op: SetVisibilityOp): SiteConfig
 }
 
 function applySetText(config: SiteConfig, op: SetTextOp): SiteConfig {
+  // Rich-text Phase 1: setText is plain-only. To stay consistent with the
+  // renderer's "rich doc preferred over plain text" rule, also clear any
+  // pre-existing richText / richLabel — otherwise the formatted doc would
+  // overwrite the plain string the AI just wrote, surprising the user.
+  // Use setRichText to author formatted content.
   return applyMapToConfig(config, op.type, op.id, op.targetId, (node) => {
     if (node.type === "Heading" || node.type === "Paragraph") {
-      return { ...node, props: { ...node.props, text: op.text } };
+      const { richText: _richText, ...rest } = node.props;
+      return { ...node, props: { ...rest, text: op.text } };
     }
     if (node.type === "Button") {
-      return { ...node, props: { ...node.props, label: op.text } };
+      const { richLabel: _richLabel, ...rest } = node.props;
+      return { ...node, props: { ...rest, label: op.text } };
     }
     throw new OperationInvalidError(
       op.type,
@@ -932,6 +1053,209 @@ function applySetText(config: SiteConfig, op: SetTextOp): SiteConfig {
       op.id,
     );
   });
+}
+
+// Rich-text Phase 1 + 4 + 4.5. Writes both the JSON doc and the
+// denormalized plain-text fallback. Registry-driven: the target's component
+// metadata declares which fields are valid. Two propKey shapes are
+// supported:
+//
+//   Flat:    "richText" | "richLabel" | "richHeading" | …
+//            Looks up a FlatTextFieldDescriptor whose `richKey` matches.
+//   Array:   "{arrayKey}.{index}.{itemRichKey}"  e.g. "links.2.richLabel"
+//            Looks up an ArrayTextFieldDescriptor whose `arrayKey` and
+//            `itemRichKey` match. Validates the index is in bounds and
+//            writes a deep patch into `props.{arrayKey}[index]`.
+const ARRAY_PROPKEY_RE = /^([a-zA-Z_$][\w$]*)\.(\d+)\.([a-zA-Z_$][\w$]*)$/;
+
+function applySetRichText(config: SiteConfig, op: SetRichTextOp): SiteConfig {
+  return applyMapToConfig(config, op.type, op.id, op.targetId, (node) => {
+    const fields = componentRegistry[node.type].meta.textFields;
+    if (!fields || fields.length === 0) {
+      throw new OperationInvalidError(
+        op.type,
+        `setRichText target "${op.targetId}" is a "${node.type}" which has no text fields.`,
+        op.id,
+      );
+    }
+
+    // Flat-field fast path.
+    const flat = fields.find(
+      (f) => (f.kind ?? "flat") === "flat" && f.kind !== "array" && f.richKey === op.propKey,
+    );
+    if (flat && flat.kind !== "array") {
+      const plain = extractPlainText(op.doc);
+      return {
+        ...node,
+        props: {
+          ...node.props,
+          [flat.richKey]: op.doc,
+          [flat.propKey]: plain,
+        },
+      };
+    }
+
+    // Array path: parse "{arrayKey}.{index}.{itemRichKey}".
+    const match = ARRAY_PROPKEY_RE.exec(op.propKey);
+    if (match) {
+      const [, arrayKey, indexStr, itemRichKey] = match;
+      const arrField = fields.find(
+        (f) => f.kind === "array" && f.arrayKey === arrayKey && f.itemRichKey === itemRichKey,
+      );
+      if (
+        arrField &&
+        arrField.kind === "array" &&
+        indexStr !== undefined &&
+        arrayKey !== undefined
+      ) {
+        const idx = Number(indexStr);
+        const arrayValue = node.props[arrayKey];
+        if (!Array.isArray(arrayValue)) {
+          throw new OperationInvalidError(
+            op.type,
+            `setRichText: array prop "${arrayKey}" is missing or not an array on "${node.type}".`,
+            op.id,
+          );
+        }
+        if (idx < 0 || idx >= arrayValue.length) {
+          throw new OperationInvalidError(
+            op.type,
+            `setRichText: index ${idx} out of bounds for "${arrayKey}" (length ${arrayValue.length}).`,
+            op.id,
+          );
+        }
+        const plain = extractPlainText(op.doc);
+        const nextArr = arrayValue.slice();
+        const item = (nextArr[idx] ?? {}) as Record<string, unknown>;
+        nextArr[idx] = {
+          ...item,
+          [arrField.itemRichKey]: op.doc,
+          [arrField.itemPropKey]: plain,
+        };
+        return {
+          ...node,
+          props: { ...node.props, [arrayKey]: nextArr },
+        };
+      }
+    }
+
+    // Neither match — surface a precise error listing valid shapes.
+    const validKeys = fields
+      .map((f) => (f.kind === "array" ? `"${f.arrayKey}.{i}.${f.itemRichKey}"` : `"${f.richKey}"`))
+      .join(", ");
+    throw new OperationInvalidError(
+      op.type,
+      `setRichText propKey "${op.propKey}" is not a valid text field on "${node.type}" (valid: ${validKeys}).`,
+      op.id,
+    );
+  });
+}
+
+// Used by callers that want to lazily migrate a plain-text-only node to
+// the rich-doc shape (e.g., the editor canvas the first time a Heading's
+// rich-text toolbar opens). Pure helper; not an Operation itself.
+export function richDocFromPlain(text: string): RichTextDoc {
+  return synthesizeDoc(text);
+}
+
+// Rich-text Phase 3 — broadcast-style transformation applied to one or many
+// targets in a single op. Looks up each target's `textFields` metadata,
+// transforms each rich doc via the same JSON helpers the human toolbar's
+// broadcast mode uses (lib/rich-text/broadcast.ts), and writes both the
+// rich doc and the denormalized plain-text fallback back into props.
+const ALIGN_BLOCK_TYPES = ["paragraph", "heading"];
+const SPACING_BLOCK_TYPES = ["paragraph", "heading"];
+const DIRECTION_BLOCK_TYPES = ["paragraph", "heading"];
+
+function transformDocByPayload(
+  doc: RichTextDoc,
+  payload: TextFormatPayload,
+  profile: "block" | "inline",
+): RichTextDoc {
+  switch (payload.kind) {
+    case "mark":
+      return applyMarkToAllLeaves(doc, payload.markType, undefined, payload.mode);
+    case "color":
+      return applyMarkToAllLeaves(
+        doc,
+        payload.markType === "color" ? "textStyle" : "highlight",
+        payload.markType === "color" ? { color: payload.value } : { color: payload.value },
+        "set",
+      );
+    case "fontFamily":
+      return applyMarkToAllLeaves(doc, "textStyle", { fontFamily: payload.value }, "set");
+    case "fontSize":
+      return applyMarkToAllLeaves(doc, "textStyle", { fontSize: payload.value }, "set");
+    case "alignment":
+      // Inline-profile docs (Button) have no block nodes — the transformer
+      // is a structural no-op there, which is the correct outcome.
+      return setBlockAttrAll(doc, ALIGN_BLOCK_TYPES, "textAlign", payload.value);
+    case "list":
+      // Inline-profile docs cannot host lists; skip the transform on them.
+      if (profile === "inline") return doc;
+      return payload.mode === "wrap" ? wrapInListAll(doc, payload.listType) : unwrapListAll(doc);
+    case "lineHeight":
+      return setBlockAttrAll(doc, SPACING_BLOCK_TYPES, "lineHeight", payload.value);
+    case "letterSpacing":
+      return applyMarkToAllLeaves(
+        doc,
+        "textStyle",
+        { letterSpacing: payload.value },
+        payload.value === null ? "unset" : "set",
+      );
+    case "case":
+      return applyMarkToAllLeaves(
+        doc,
+        "textStyle",
+        { textTransform: payload.value },
+        payload.value === null ? "unset" : "set",
+      );
+    case "direction":
+      return setBlockAttrAll(doc, DIRECTION_BLOCK_TYPES, "dir", payload.value);
+    default: {
+      const _exhaustive: never = payload;
+      void _exhaustive;
+      return doc;
+    }
+  }
+}
+
+function applyApplyTextFormat(config: SiteConfig, op: ApplyTextFormatOp): SiteConfig {
+  let next = config;
+  for (const targetId of op.targetIds) {
+    next = applyMapToConfig(next, op.type, op.id, targetId, (node) => {
+      const fields = componentRegistry[node.type].meta.textFields;
+      if (!fields || fields.length === 0) {
+        throw new OperationInvalidError(
+          op.type,
+          `applyTextFormat target "${targetId}" is a "${node.type}" which has no text fields.`,
+          op.id,
+        );
+      }
+      const patch: Record<string, unknown> = {};
+      for (const field of fields) {
+        // Phase 4.5: applyTextFormat only handles flat fields today. Array
+        // text fields (NavBar links, Footer column titles) are reachable
+        // via setRichText with a path-style propKey but not via broadcast
+        // — broadcast across array items is a follow-up.
+        if (field.kind === "array") continue;
+        const plain =
+          typeof node.props[field.propKey] === "string"
+            ? (node.props[field.propKey] as string)
+            : "";
+        const raw = node.props[field.richKey];
+        const before: RichTextDoc =
+          raw !== undefined && (() => richTextDocSchema.safeParse(raw).success)()
+            ? (richTextDocSchema.parse(raw) as RichTextDoc)
+            : synthesizeDoc(plain, field.profile);
+        const after = transformDocByPayload(before, op.format, field.profile);
+        patch[field.richKey] = after;
+        patch[field.propKey] = extractPlainText(after);
+      }
+      return { ...node, props: { ...node.props, ...patch } };
+    });
+  }
+  return next;
 }
 
 function applyBindRMField(config: SiteConfig, op: BindRMFieldOp): SiteConfig {
@@ -1597,10 +1921,7 @@ export function syncLockedNavBars(config: SiteConfig, sourceNodeId: string): Sit
 // Find any NavBar that's currently in the locked group (other than `excludeId`).
 // Used when toggling `overrideShared` OFF on a node — we need to adopt the
 // group's content, so we copy from any locked sibling.
-export function findLockedNavBar(
-  config: SiteConfig,
-  excludeId: string,
-): ComponentNode | null {
+export function findLockedNavBar(config: SiteConfig, excludeId: string): ComponentNode | null {
   if (!isGlobalNavBarLocked(config)) return null;
   for (const page of config.pages) {
     const found = findLockedInSubtree(page.rootComponent, excludeId);
@@ -1689,6 +2010,10 @@ export function applyOperation(config: SiteConfig, op: Operation): SiteConfig {
       return applySetVisibility(config, op);
     case "setText":
       return applySetText(config, op);
+    case "setRichText":
+      return applySetRichText(config, op);
+    case "applyTextFormat":
+      return applyApplyTextFormat(config, op);
     case "bindRMField":
       return applyBindRMField(config, op);
     case "addPage":

@@ -24,6 +24,17 @@ export type ComponentVisibility = "always" | "desktop" | "mobile";
 
 export type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 
+// Rich-text editing scope. Layered on top of `selectedComponentId` (does not
+// replace it). `null` means the toolbar is not active.
+//   - "single":   the user right-clicked a single text-bearing component;
+//                 a TipTap editor is mounted on (id, propKey).
+//   - "broadcast": the user double-right-clicked a parent; every text-bearing
+//                  descendant is highlighted and toolbar actions transform
+//                  every doc in `ids` at once. No editor is mounted.
+export type TextEditingScope =
+  | { mode: "single"; id: ComponentId; propKey: string }
+  | { mode: "broadcast"; rootId: ComponentId; ids: ComponentId[] };
+
 export type EditorHydrateInput = {
   siteId: string;
   siteSlug: string;
@@ -68,6 +79,8 @@ export type EditorState = {
   saveError: string | null;
   // Phase 6 Task 6.1 — transient toggle, defaults ON each editor load (no persistence).
   showComponentTypes: boolean;
+  // Rich-text Phase 1 — null when the floating rich-text toolbar is closed.
+  textEditingScope: TextEditingScope | null;
 };
 
 export type EditorActions = {
@@ -146,6 +159,10 @@ export type EditorActions = {
   // Sprint 13 — site-wide NavBar lock + per-instance override.
   setGlobalNavBarLocked: (value: boolean) => void;
   setNavBarOverrideShared: (id: ComponentId, value: boolean) => void;
+  // Rich-text Phase 1.
+  enterTextEditing: (id: ComponentId, propKey: string) => void;
+  enterBroadcastTextEditing: (rootId: ComponentId, ids: ComponentId[]) => void;
+  exitTextEditing: () => void;
 };
 
 export type EditorStore = EditorState & EditorActions;

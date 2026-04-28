@@ -8,7 +8,9 @@
 // iteration or detail page) and switches the file to a "use client"
 // component so it can call useRow().
 
+import { EditableTextSlot } from "@/components/renderer/EditableTextSlot";
 import { useRow } from "@/lib/row-context";
+import { richTextDocSchema } from "@/lib/site-config";
 import type { ComponentNode } from "@/types/site-config";
 import type { CSSProperties } from "react";
 import { z } from "zod";
@@ -16,6 +18,10 @@ import { z } from "zod";
 const buttonPropsSchema = z
   .object({
     label: z.string().default("Button"),
+    // Rich-text Phase 2: optional rich-text label. Uses the inline profile
+    // (no block elements / lists) so the rendered HTML is legal inside
+    // <button> / <a>.
+    richLabel: richTextDocSchema.optional(),
     href: z.string().optional(),
     variant: z.enum(["primary", "secondary", "outline", "ghost", "link"]).default("primary"),
     size: z.enum(["sm", "md", "lg"]).default("md"),
@@ -138,6 +144,19 @@ export function Button({ node, cssStyle }: ButtonProps) {
     }
   }
 
+  const labelSlot = (
+    <EditableTextSlot
+      nodeId={node.id}
+      propKey="label"
+      richKey="richLabel"
+      doc={data.richLabel}
+      fallback={data.label}
+      fullProps={node.props}
+      profile="inline"
+      as="span"
+    />
+  );
+
   if (href !== undefined) {
     return (
       <a
@@ -148,7 +167,7 @@ export function Button({ node, cssStyle }: ButtonProps) {
         style={finalStyle}
         {...detailDataAttrs}
       >
-        {data.label}
+        {labelSlot}
       </a>
     );
   }
@@ -161,7 +180,7 @@ export function Button({ node, cssStyle }: ButtonProps) {
       style={finalStyle}
       {...detailDataAttrs}
     >
-      {data.label}
+      {labelSlot}
     </button>
   );
 }

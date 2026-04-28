@@ -1,7 +1,7 @@
 "use client";
 
+import { RichTextMirror } from "@/components/editor/edit-panels/controls/RichTextMirror";
 import { SelectInput } from "@/components/editor/edit-panels/controls/SelectInput";
-import { Label } from "@/components/ui/label";
 import { useEditorStore } from "@/lib/editor-state";
 import type { ComponentNode } from "@/lib/site-config";
 
@@ -30,19 +30,15 @@ export function HeadingEditPanel({ node }: HeadingEditPanelProps) {
 
   return (
     <div data-component-edit-panel="Heading" className="space-y-3">
-      <div className="space-y-1.5">
-        <Label htmlFor="heading-text" className="text-xs text-zinc-300">
-          Text
-        </Label>
-        <textarea
-          id="heading-text"
-          data-testid="heading-text"
-          value={text}
-          onChange={(e) => writePartial({ text: e.target.value })}
-          rows={3}
-          className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-400/40"
-        />
-      </div>
+      <RichTextMirror
+        fieldId="heading-text"
+        fieldLabel="Text"
+        plainKey="text"
+        richKey="richText"
+        plain={text}
+        rawRich={node.props.richText}
+        writePartial={writePartial}
+      />
       <SelectInput
         id="heading-level"
         label="Level"

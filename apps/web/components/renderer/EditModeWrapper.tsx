@@ -14,8 +14,17 @@ import {
   type MouseEvent,
   type PointerEvent,
   type ReactNode,
+  useRef,
   useState,
 } from "react";
+
+// Rich-text Phase 1 — browsers don't fire `dblcontextmenu`. Track the last
+// right-click per node and treat a second right-click on the same id within
+// this many ms as a "double". 400ms matches the standard double-click
+// threshold in Chromium UI tests.
+const DOUBLE_RIGHT_CLICK_MS = 400;
+
+export type ContextMenuMeta = { isDouble: boolean };
 
 type Props = {
   id: string;
@@ -23,7 +32,7 @@ type Props = {
   mode: "edit" | "preview" | "public";
   selected?: boolean;
   onSelect?: (id: string) => void;
-  onContextMenu?: (id: string) => void;
+  onContextMenu?: (id: string, meta: ContextMenuMeta) => void;
   // Layout-affecting style values that need to be on the OUTER (wrapper)
   // element so the parent's flex / grid container sees them — NOT on the
   // inner rendered component. Computed by `ComponentRenderer` per node:
@@ -50,6 +59,16 @@ export function EditModeWrapper({
   // as it did in Sprints 6 and 8.
   const sortable = useNodeSortable(id);
   const showComponentTypes = useEditorStore((s) => s.showComponentTypes);
+  // Rich-text Phase 3 — broadcast mode. When this node's id is in
+  // `textEditingScope.ids` it gets a dashed orange ring so the user can
+  // see the full broadcast set at a glance. We only subscribe to the
+  // scope.ids check (not the whole scope) so single-mode toggles don't
+  // re-render every wrapper on the page.
+  const inBroadcastScope = useEditorStore((s) => {
+    const scope = s.textEditingScope;
+    if (!scope || scope.mode !== "broadcast") return false;
+    return scope.ids.includes(id);
+  });
 
   // Hover is tracked in React state (not relied on via Tailwind ":hover")
   // because the type-pill below is a sibling DOM node, not a CSS pseudo-element,
@@ -66,6 +85,10 @@ export function EditModeWrapper({
   // hover/selection blue rings take priority).
   const showXrayOutline =
     mode === "edit" && showComponentTypes && type !== "FlowGroup" && !selected && !hovered;
+  // Broadcast outline: dashed orange ring on every node in the broadcast
+  // scope. Stacks below the solid blue selection ring (selected wins on
+  // the actual right-clicked root) but sits above hover and X-ray.
+  const showBroadcastOutline = mode === "edit" && inBroadcastScope && !selected;
 
   const handleClick = (e: MouseEvent<HTMLDivElement>) => {
     // Anchor clicks must bubble up to the canvas-level link interceptor
@@ -77,15 +100,24 @@ export function EditModeWrapper({
     onSelect?.(id);
   };
 
+  const lastRightClickRef = useRef<{ id: string; t: number } | null>(null);
+
   const handleContextMenu = (e: MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    onContextMenu?.(id);
+    const now = performance.now();
+    const last = lastRightClickRef.current;
+    const isDouble =
+      last !== null && last.id === id && now - last.t < DOUBLE_RIGHT_CLICK_MS;
+    lastRightClickRef.current = { id, t: now };
+    onContextMenu?.(id, { isDouble });
   };
 
   // Keyboard parity for the click handler so the selection model is reachable
   // without a mouse. Enter selects; Shift+F10 / ContextMenu key opens the
-  // context menu (matches OS conventions).
+  // context menu (matches OS conventions). Keyboard always emits a single
+  // (non-double) context menu event — repeating Shift+F10 should not be
+  // interpreted as a broadcast intent.
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
@@ -95,7 +127,7 @@ export function EditModeWrapper({
     if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
       e.preventDefault();
       e.stopPropagation();
-      onContextMenu?.(id);
+      onContextMenu?.(id, { isDouble: false });
     }
   };
 
@@ -139,6 +171,7 @@ export function EditModeWrapper({
       data-edit-id={id}
       data-edit-selected={selected ? "true" : undefined}
       data-edit-hovered={hovered ? "true" : undefined}
+      data-broadcast-target={showBroadcastOutline ? "true" : undefined}
       // biome-ignore lint/a11y/useSemanticElements: a real <button> cannot legally contain block-level children (sections, paragraphs, etc.) — EditModeWrapper makes those interactive in edit mode only.
       role="button"
       tabIndex={0}
@@ -150,11 +183,13 @@ export function EditModeWrapper({
       style={wrapperStyle}
       className={cn(
         "relative outline-offset-2 transition-[outline-color] duration-100",
-        // Visual priority: selection > hover > x-ray > none.
+        // Visual priority: selection > broadcast > hover > x-ray > none.
         // Hover ring is driven by React state (not Tailwind ":hover") so JSDOM
         // tests can assert it; see comment on `hovered` above.
         selected && "outline outline-2 outline-blue-500",
-        !selected && hovered && "outline outline-1 outline-blue-300",
+        showBroadcastOutline &&
+          "outline outline-2 outline-dashed outline-orange-400",
+        !selected && !showBroadcastOutline && hovered && "outline outline-1 outline-blue-300",
         showXrayOutline && "outline outline-1 outline-dashed outline-zinc-400/70",
       )}
     >

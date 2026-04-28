@@ -1,3 +1,5 @@
+import { EditableTextSlot } from "@/components/renderer/EditableTextSlot";
+import { richTextDocSchema } from "@/lib/site-config";
 import type { ComponentNode } from "@/types/site-config";
 import type { CSSProperties } from "react";
 import { z } from "zod";
@@ -7,16 +9,22 @@ const navLinkSchema = z.object({
   href: z.string(),
 });
 
+// Phase 4.5 — column titles and footer copyright are rich-text editable.
+// Per-link rich text is intentionally deferred: column links are nested
+// inside columns (Footer.columns[i].links[j]), and the array-text-field
+// metadata supports a single level of nesting today.
 const footerPropsSchema = z.object({
   columns: z
     .array(
       z.object({
         title: z.string(),
+        richTitle: richTextDocSchema.optional(),
         links: z.array(navLinkSchema),
       }),
     )
     .default([]),
   copyright: z.string().default(""),
+  richCopyright: richTextDocSchema.optional(),
 });
 
 type FooterProps = {
@@ -28,7 +36,9 @@ type FooterProps = {
 // `siteConfig.global.footer`. Same rationale as NavBar — see NavBar/index.tsx.
 export function Footer({ node, cssStyle }: FooterProps) {
   const parsed = footerPropsSchema.safeParse(node.props);
-  const data = parsed.success ? parsed.data : { columns: [], copyright: "" };
+  const data = parsed.success
+    ? parsed.data
+    : { columns: [], copyright: "", richCopyright: undefined };
 
   const finalStyle: CSSProperties = {
     display: "flex",
@@ -52,7 +62,23 @@ export function Footer({ node, cssStyle }: FooterProps) {
       >
         {data.columns.map((col, idx) => (
           <div key={`${col.title}-${idx}`} data-footer-column="true">
-            <h4 style={{ fontSize: "14px", fontWeight: 600, margin: "0 0 8px 0" }}>{col.title}</h4>
+            <EditableTextSlot
+              nodeId={node.id}
+              propKey={`columns.${idx}.title`}
+              richKey={`columns.${idx}.richTitle`}
+              doc={col.richTitle}
+              fallback={col.title}
+              fullProps={node.props}
+              profile="block"
+              as="h4"
+              style={{ fontSize: "14px", fontWeight: 600, margin: "0 0 8px 0" }}
+              buildWritePatch={(json, plain) => {
+                const nextColumns = data.columns.map((c, i) =>
+                  i === idx ? { ...c, title: plain, richTitle: json } : c,
+                );
+                return { columns: nextColumns };
+              }}
+            />
             <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "4px" }}>
               {col.links.map((link, linkIdx) => (
                 <li key={`${link.href}-${linkIdx}`}>
@@ -65,13 +91,19 @@ export function Footer({ node, cssStyle }: FooterProps) {
           </div>
         ))}
       </div>
-      {data.copyright ? (
-        <div
-          data-footer-copyright="true"
+      {data.copyright || data.richCopyright ? (
+        <EditableTextSlot
+          nodeId={node.id}
+          propKey="copyright"
+          richKey="richCopyright"
+          doc={data.richCopyright}
+          fallback={data.copyright}
+          fullProps={node.props}
+          profile="inline"
+          as="div"
           style={{ fontSize: "12px", color: "#9ca3af", paddingTop: "8px" }}
-        >
-          {data.copyright}
-        </div>
+          passthroughAttrs={{ "data-footer-copyright": "true" }}
+        />
       ) : null}
     </footer>
   );

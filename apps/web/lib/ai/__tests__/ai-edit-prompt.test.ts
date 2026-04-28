@@ -105,6 +105,8 @@ describe("buildAiEditSystemPrompt", () => {
       "setAnimation",
       "setVisibility",
       "setText",
+      "setRichText",
+      "applyTextFormat",
       "bindRMField",
       "addPage",
       "removePage",

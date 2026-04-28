@@ -5,6 +5,7 @@ import { backgroundToCss, resolveCanvas, shadowPresetToCss } from "@/lib/site-co
 import type { SiteConfig } from "@/types/site-config";
 import type { CSSProperties } from "react";
 import { ComponentRenderer, type Mode } from "./ComponentRenderer";
+import { RenderModeProvider } from "./RenderModeContext";
 import { SiteConfigProvider } from "./SiteConfigContext";
 
 export type RendererProps = {
@@ -13,7 +14,7 @@ export type RendererProps = {
   mode: Mode;
   selection?: string[];
   onSelect?: (id: string) => void;
-  onContextMenu?: (id: string) => void;
+  onContextMenu?: (id: string, meta: { isDouble: boolean }) => void;
   // Sprint 9b: detail-page support. PROJECT_SPEC.md §8.12 / §11. When
   // `pageKind === "detail"`, the lookup matches a detail page (slug uniqueness
   // is per-kind, so the U2 routing pattern picks the right variant). When a
@@ -94,5 +95,9 @@ export function Renderer({
       wrapped
     );
 
-  return <SiteConfigProvider config={config}>{withRowContext}</SiteConfigProvider>;
+  return (
+    <SiteConfigProvider config={config}>
+      <RenderModeProvider value={mode}>{withRowContext}</RenderModeProvider>
+    </SiteConfigProvider>
+  );
 }

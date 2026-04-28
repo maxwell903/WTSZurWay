@@ -2,6 +2,7 @@
 
 import { DetailPageSelect } from "@/components/editor/edit-panels/controls/DetailPageSelect";
 import { PageSelect } from "@/components/editor/edit-panels/controls/PageSelect";
+import { RichTextMirror } from "@/components/editor/edit-panels/controls/RichTextMirror";
 import { SegmentedControl } from "@/components/editor/edit-panels/controls/SegmentedControl";
 import { SelectInput } from "@/components/editor/edit-panels/controls/SelectInput";
 import { SwitchInput } from "@/components/editor/edit-panels/controls/SwitchInput";
@@ -60,12 +61,16 @@ export function ButtonEditPanel({ node }: ButtonEditPanelProps) {
 
   return (
     <div data-component-edit-panel="Button" className="space-y-3">
-      <TextInput
-        id="button-label"
-        label="Label"
-        value={readString(props, "label", "Button")}
-        testId="button-label"
-        onChange={(next) => writePartial({ label: next })}
+      <RichTextMirror
+        fieldId="button-label"
+        fieldLabel="Label"
+        plainKey="label"
+        richKey="richLabel"
+        plain={readString(props, "label", "Button")}
+        rawRich={props.richLabel}
+        rows={2}
+        profile="inline"
+        writePartial={writePartial}
       />
       <TextInput
         id="button-href"
