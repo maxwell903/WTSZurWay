@@ -1,24 +1,14 @@
-// Sprint 7 — the binding "Resizable component matrix" in CLAUDE.md mirrors
-// PROJECT_SPEC.md §8.6.
+// Resize tests — post-2026-04-28 redesign.
 //
-// Task 2.1 (2026-04-27 x-axis-resize plan): RESIZE_MATRIX has been replaced
-// by the registry-driven isResizableOnAxis function. The old matrix-shape
-// tests below have been updated to use isResizableOnAxis semantics: every
-// ComponentType is resizable on both axes by default.
+// All width and height writes are now in PIXELS (no percent, no Column.span
+// 1–12 grid from drag). The right-edge handle writes `${px}px` directly via
+// `setComponentDimension(id, "width", …)`. Same for the corner handle's
+// width arm. The Column.span fallback still exists in `Column/index.tsx` for
+// Columns without an explicit width, but drag never writes span anymore.
 //
-// Task 2.2 (2026-04-27 x-axis-resize plan): RightEdgeHandle now forks on
-// component type AND shiftKey: Column without Shift → span snap (1..12);
-// everything else (and Column + Shift) → free-percent `style.width`.
-//
-// Task 2.3 (2026-04-27 x-axis-resize plan): CornerHandle drives both axes
-// simultaneously. For Spacer, only width is written (height lives in props,
-// not style — corner skips the height write entirely for Spacer).
-//
-// Task 3.4 (2026-04-27 x-axis-resize plan): RightEdgeHandle and CornerHandle
-// now write width via setComponentDimensionWithCascade so descendant px-width
-// values are auto-clamped when a parent shrinks. BottomEdgeHandle and
-// CornerHandle's height write remain on setComponentDimension (height cascade
-// is not implemented per spec).
+// `isResizableOnAxis` returns true for every ComponentType on both axes.
+// Pixel snap: 8-px multiples; min 8 px; min 0 px for Spacer height. Holding
+// Shift escapes the snap (free 1-px).
 
 import { ResizeHandles, isResizableOnAxis } from "@/components/editor/canvas/dnd/ResizeHandles";
 import { __resetEditorStoreForTests, useEditorStore } from "@/lib/editor-state/store";
@@ -160,7 +150,7 @@ function dispatchPointerUpXY(clientX: number, clientY: number): void {
   window.dispatchEvent(new MouseEvent("pointerup", { clientX, clientY, bubbles: true }));
 }
 
-describe("RightEdgeHandle — Task 2.2 branching", () => {
+describe("RightEdgeHandle — pixel-mode width writes", () => {
   beforeEach(() => {
     __resetEditorStoreForTests();
     useEditorStore.getState().hydrate({
@@ -178,8 +168,9 @@ describe("RightEdgeHandle — Task 2.2 branching", () => {
     }
   });
 
-  it("Heading right-drag writes a percentage width to style.width", () => {
-    // Parent section spans 0..400 px; drag release at x=300 → 75% → snapped to 75%.
+  it("Heading right-drag writes a pixel width to style.width", () => {
+    // Heading starts 200px wide; drag from clientX=200 to clientX=300 →
+    // delta +100 → new width 300px → snapped to 8 → 304px (300/8 = 37.5 → 304).
     plantElement("cmp_sec", { left: 0, width: 400 });
     plantElement("cmp_heading", { left: 0, top: 0, width: 200, height: 50 });
 
@@ -194,7 +185,6 @@ describe("RightEdgeHandle — Task 2.2 branching", () => {
       dispatchPointerDown(handle, { clientX: 200, clientY: 25 });
     });
     act(() => {
-      // Release at clientX=300 → fraction=300/400=0.75 → snapped to 75%
       dispatchPointerUp(300);
     });
 
@@ -202,11 +192,12 @@ describe("RightEdgeHandle — Task 2.2 branching", () => {
     const page = state.draftConfig.pages[0];
     const sec = page?.rootComponent.children?.find((c) => c.id === "cmp_sec");
     const heading = sec?.children?.find((c) => c.id === "cmp_heading");
-    expect(heading?.style.width).toMatch(/^\d+(?:\.\d+)?%$/);
+    expect(heading?.style.width).toMatch(/^\d+px$/);
   });
 
-  it("Column right-drag (no Shift) writes span in 1..12", () => {
-    // Parent row spans 0..400 px; drag release at x=200 → fraction=0.5 → span=6
+  it("Column right-drag writes a pixel width (no longer Column.span)", () => {
+    // Column starts 200px wide; drag from clientX=200 to clientX=300 → +100px → snapped.
+    // Verify pixel write AND that Column.span is unchanged from its hydrated default.
     plantElement("cmp_row", { left: 0, width: 400 });
     plantElement("cmp_col", { left: 0, top: 0, width: 200, height: 50 });
 
@@ -214,42 +205,18 @@ describe("RightEdgeHandle — Task 2.2 branching", () => {
       useEditorStore.getState().selectComponent("cmp_col");
     });
 
-    const { getByTestId } = render(<ResizeHandles />);
-    const handle = getByTestId("resize-handle-right-cmp_col");
-
-    act(() => {
-      dispatchPointerDown(handle, { clientX: 200, clientY: 25, shiftKey: false });
-    });
-    act(() => {
-      // Release at clientX=200 → fraction=200/400=0.5 → span=6
-      dispatchPointerUp(200);
-    });
-
-    const state = useEditorStore.getState();
-    const page = state.draftConfig.pages[0];
-    const row = page?.rootComponent.children?.find((c) => c.id === "cmp_row");
-    const col = row?.children?.find((c) => c.id === "cmp_col");
-    const span = col?.props.span as number;
-    expect(span).toBeGreaterThanOrEqual(1);
-    expect(span).toBeLessThanOrEqual(12);
-    expect(Number.isInteger(span)).toBe(true);
-  });
-
-  it("Column right-drag with shiftKey writes a percentage width to style.width", () => {
-    // Parent row spans 0..400 px; drag release at x=300 → fraction=0.75 → 75%
-    plantElement("cmp_row", { left: 0, width: 400 });
-    plantElement("cmp_col", { left: 0, top: 0, width: 200, height: 50 });
-
-    act(() => {
-      useEditorStore.getState().selectComponent("cmp_col");
-    });
+    const initialSpan = (
+      useEditorStore
+        .getState()
+        .draftConfig.pages[0]?.rootComponent.children?.find((c) => c.id === "cmp_row")
+        ?.children?.find((c) => c.id === "cmp_col")?.props as { span?: number }
+    ).span;
 
     const { getByTestId } = render(<ResizeHandles />);
     const handle = getByTestId("resize-handle-right-cmp_col");
 
-    // shiftKey held on pointerdown
     act(() => {
-      dispatchPointerDown(handle, { clientX: 200, clientY: 25, shiftKey: true });
+      dispatchPointerDown(handle, { clientX: 200, clientY: 25 });
     });
     act(() => {
       dispatchPointerUp(300);
@@ -259,7 +226,38 @@ describe("RightEdgeHandle — Task 2.2 branching", () => {
     const page = state.draftConfig.pages[0];
     const row = page?.rootComponent.children?.find((c) => c.id === "cmp_row");
     const col = row?.children?.find((c) => c.id === "cmp_col");
-    expect(col?.style.width).toMatch(/^\d+(?:\.\d+)?%$/);
+    expect(col?.style.width).toMatch(/^\d+px$/);
+    // span must NOT have been touched by the drag.
+    expect((col?.props as { span?: number }).span).toBe(initialSpan);
+  });
+
+  it("right-drag with shiftKey escapes the 8-px snap", () => {
+    // Drag delta = +5px; with snap, 200+5=205 rounds to 200 (or 208).
+    // Without snap (Shift held), value should round to 205 exactly.
+    plantElement("cmp_sec", { left: 0, width: 400 });
+    plantElement("cmp_heading", { left: 0, top: 0, width: 200, height: 50 });
+
+    act(() => {
+      useEditorStore.getState().selectComponent("cmp_heading");
+    });
+
+    const { getByTestId } = render(<ResizeHandles />);
+    const handle = getByTestId("resize-handle-right-cmp_heading");
+
+    act(() => {
+      dispatchPointerDown(handle, { clientX: 200, clientY: 25, shiftKey: true });
+    });
+    act(() => {
+      window.dispatchEvent(
+        new MouseEvent("pointerup", { clientX: 205, bubbles: true, shiftKey: true }),
+      );
+    });
+
+    const state = useEditorStore.getState();
+    const page = state.draftConfig.pages[0];
+    const sec = page?.rootComponent.children?.find((c) => c.id === "cmp_sec");
+    const heading = sec?.children?.find((c) => c.id === "cmp_heading");
+    expect(heading?.style.width).toBe("205px");
   });
 });
 
@@ -297,12 +295,9 @@ describe("CornerHandle — Task 2.3 two-axis resize", () => {
     expect(document.querySelector(`[data-testid^="resize-handle-corner-"]`)).not.toBeNull();
   });
 
-  it("writes both width AND height in a single drag", () => {
-    // Parent section: left=0, width=600, height=800.
-    // Heading: left=0, top=0, width=100, height=100.
-    // pointerDown at (100, 100), pointerUp at (200, 200) → drag 100px right + 100px down.
-    // Width: (100+100)/600 = 0.333 → snapped to nearest 5% → 35%.
-    // Height: snapHeight(100+100=200, false) → snap to 8 → 200px.
+  it("writes both width AND height in pixels in a single drag", () => {
+    // Heading starts 100x100. pointerDown at (100, 100), pointerUp at (200, 200) →
+    // delta +100 right, +100 down → expect width ≈ 200px and height ≈ 200px (8-px snap).
     plantElement("cmp_sec", { left: 0, top: 0, width: 600, height: 800 });
     plantElement("cmp_heading", { left: 0, top: 0, width: 100, height: 100 });
 
@@ -324,7 +319,7 @@ describe("CornerHandle — Task 2.3 two-axis resize", () => {
     const page = state.draftConfig.pages[0];
     const sec = page?.rootComponent.children?.find((c) => c.id === "cmp_sec");
     const heading = sec?.children?.find((c) => c.id === "cmp_heading");
-    expect(heading?.style.width).toMatch(/^\d+(?:\.\d+)?%$/);
+    expect(heading?.style.width).toMatch(/^\d+px$/);
     expect(heading?.style.height).toMatch(/^\d+px$/);
   });
 
@@ -363,16 +358,15 @@ describe("CornerHandle — Task 2.3 two-axis resize", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Task 3.4 — cascade integration: width writes use setComponentDimensionWithCascade
+// Action-layer wiring: pixel writes go through plain setComponentDimension
 // ---------------------------------------------------------------------------
 //
-// Strategy: spy on useEditorStore's setComponentDimensionWithCascade action to
-// verify it is invoked (not the plain setComponentDimension) when width is
-// written. A spy approach is used because the handles write % values, which
-// means parsePx returns null inside applyResizeWithCascade and no actual child
-// clamping occurs — the correct observable difference is which action was called.
+// The post-2026-04-28 redesign drops the percent-aware
+// `setComponentDimensionWithCascade` path from drag (it's still in the store
+// for AI/programmatic use). Both right-edge and corner handles now write
+// directly via `setComponentDimension(id, axis, "${px}px")`.
 
-describe("RightEdgeHandle — Task 3.4 cascade integration", () => {
+describe("RightEdgeHandle — action wiring", () => {
   beforeEach(() => {
     __resetEditorStoreForTests();
     useEditorStore.getState().hydrate({
@@ -390,7 +384,7 @@ describe("RightEdgeHandle — Task 3.4 cascade integration", () => {
     vi.restoreAllMocks();
   });
 
-  it("calls setComponentDimensionWithCascade (not setComponentDimension) for width on right-edge drag", () => {
+  it("calls setComponentDimension with a px string for width", () => {
     plantElement("cmp_sec", { left: 0, width: 400 });
     plantElement("cmp_heading", { left: 0, top: 0, width: 200, height: 50 });
 
@@ -398,9 +392,7 @@ describe("RightEdgeHandle — Task 3.4 cascade integration", () => {
       useEditorStore.getState().selectComponent("cmp_heading");
     });
 
-    // Spy on both actions so we can assert only the cascade variant is called.
-    const cascadeSpy = vi.spyOn(useEditorStore.getState(), "setComponentDimensionWithCascade");
-    const plainSpy = vi.spyOn(useEditorStore.getState(), "setComponentDimension");
+    const dimSpy = vi.spyOn(useEditorStore.getState(), "setComponentDimension");
 
     const { getByTestId } = render(<ResizeHandles />);
     const handle = getByTestId("resize-handle-right-cmp_heading");
@@ -409,22 +401,14 @@ describe("RightEdgeHandle — Task 3.4 cascade integration", () => {
       dispatchPointerDown(handle, { clientX: 200, clientY: 25 });
     });
     act(() => {
-      // Release at clientX=300 → fraction=300/400=0.75 → writes width %
       dispatchPointerUp(300);
     });
 
-    expect(cascadeSpy).toHaveBeenCalledWith(
-      "cmp_heading",
-      "width",
-      expect.stringMatching(/^\d+%$/),
-    );
-    // Plain setComponentDimension must NOT be called for the width write.
-    const widthCalls = plainSpy.mock.calls.filter((args) => args[1] === "width");
-    expect(widthCalls).toHaveLength(0);
+    expect(dimSpy).toHaveBeenCalledWith("cmp_heading", "width", expect.stringMatching(/^\d+px$/));
   });
 });
 
-describe("CornerHandle — Task 3.4 cascade integration", () => {
+describe("CornerHandle — action wiring", () => {
   beforeEach(() => {
     __resetEditorStoreForTests();
     useEditorStore.getState().hydrate({
@@ -442,7 +426,7 @@ describe("CornerHandle — Task 3.4 cascade integration", () => {
     vi.restoreAllMocks();
   });
 
-  it("calls setComponentDimensionWithCascade for width and setComponentDimension for height on corner drag", () => {
+  it("calls setComponentDimension with px strings for both width and height", () => {
     plantElement("cmp_sec", { left: 0, top: 0, width: 600, height: 800 });
     plantElement("cmp_heading", { left: 0, top: 0, width: 100, height: 100 });
 
@@ -450,8 +434,7 @@ describe("CornerHandle — Task 3.4 cascade integration", () => {
       useEditorStore.getState().selectComponent("cmp_heading");
     });
 
-    const cascadeSpy = vi.spyOn(useEditorStore.getState(), "setComponentDimensionWithCascade");
-    const plainSpy = vi.spyOn(useEditorStore.getState(), "setComponentDimension");
+    const dimSpy = vi.spyOn(useEditorStore.getState(), "setComponentDimension");
 
     const { getByTestId } = render(<ResizeHandles />);
     const handle = getByTestId("resize-handle-corner-cmp_heading");
@@ -463,35 +446,20 @@ describe("CornerHandle — Task 3.4 cascade integration", () => {
       dispatchPointerUpXY(200, 200);
     });
 
-    // Width write must go through cascade action.
-    expect(cascadeSpy).toHaveBeenCalledWith(
-      "cmp_heading",
-      "width",
-      expect.stringMatching(/^\d+%$/),
-    );
-    // Height write must stay on the plain action (height cascade not implemented).
-    expect(plainSpy).toHaveBeenCalledWith(
-      "cmp_heading",
-      "height",
-      expect.stringMatching(/^\d+px$/),
-    );
-    // Plain action must NOT be called for width.
-    const widthCalls = plainSpy.mock.calls.filter((args) => args[1] === "width");
-    expect(widthCalls).toHaveLength(0);
+    expect(dimSpy).toHaveBeenCalledWith("cmp_heading", "width", expect.stringMatching(/^\d+px$/));
+    expect(dimSpy).toHaveBeenCalledWith("cmp_heading", "height", expect.stringMatching(/^\d+px$/));
   });
 });
 
 // ---------------------------------------------------------------------------
-// Task 3.5 — parent-bound clamp on pointer release
+// Drag-past-parent-edge — pixel writes are unclamped
 // ---------------------------------------------------------------------------
 //
-// Fixture: Section parent "p" 600px wide. Two children:
-//   - child A (cmp_sibling): style.width = "80%" (consumes 80% of parent)
-//   - child B (cmp_child): selected, no explicit width (cap = 100 - 80 = 20%)
-//
-// getMaxAllowedDimension returns 20. After floor-to-5% snap: cap = 20%.
-// Dragging far past the right edge produces a raw percent > 20 (e.g. 95%);
-// the clamp must cap the written value at 20%.
+// Fixture: a Section parent 600px wide with one selected Heading child. Post
+// 2026-04-28 redesign, drag does NOT cap the written width to the parent's
+// remaining space — the chosen pixel value is honoured literally; the
+// "Bounded by parent" tooltip arms instead. These tests verify the pixel
+// write reaches the store even when the cursor passes the parent's edge.
 
 function makeClampFixture(): SiteConfig {
   return {
@@ -545,7 +513,14 @@ function makeClampFixture(): SiteConfig {
   };
 }
 
-describe("RightEdgeHandle — Task 3.5 parent-bound clamp", () => {
+// Post-redesign: drag does NOT clamp width to parent's available space.
+// The user's chosen width is honoured as a literal pixel value; if it
+// exceeds the parent, the parent's overflow rules take over visually and a
+// "Bounded by parent" tooltip arms (tooltip behaviour is verified separately
+// in BoundedByParentTooltip.test.tsx). These tests just confirm the write
+// happens at all when the cursor goes past the parent's edge.
+
+describe("RightEdgeHandle — drag past parent edge writes literal px", () => {
   beforeEach(() => {
     __resetEditorStoreForTests();
     useEditorStore.getState().hydrate({
@@ -562,10 +537,7 @@ describe("RightEdgeHandle — Task 3.5 parent-bound clamp", () => {
     }
   });
 
-  it("clamps to parent's max-allowed width when child would overflow", () => {
-    // Parent 600px wide; drag release at x=570 → raw fraction ≈ 0.95 → raw percent = 95%
-    // Cap = 20% (sibling uses 80%). After floor-to-5%: cap = 20%.
-    // Expected written value: "20%"
+  it("writes a px width even when the cursor passes the parent's right edge", () => {
     plantElement("cmp_parent", { left: 0, width: 600 });
     plantElement("cmp_child", { left: 0, top: 0, width: 60, height: 50 });
 
@@ -580,7 +552,6 @@ describe("RightEdgeHandle — Task 3.5 parent-bound clamp", () => {
       dispatchPointerDown(handle, { clientX: 60, clientY: 25 });
     });
     act(() => {
-      // Release near the far right edge → raw would be ~95% without the clamp
       dispatchPointerUp(570);
     });
 
@@ -588,15 +559,11 @@ describe("RightEdgeHandle — Task 3.5 parent-bound clamp", () => {
     const page = state.draftConfig.pages[0];
     const parent = page?.rootComponent.children?.find((c) => c.id === "cmp_parent");
     const child = parent?.children?.find((c) => c.id === "cmp_child");
-    const widthStr = child?.style.width ?? "";
-    const widthNum = Number.parseFloat(widthStr);
-    // Must be clamped at or below 20%
-    expect(widthStr).toMatch(/^\d+(?:\.\d+)?%$/);
-    expect(widthNum).toBeLessThanOrEqual(20);
+    expect(child?.style.width).toMatch(/^\d+px$/);
   });
 });
 
-describe("CornerHandle — Task 3.5 parent-bound clamp", () => {
+describe("CornerHandle — drag past parent edge writes literal px", () => {
   beforeEach(() => {
     __resetEditorStoreForTests();
     useEditorStore.getState().hydrate({
@@ -613,9 +580,7 @@ describe("CornerHandle — Task 3.5 parent-bound clamp", () => {
     }
   });
 
-  it("clamps width on corner drag at parent's max-allowed", () => {
-    // Same arrangement; drag corner far right and down.
-    // Width cap = 20%. Height is unclamped (not part of this task).
+  it("writes a px width and px height even when corner passes parent's edges", () => {
     plantElement("cmp_parent", { left: 0, top: 0, width: 600, height: 800 });
     plantElement("cmp_child", { left: 0, top: 0, width: 60, height: 50 });
 
@@ -630,7 +595,6 @@ describe("CornerHandle — Task 3.5 parent-bound clamp", () => {
       dispatchPointerDown(handle, { clientX: 60, clientY: 50 });
     });
     act(() => {
-      // Drag far right (570) and slightly down (100)
       dispatchPointerUpXY(570, 100);
     });
 
@@ -638,11 +602,8 @@ describe("CornerHandle — Task 3.5 parent-bound clamp", () => {
     const page = state.draftConfig.pages[0];
     const parent = page?.rootComponent.children?.find((c) => c.id === "cmp_parent");
     const child = parent?.children?.find((c) => c.id === "cmp_child");
-    const widthStr = child?.style.width ?? "";
-    const widthNum = Number.parseFloat(widthStr);
-    // Must be clamped at or below 20%
-    expect(widthStr).toMatch(/^\d+(?:\.\d+)?%$/);
-    expect(widthNum).toBeLessThanOrEqual(20);
+    expect(child?.style.width).toMatch(/^\d+px$/);
+    expect(child?.style.height).toMatch(/^\d+px$/);
   });
 });
 
@@ -717,11 +678,11 @@ describe("RightEdgeHandle live preview during drag", () => {
       }
     });
 
-    // Store should now have the live width written via pointermove.
+    // Store should now have the live px width written via pointermove.
     const page = useEditorStore.getState().draftConfig.pages[0];
     const sec = page?.rootComponent.children?.find((c) => c.id === "cmp_sec");
     const heading = sec?.children?.find((c) => c.id === "cmp_heading");
-    expect(heading?.style.width).toMatch(/^\d+(?:\.\d+)?%$/);
+    expect(heading?.style.width).toMatch(/^\d+px$/);
 
     // Clean up: release the drag so window listeners are removed.
     act(() => {
@@ -729,5 +690,182 @@ describe("RightEdgeHandle live preview during drag", () => {
     });
 
     rafSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LeftEdgeHandle — drags W edge; width grows inversely; margin-left
+// compensates so the right edge stays anchored.
+// ---------------------------------------------------------------------------
+
+describe("LeftEdgeHandle — anchored W-edge resize", () => {
+  beforeEach(() => {
+    __resetEditorStoreForTests();
+    useEditorStore.getState().hydrate({
+      siteId: "s",
+      siteSlug: "test",
+      workingVersionId: "v",
+      initialConfig: makeFixture(),
+    });
+  });
+
+  afterEach(() => {
+    for (const el of document.querySelectorAll("[data-edit-id]")) {
+      el.parentNode?.removeChild(el);
+    }
+  });
+
+  it("renders a left-edge handle alongside the right-edge handle", () => {
+    plantElement("cmp_sec", { left: 0, width: 400 });
+    plantElement("cmp_heading", { left: 100, top: 0, width: 200, height: 50 });
+
+    act(() => {
+      useEditorStore.getState().selectComponent("cmp_heading");
+    });
+
+    const { getByTestId } = render(<ResizeHandles />);
+    expect(getByTestId("resize-handle-left-cmp_heading")).toBeInTheDocument();
+    expect(getByTestId("resize-handle-right-cmp_heading")).toBeInTheDocument();
+  });
+
+  it("dragging W edge LEFT grows width and writes a negative margin.left", () => {
+    // Heading starts 200px wide at clientX=100..300. Drag left edge from
+    // clientX=100 to clientX=50 → cursorDx=-50 → newWidth = 200-(-50) = 250
+    // → snapped to 8 → 248. widthDelta = +48. marginLeft = 0 - 48 = -48.
+    plantElement("cmp_sec", { left: 0, width: 400 });
+    plantElement("cmp_heading", { left: 100, top: 0, width: 200, height: 50 });
+
+    act(() => {
+      useEditorStore.getState().selectComponent("cmp_heading");
+    });
+
+    const { getByTestId } = render(<ResizeHandles />);
+    const handle = getByTestId("resize-handle-left-cmp_heading");
+
+    act(() => {
+      dispatchPointerDown(handle, { clientX: 100, clientY: 25 });
+    });
+    act(() => {
+      dispatchPointerUp(50);
+    });
+
+    const state = useEditorStore.getState();
+    const page = state.draftConfig.pages[0];
+    const sec = page?.rootComponent.children?.find((c) => c.id === "cmp_sec");
+    const heading = sec?.children?.find((c) => c.id === "cmp_heading");
+    expect(heading?.style.width).toMatch(/^\d+px$/);
+    const widthPx = Number.parseInt(heading?.style.width ?? "0", 10);
+    expect(widthPx).toBeGreaterThan(200);
+    // margin.left must be negative (the wrapper shifted left to keep the
+    // right edge anchored).
+    expect(heading?.style.margin?.left).toBeLessThan(0);
+  });
+
+  it("Esc cancels the drag without mutating style", () => {
+    plantElement("cmp_sec", { left: 0, width: 400 });
+    plantElement("cmp_heading", { left: 100, top: 0, width: 200, height: 50 });
+
+    act(() => {
+      useEditorStore.getState().selectComponent("cmp_heading");
+    });
+
+    const { getByTestId } = render(<ResizeHandles />);
+    const handle = getByTestId("resize-handle-left-cmp_heading");
+
+    act(() => {
+      dispatchPointerDown(handle, { clientX: 100, clientY: 25 });
+    });
+    // No pointermove + Esc cancels before any write.
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+
+    const state = useEditorStore.getState();
+    const page = state.draftConfig.pages[0];
+    const sec = page?.rootComponent.children?.find((c) => c.id === "cmp_sec");
+    const heading = sec?.children?.find((c) => c.id === "cmp_heading");
+    expect(heading?.style.width).toBeUndefined();
+    expect(heading?.style.margin).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TopEdgeHandle — drags N edge; height grows inversely; margin-top
+// compensates so the bottom edge stays anchored. Spacer skipped (height in
+// props, not style).
+// ---------------------------------------------------------------------------
+
+describe("TopEdgeHandle — anchored N-edge resize", () => {
+  beforeEach(() => {
+    __resetEditorStoreForTests();
+    useEditorStore.getState().hydrate({
+      siteId: "s",
+      siteSlug: "test",
+      workingVersionId: "v",
+      initialConfig: makeFixture(),
+    });
+  });
+
+  afterEach(() => {
+    for (const el of document.querySelectorAll("[data-edit-id]")) {
+      el.parentNode?.removeChild(el);
+    }
+  });
+
+  it("renders for a Heading", () => {
+    plantElement("cmp_sec", { left: 0, top: 0, width: 400, height: 600 });
+    plantElement("cmp_heading", { left: 0, top: 100, width: 200, height: 50 });
+
+    act(() => {
+      useEditorStore.getState().selectComponent("cmp_heading");
+    });
+
+    const { getByTestId } = render(<ResizeHandles />);
+    expect(getByTestId("resize-handle-top-cmp_heading")).toBeInTheDocument();
+  });
+
+  it("does NOT render for Spacer (height lives in props, not style)", () => {
+    plantElement("cmp_sec", { left: 0, top: 0, width: 400, height: 600 });
+    plantElement("cmp_spacer", { left: 0, top: 100, width: 200, height: 32 });
+
+    act(() => {
+      useEditorStore.getState().selectComponent("cmp_spacer");
+    });
+
+    const { queryByTestId } = render(<ResizeHandles />);
+    expect(queryByTestId("resize-handle-top-cmp_spacer")).toBeNull();
+  });
+
+  it("dragging N edge UP grows height and writes a negative margin.top", () => {
+    // Heading at top=100, height=50. Drag from clientY=100 to clientY=50 →
+    // cursorDy=-50 → newHeight = 50-(-50) = 100 → snapped to 8 → 104 (or 96
+    // depending on exact rounding; min boundary 8).
+    plantElement("cmp_sec", { left: 0, top: 0, width: 400, height: 600 });
+    plantElement("cmp_heading", { left: 0, top: 100, width: 200, height: 50 });
+
+    act(() => {
+      useEditorStore.getState().selectComponent("cmp_heading");
+    });
+
+    const { getByTestId } = render(<ResizeHandles />);
+    const handle = getByTestId("resize-handle-top-cmp_heading");
+
+    act(() => {
+      dispatchPointerDown(handle, { clientX: 100, clientY: 100 });
+    });
+    act(() => {
+      window.dispatchEvent(
+        new MouseEvent("pointerup", { clientX: 100, clientY: 50, bubbles: true }),
+      );
+    });
+
+    const state = useEditorStore.getState();
+    const page = state.draftConfig.pages[0];
+    const sec = page?.rootComponent.children?.find((c) => c.id === "cmp_sec");
+    const heading = sec?.children?.find((c) => c.id === "cmp_heading");
+    expect(heading?.style.height).toMatch(/^\d+px$/);
+    const heightPx = Number.parseInt(heading?.style.height ?? "0", 10);
+    expect(heightPx).toBeGreaterThan(50);
+    expect(heading?.style.margin?.top).toBeLessThan(0);
   });
 });

@@ -33,6 +33,16 @@ function computeWrapperPassthroughStyle(node: ComponentNode): CSSProperties {
   const cssStyle = styleConfigToCss(node.style);
   if (cssStyle.width !== undefined) out.width = cssStyle.width;
   if (cssStyle.height !== undefined) out.height = cssStyle.height;
+  // Margin needs to live on the OUTER (wrapper) element so the wrapper
+  // outline tracks the visible component when the user drags the W/N edge
+  // (which compensates by writing negative margin-left / margin-top to
+  // anchor the opposite edge). The inner component must NOT also receive
+  // these values — see `stripMarginFromCss` below — or it would
+  // double-apply.
+  if (cssStyle.marginTop !== undefined) out.marginTop = cssStyle.marginTop;
+  if (cssStyle.marginRight !== undefined) out.marginRight = cssStyle.marginRight;
+  if (cssStyle.marginBottom !== undefined) out.marginBottom = cssStyle.marginBottom;
+  if (cssStyle.marginLeft !== undefined) out.marginLeft = cssStyle.marginLeft;
   // Column writes `flex: <span>` on its own root; mirror it to the wrapper
   // so the parent Row's flex layout applies. Other component types compute
   // no outer-affecting flex value today.
@@ -41,6 +51,33 @@ function computeWrapperPassthroughStyle(node: ComponentNode): CSSProperties {
     if (typeof span === "number") out.flex = span;
   }
   return out;
+}
+
+// In edit mode, margin is applied on the EditModeWrapper (per
+// `computeWrapperPassthroughStyle`) so the wrapper outline matches the
+// visible component. The inner component must therefore render without
+// margin to prevent double-application. Width and height are intentionally
+// duplicated on both wrapper and inner because they are idempotent (the
+// inner box ends up the same size either way).
+function stripMarginFromCss(css: CSSProperties): CSSProperties {
+  if (
+    css.marginTop === undefined &&
+    css.marginRight === undefined &&
+    css.marginBottom === undefined &&
+    css.marginLeft === undefined &&
+    css.margin === undefined
+  ) {
+    return css;
+  }
+  const {
+    marginTop: _t,
+    marginRight: _r,
+    marginBottom: _b,
+    marginLeft: _l,
+    margin: _m,
+    ...rest
+  } = css;
+  return rest;
 }
 
 export type Mode = "edit" | "preview" | "public";
@@ -129,6 +166,14 @@ function ComponentRendererInner({
   onContextMenu,
 }: ComponentRendererProps) {
   const cssStyle = useMemo(() => styleConfigToCss(node.style), [node.style]);
+  // In edit mode, margin is applied on the EditModeWrapper (see
+  // `computeWrapperPassthroughStyle`); the inner component must render
+  // without margin to avoid double-application. In preview / public,
+  // there's no wrapper so the inner gets the full cssStyle.
+  const cssStyleForInner = useMemo(
+    () => (mode === "edit" ? stripMarginFromCss(cssStyle) : cssStyle),
+    [cssStyle, mode],
+  );
   const { row, kind } = useRow();
 
   const entry = componentRegistry[node.type];
@@ -203,7 +248,7 @@ function ComponentRendererInner({
   }
 
   const rendered = (
-    <Component node={resolvedNode} cssStyle={cssStyle}>
+    <Component node={resolvedNode} cssStyle={cssStyleForInner}>
       {childrenToRender}
     </Component>
   );

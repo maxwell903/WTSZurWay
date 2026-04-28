@@ -1,32 +1,32 @@
 "use client";
 
-// Sprint 7 ResizeHandles — overlays a right-edge and/or bottom-edge handle on
-// the selected component based on the registry-driven isResizableOnAxis rule.
+// ResizeHandles — overlays a right-edge, bottom-edge, and bottom-right corner
+// handle on the selected component. All three write **pixel** dimensions to
+// `style.width` / `style.height` via `setComponentDimension`. The 1–12 grid
+// `Column.span` system is no longer driven from drag (the `span` field stays
+// in the schema as a fallback for Columns without an explicit width — see
+// `Column/index.tsx`).
 //
 // Coordinate model: each handle reads `getBoundingClientRect()` for its
-// target element (and for Column, its parent Row) and positions itself in
-// viewport coordinates via `position: fixed`. This is unaffected by
-// transforms applied to ancestors of `document.body` (none currently apply
-// any, but the canvas may grow them in a later sprint per CLAUDE.md
-// "Known risks").
+// target element (and for parent-bound clamp, its parent's rect) and
+// positions itself in viewport coordinates via `position: fixed`. This is
+// unaffected by transforms applied to ancestors of `document.body`.
 //
-// Snap rules (per CLAUDE.md "Definition of Done"):
-//   - Column right-edge: span snaps to integer 1..12 nearest the pointer
-//     release column inside the parent Row's bounding rect.
-//   - Bottom-edge height: snaps to the nearest 8-px multiple, floor 8 px.
-//     Spacer floor is 0 px and writes through `setComponentProps`
+// Snap rules (post-2026-04-28 redesign):
+//   - All widths and heights snap to 8-px multiples; min 8 px.
+//   - Spacer height floors at 0 px and writes through `setComponentProps`
 //     (numeric) instead of `setComponentDimension` (CSS string).
+//   - Holding Shift escapes the 8-px snap (free 1-px resolution).
 //   - Esc during a resize cancels and reverts (no store mutation).
 
 import {
   findComponentById,
   findComponentParentId,
-  getMaxAllowedDimension,
   selectCurrentPage,
   selectSelectedComponentNode,
   useEditorStore,
 } from "@/lib/editor-state";
-import type { ComponentNode, ComponentType } from "@/lib/site-config";
+import type { ComponentNode, ComponentType, StyleConfig } from "@/lib/site-config";
 import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
 import { BoundedByParentTooltip } from "./BoundedByParentTooltip";
 
@@ -46,24 +46,23 @@ export function isResizableOnAxis(type: ComponentType, _axis: "width" | "height"
   return true;
 }
 
-const HEIGHT_SNAP = 8;
+const PX_SNAP = 8;
 const HEIGHT_MIN_DEFAULT = 8;
 const HEIGHT_MIN_SPACER = 0;
-const SPAN_MIN = 1;
-const SPAN_MAX = 12;
+const WIDTH_MIN = 8;
 
-type Span = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
-
-function snapHeight(px: number, isSpacer: boolean): number {
-  const min = isSpacer ? HEIGHT_MIN_SPACER : HEIGHT_MIN_DEFAULT;
-  const snapped = Math.round(px / HEIGHT_SNAP) * HEIGHT_SNAP;
-  return Math.max(min, snapped);
+function snapPx(px: number, min: number, snap: boolean): number {
+  const v = snap ? Math.round(px / PX_SNAP) * PX_SNAP : Math.round(px);
+  return Math.max(min, v);
 }
 
-function snapSpan(fraction: number): Span {
-  const raw = Math.round(fraction * SPAN_MAX);
-  const clamped = Math.max(SPAN_MIN, Math.min(SPAN_MAX, raw));
-  return clamped as Span;
+function snapHeight(px: number, isSpacer: boolean, snap = true): number {
+  const min = isSpacer ? HEIGHT_MIN_SPACER : HEIGHT_MIN_DEFAULT;
+  return snapPx(px, min, snap);
+}
+
+function snapWidth(px: number, snap = true): number {
+  return snapPx(px, WIDTH_MIN, snap);
 }
 
 type ViewportRect = { top: number; left: number; width: number; height: number };
@@ -122,19 +121,25 @@ function ResizeHandlesActive({
   return (
     <>
       {matrix.right ? <RightEdgeHandle node={node} rect={rect} /> : null}
+      {matrix.right ? <LeftEdgeHandle node={node} rect={rect} /> : null}
       {matrix.bottom ? <BottomEdgeHandle node={node} rect={rect} /> : null}
+      {matrix.bottom ? <TopEdgeHandle node={node} rect={rect} /> : null}
       {matrix.right && matrix.bottom ? <CornerHandle node={node} rect={rect} /> : null}
     </>
   );
 }
 
 function RightEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect }) {
-  const setComponentSpan = useEditorStore((s) => s.setComponentSpan);
-  const setComponentDimensionWithCascade = useEditorStore(
-    (s) => s.setComponentDimensionWithCascade,
-  );
-  // parentRect generalises the old rowRect — the parent could be any container.
-  const dragRef = useRef<{ parentRect: DOMRect; shiftHeld: boolean } | null>(null);
+  const setComponentDimension = useEditorStore((s) => s.setComponentDimension);
+  // Pixel-mode drag: capture starting cursor X and starting width, then write
+  // `${px}px` directly. The parent rect is captured for the "exceeded parent"
+  // tooltip only; it does not constrain the write — flexbox / overflow on the
+  // parent decides what visibly happens past the cap.
+  const dragRef = useRef<{
+    startClientX: number;
+    startWidth: number;
+    parentMaxWidth: number;
+  } | null>(null);
   const rafRef = useRef<number | null>(null);
   const showTimerRef = useRef<number | null>(null);
   const hideTimerRef = useRef<number | null>(null);
@@ -148,38 +153,33 @@ function RightEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRe
     e.preventDefault();
     e.stopPropagation();
 
+    // Parent rect is used only for the "Bounded by parent" tooltip. We don't
+    // need the parent for the write itself — width is now an absolute pixel
+    // value, not a fraction of parent.
     const page = selectCurrentPage(useEditorStore.getState());
-    if (!page) return;
-    const parentId = findComponentParentId(page.rootComponent, node.id);
-    if (!parentId) return;
-    const parentEl = document.querySelector(`[data-edit-id="${parentId}"]`);
-    if (!parentEl) return;
-    const parentRect = (parentEl as HTMLElement).getBoundingClientRect();
+    let parentMaxWidth = Number.POSITIVE_INFINITY;
+    if (page) {
+      const parentId = findComponentParentId(page.rootComponent, node.id);
+      const parentEl = parentId ? document.querySelector(`[data-edit-id="${parentId}"]`) : null;
+      if (parentEl instanceof HTMLElement) {
+        parentMaxWidth = parentEl.getBoundingClientRect().width;
+      }
+    }
 
-    dragRef.current = { parentRect, shiftHeld: e.shiftKey };
+    dragRef.current = {
+      startClientX: e.clientX,
+      startWidth: rect.width,
+      parentMaxWidth,
+    };
 
     // Shared width computation and write — called on both pointermove and pointerup.
     function computeAndWrite(clientX: number, shiftHeld: boolean): void {
       const drag = dragRef.current;
       if (!drag) return;
-      const fraction = (clientX - drag.parentRect.left) / drag.parentRect.width;
-      const clampedFraction = Math.max(0.04, Math.min(1, fraction));
-      if (node.type === "Column" && !shiftHeld) {
-        try {
-          setComponentSpan(node.id, snapSpan(clampedFraction));
-        } catch {
-          // Apply layer rejected; silent no-op.
-        }
-        return;
-      }
-      const max = getMaxAllowedDimension(useEditorStore.getState().draftConfig, node.id, "width");
-      let percent = Math.max(5, Math.round((clampedFraction * 100) / 5) * 5);
-      if (max !== null) {
-        const cap = Math.max(5, Math.floor(max / 5) * 5);
-        percent = Math.min(percent, cap);
-      }
+      const raw = drag.startWidth + (clientX - drag.startClientX);
+      const snapped = snapWidth(raw, !shiftHeld);
       try {
-        setComponentDimensionWithCascade(node.id, "width", `${percent}%`);
+        setComponentDimension(node.id, "width", `${snapped}px`);
       } catch {
         // Apply layer rejected; silent no-op.
       }
@@ -188,37 +188,31 @@ function RightEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRe
     function handlePointerMove(ev: PointerEvent | MouseEvent): void {
       const drag = dragRef.current;
       if (!drag) return;
+      const shiftHeld = "shiftKey" in ev ? ev.shiftKey : false;
       // Live preview, throttled to animation frames.
       if (rafRef.current === null) {
         rafRef.current = window.requestAnimationFrame(() => {
           rafRef.current = null;
-          computeAndWrite(ev.clientX, drag.shiftHeld);
+          computeAndWrite(ev.clientX, shiftHeld);
         });
       }
-      // Column-grid drag has no "past the cap" semantic for the user — skip tooltip.
-      if (node.type === "Column" && !drag.shiftHeld) return;
-      const max = getMaxAllowedDimension(useEditorStore.getState().draftConfig, node.id, "width");
-      if (max === null) return;
-      const fraction = (ev.clientX - drag.parentRect.left) / drag.parentRect.width;
-      const percent = fraction * 100;
-      // Tiny epsilon prevents tooltip flickering at the exact cap boundary.
-      const pushingPast = percent > max + 0.5;
+      // Tooltip when the user drags past the parent's right edge.
+      if (!Number.isFinite(drag.parentMaxWidth)) return;
+      const candidate = drag.startWidth + (ev.clientX - drag.startClientX);
+      // Tiny epsilon prevents flicker at the exact boundary.
+      const pushingPast = candidate > drag.parentMaxWidth + 0.5;
       if (pushingPast) {
         if (hideTimerRef.current !== null) {
           window.clearTimeout(hideTimerRef.current);
           hideTimerRef.current = null;
         }
-        // Use a functional read of tooltip.visible via the ref pattern — we
-        // intentionally read the live state via setTooltip's updater instead.
         setTooltip((current) => {
           if (!current.visible && showTimerRef.current === null) {
-            // Arm the 150ms show-delay only once per "push past" entry.
             showTimerRef.current = window.setTimeout(() => {
               setTooltip({ visible: true, top: ev.clientY, left: ev.clientX });
               showTimerRef.current = null;
             }, 150);
           } else if (current.visible) {
-            // Already visible — keep position fresh.
             return { visible: true, top: ev.clientY, left: ev.clientX };
           }
           return current;
@@ -242,8 +236,7 @@ function RightEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRe
 
     function handlePointerUp(ev: PointerEvent | MouseEvent): void {
       if (!dragRef.current) return;
-      // Capture shiftHeld before cleanup nulls dragRef.
-      const { shiftHeld } = dragRef.current;
+      const shiftHeld = "shiftKey" in ev ? ev.shiftKey : false;
       // Final write at exact cursor position (no rAF throttle on release).
       computeAndWrite(ev.clientX, shiftHeld);
       cleanup();
@@ -305,15 +298,12 @@ function RightEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRe
 
 function CornerHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect }) {
   const setComponentDimension = useEditorStore((s) => s.setComponentDimension);
-  const setComponentDimensionWithCascade = useEditorStore(
-    (s) => s.setComponentDimensionWithCascade,
-  );
   const dragRef = useRef<{
     startX: number;
     startY: number;
     startW: number;
     startH: number;
-    parentRect: DOMRect;
+    parentMaxWidth: number;
   } | null>(null);
   const rafRef = useRef<number | null>(null);
   const showTimerRef = useRef<number | null>(null);
@@ -328,38 +318,34 @@ function CornerHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect 
     e.preventDefault();
     e.stopPropagation();
     const page = selectCurrentPage(useEditorStore.getState());
-    if (!page) return;
-    const parentId = findComponentParentId(page.rootComponent, node.id);
-    const parentEl = parentId ? document.querySelector(`[data-edit-id="${parentId}"]`) : null;
-    const parentRect =
-      parentEl instanceof HTMLElement ? parentEl.getBoundingClientRect() : new DOMRect();
+    let parentMaxWidth = Number.POSITIVE_INFINITY;
+    if (page) {
+      const parentId = findComponentParentId(page.rootComponent, node.id);
+      const parentEl = parentId ? document.querySelector(`[data-edit-id="${parentId}"]`) : null;
+      if (parentEl instanceof HTMLElement) {
+        parentMaxWidth = parentEl.getBoundingClientRect().width;
+      }
+    }
     dragRef.current = {
       startX: e.clientX,
       startY: e.clientY,
       startW: rect.width,
       startH: rect.height,
-      parentRect,
+      parentMaxWidth,
     };
 
     // Shared width+height computation and write — called on both pointermove and pointerup.
-    function computeAndWrite(clientX: number, clientY: number): void {
+    function computeAndWrite(clientX: number, clientY: number, shiftHeld: boolean): void {
       const drag = dragRef.current;
       if (!drag) return;
-      const newW = drag.startW + (clientX - drag.startX);
-      const newH = snapHeight(drag.startH + (clientY - drag.startY), node.type === "Spacer");
-      const fraction = drag.parentRect.width
-        ? Math.max(0.04, Math.min(1, newW / drag.parentRect.width))
-        : 1;
-      const percent = Math.max(5, Math.round((fraction * 100) / 5) * 5);
-      // Task 3.5: cap width at the parent's remaining headroom.
-      const max = getMaxAllowedDimension(useEditorStore.getState().draftConfig, node.id, "width");
-      let bounded = percent;
-      if (max !== null) {
-        const cappedAtSnap = Math.floor(max / 5) * 5;
-        bounded = Math.min(bounded, Math.max(5, cappedAtSnap));
-      }
+      const newW = snapWidth(drag.startW + (clientX - drag.startX), !shiftHeld);
+      const newH = snapHeight(
+        drag.startH + (clientY - drag.startY),
+        node.type === "Spacer",
+        !shiftHeld,
+      );
       try {
-        setComponentDimensionWithCascade(node.id, "width", `${bounded}%`);
+        setComponentDimension(node.id, "width", `${newW}px`);
         if (node.type !== "Spacer") {
           setComponentDimension(node.id, "height", `${newH}px`);
         }
@@ -371,20 +357,18 @@ function CornerHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect 
     function handlePointerMove(ev: PointerEvent | MouseEvent): void {
       const drag = dragRef.current;
       if (!drag) return;
+      const shiftHeld = "shiftKey" in ev ? ev.shiftKey : false;
       // Live preview, throttled to animation frames.
       if (rafRef.current === null) {
         rafRef.current = window.requestAnimationFrame(() => {
           rafRef.current = null;
-          computeAndWrite(ev.clientX, ev.clientY);
+          computeAndWrite(ev.clientX, ev.clientY, shiftHeld);
         });
       }
-      const max = getMaxAllowedDimension(useEditorStore.getState().draftConfig, node.id, "width");
-      if (max === null) return;
-      const newW = drag.startW + (ev.clientX - drag.startX);
-      const fraction = drag.parentRect.width ? newW / drag.parentRect.width : 0;
-      const percent = fraction * 100;
-      // Tiny epsilon prevents tooltip flickering at the exact cap boundary.
-      const pushingPast = percent > max + 0.5;
+      // "Bounded by parent" tooltip when width exceeds parent's right edge.
+      if (!Number.isFinite(drag.parentMaxWidth)) return;
+      const candidate = drag.startW + (ev.clientX - drag.startX);
+      const pushingPast = candidate > drag.parentMaxWidth + 0.5;
       if (pushingPast) {
         if (hideTimerRef.current !== null) {
           window.clearTimeout(hideTimerRef.current);
@@ -420,8 +404,9 @@ function CornerHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect 
 
     function handlePointerUp(ev: PointerEvent | MouseEvent): void {
       if (!dragRef.current) return;
+      const shiftHeld = "shiftKey" in ev ? ev.shiftKey : false;
       // Final write at exact cursor position (no rAF throttle on release).
-      computeAndWrite(ev.clientX, ev.clientY);
+      computeAndWrite(ev.clientX, ev.clientY, shiftHeld);
       cleanup();
     }
 
@@ -561,6 +546,218 @@ function BottomEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportR
       style={{
         position: "fixed",
         top: rect.top + rect.height - 4,
+        left: rect.left,
+        width: rect.width,
+        height: 8,
+        cursor: "ns-resize",
+        background: "rgba(59, 130, 246, 0.55)",
+        zIndex: 50,
+      }}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// LeftEdgeHandle — drags the W edge. Width changes inversely with cursor X
+// (drag left → wider). Anchors the right edge by writing a compensating
+// `style.margin.left` so the visible right edge stays put while the left
+// edge follows the cursor (Figma-like). All math is computed against values
+// captured at pointer-down so there is no accumulation drift across frames.
+// ---------------------------------------------------------------------------
+function LeftEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect }) {
+  const setComponentStyle = useEditorStore((s) => s.setComponentStyle);
+  const dragRef = useRef<{
+    startClientX: number;
+    startWidth: number;
+    startMarginLeft: number;
+    startStyle: StyleConfig;
+  } | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  function handlePointerDown(e: ReactPointerEvent<HTMLDivElement>): void {
+    e.preventDefault();
+    e.stopPropagation();
+
+    dragRef.current = {
+      startClientX: e.clientX,
+      startWidth: rect.width,
+      startMarginLeft: node.style.margin?.left ?? 0,
+      startStyle: node.style,
+    };
+
+    function computeAndWrite(clientX: number, shiftHeld: boolean): void {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const cursorDx = clientX - drag.startClientX;
+      const newWidth = snapWidth(drag.startWidth - cursorDx, !shiftHeld);
+      const widthDelta = newWidth - drag.startWidth;
+      const newMarginLeft = drag.startMarginLeft - widthDelta;
+      const newStyle: StyleConfig = {
+        ...drag.startStyle,
+        width: `${newWidth}px`,
+        margin: { ...(drag.startStyle.margin ?? {}), left: newMarginLeft },
+      };
+      try {
+        setComponentStyle(node.id, newStyle);
+      } catch {
+        // Apply layer rejected; silent no-op.
+      }
+    }
+
+    function handlePointerMove(ev: PointerEvent | MouseEvent): void {
+      if (!dragRef.current) return;
+      const shiftHeld = "shiftKey" in ev ? ev.shiftKey : false;
+      if (rafRef.current === null) {
+        rafRef.current = window.requestAnimationFrame(() => {
+          rafRef.current = null;
+          computeAndWrite(ev.clientX, shiftHeld);
+        });
+      }
+    }
+
+    function handlePointerUp(ev: PointerEvent | MouseEvent): void {
+      if (!dragRef.current) return;
+      const shiftHeld = "shiftKey" in ev ? ev.shiftKey : false;
+      computeAndWrite(ev.clientX, shiftHeld);
+      cleanup();
+    }
+
+    function handleKeyDown(ev: KeyboardEvent): void {
+      if (ev.key === "Escape") cleanup();
+    }
+
+    function cleanup(): void {
+      window.removeEventListener("pointermove", handlePointerMove as EventListener);
+      window.removeEventListener("pointerup", handlePointerUp as EventListener);
+      window.removeEventListener("keydown", handleKeyDown);
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      dragRef.current = null;
+    }
+
+    window.addEventListener("pointermove", handlePointerMove as EventListener);
+    window.addEventListener("pointerup", handlePointerUp as EventListener);
+    window.addEventListener("keydown", handleKeyDown);
+  }
+
+  return (
+    <div
+      data-testid={`resize-handle-left-${node.id}`}
+      data-resize-axis="left"
+      onPointerDown={handlePointerDown}
+      style={{
+        position: "fixed",
+        top: rect.top,
+        left: rect.left - 4,
+        width: 8,
+        height: rect.height,
+        cursor: "ew-resize",
+        background: "rgba(59, 130, 246, 0.55)",
+        zIndex: 50,
+      }}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TopEdgeHandle — drags the N edge. Height changes inversely with cursor Y
+// (drag up → taller). Anchors the bottom edge via compensating
+// `style.margin.top`. Spacer is a special case (height in props, not
+// style); for now top-edge resize on Spacer is a no-op (corner / bottom
+// edges remain the way to size a Spacer).
+// ---------------------------------------------------------------------------
+function TopEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect }) {
+  const setComponentStyle = useEditorStore((s) => s.setComponentStyle);
+  const isSpacer = node.type === "Spacer";
+  const dragRef = useRef<{
+    startClientY: number;
+    startHeight: number;
+    startMarginTop: number;
+    startStyle: StyleConfig;
+  } | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  function handlePointerDown(e: ReactPointerEvent<HTMLDivElement>): void {
+    if (isSpacer) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    dragRef.current = {
+      startClientY: e.clientY,
+      startHeight: rect.height,
+      startMarginTop: node.style.margin?.top ?? 0,
+      startStyle: node.style,
+    };
+
+    function computeAndWrite(clientY: number, shiftHeld: boolean): void {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const cursorDy = clientY - drag.startClientY;
+      const newHeight = snapHeight(drag.startHeight - cursorDy, false, !shiftHeld);
+      const heightDelta = newHeight - drag.startHeight;
+      const newMarginTop = drag.startMarginTop - heightDelta;
+      const newStyle: StyleConfig = {
+        ...drag.startStyle,
+        height: `${newHeight}px`,
+        margin: { ...(drag.startStyle.margin ?? {}), top: newMarginTop },
+      };
+      try {
+        setComponentStyle(node.id, newStyle);
+      } catch {
+        // Apply layer rejected; silent no-op.
+      }
+    }
+
+    function handlePointerMove(ev: PointerEvent | MouseEvent): void {
+      if (!dragRef.current) return;
+      const shiftHeld = "shiftKey" in ev ? ev.shiftKey : false;
+      if (rafRef.current === null) {
+        rafRef.current = window.requestAnimationFrame(() => {
+          rafRef.current = null;
+          computeAndWrite(ev.clientY, shiftHeld);
+        });
+      }
+    }
+
+    function handlePointerUp(ev: PointerEvent | MouseEvent): void {
+      if (!dragRef.current) return;
+      const shiftHeld = "shiftKey" in ev ? ev.shiftKey : false;
+      computeAndWrite(ev.clientY, shiftHeld);
+      cleanup();
+    }
+
+    function handleKeyDown(ev: KeyboardEvent): void {
+      if (ev.key === "Escape") cleanup();
+    }
+
+    function cleanup(): void {
+      window.removeEventListener("pointermove", handlePointerMove as EventListener);
+      window.removeEventListener("pointerup", handlePointerUp as EventListener);
+      window.removeEventListener("keydown", handleKeyDown);
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      dragRef.current = null;
+    }
+
+    window.addEventListener("pointermove", handlePointerMove as EventListener);
+    window.addEventListener("pointerup", handlePointerUp as EventListener);
+    window.addEventListener("keydown", handleKeyDown);
+  }
+
+  if (isSpacer) return null;
+
+  return (
+    <div
+      data-testid={`resize-handle-top-${node.id}`}
+      data-resize-axis="top"
+      onPointerDown={handlePointerDown}
+      style={{
+        position: "fixed",
+        top: rect.top - 4,
         left: rect.left,
         width: rect.width,
         height: 8,
