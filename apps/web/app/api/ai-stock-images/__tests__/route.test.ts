@@ -135,3 +135,156 @@ describe("POST /api/ai-stock-images", () => {
     expect(body.id).toBe(99);
   });
 });
+
+import { DELETE, PATCH } from "@/app/api/ai-stock-images/[id]/route";
+
+// PATCH/DELETE need a richer mock because they do a `.select(...).eq(...).single()`
+// existence check followed by an `.update(...).eq(...).select(...).single()` (PATCH)
+// or `.delete().eq(...)` (DELETE). The thenable builder from Task 13 supports
+// chained methods but the existence-check resolution is via `.single()`, while the
+// terminal `.delete().eq(...)` resolves via `.then` (i.e. it's awaited as the chain
+// itself). Provide a small focused builder that mirrors `mockSupabaseFor`'s shape
+// but lets the test seed both `.single()` and the deletion-promise resolution.
+function mockSupabaseForById(handlers: {
+  existing?: () => Promise<{ data: unknown; error: unknown }>;
+  updateResult?: () => Promise<{ data: unknown; error: unknown }>;
+  deleteResult?: () => Promise<{ data: unknown; error: unknown }>;
+}) {
+  const existingResolver =
+    handlers.existing ?? (() => Promise.resolve({ data: null, error: null }));
+  const updateResolver =
+    handlers.updateResult ?? (() => Promise.resolve({ data: null, error: null }));
+  const deleteResolver =
+    handlers.deleteResult ?? (() => Promise.resolve({ data: null, error: null }));
+
+  // singleSeq toggles between "first single() = existing", "second single() = update result".
+  let singleCallCount = 0;
+  const builder: Record<string, unknown> = {};
+  const chainable = vi.fn().mockReturnValue(builder);
+  builder.select = chainable;
+  builder.update = chainable;
+  builder.delete = chainable;
+  builder.eq = chainable;
+  builder.single = vi.fn().mockImplementation(() => {
+    singleCallCount += 1;
+    return singleCallCount === 1 ? existingResolver() : updateResolver();
+  });
+  // Terminal `await builder` (used by .delete().eq(...)) resolves via deleteResolver.
+  // biome-ignore lint/suspicious/noThenProperty: matches Supabase's real query builder, which is itself thenable
+  builder.then = (onFulfilled: (v: { data: unknown; error: unknown }) => unknown) =>
+    deleteResolver().then(onFulfilled);
+
+  // Storage stub for DELETE — supabase.storage.from(bucket).remove([path])
+  const storageFrom = vi.fn().mockReturnValue({
+    remove: vi.fn().mockResolvedValue({ data: null, error: null }),
+  });
+  return {
+    from: vi.fn(() => builder),
+    storage: { from: storageFrom },
+  };
+}
+
+describe("PATCH /api/ai-stock-images/[id]", () => {
+  it("returns 400 on missing description", async () => {
+    const req = new Request("http://test/api/ai-stock-images/1", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const res = await PATCH(req, { params: Promise.resolve({ id: "1" }) });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 403 when target row has site_id null (global)", async () => {
+    vi.mocked(createServiceSupabaseClient).mockReturnValue(
+      mockSupabaseForById({
+        existing: () =>
+          Promise.resolve({
+            data: { id: 1, site_id: null },
+            error: null,
+          }),
+      }) as unknown as ReturnType<typeof createServiceSupabaseClient>,
+    );
+
+    const req = new Request("http://test/api/ai-stock-images/1", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ description: "new" }),
+    });
+    const res = await PATCH(req, { params: Promise.resolve({ id: "1" }) });
+    expect(res.status).toBe(403);
+  });
+
+  it("updates description and returns the row when target is per-site", async () => {
+    vi.mocked(createServiceSupabaseClient).mockReturnValue(
+      mockSupabaseForById({
+        existing: () =>
+          Promise.resolve({
+            data: { id: 1, site_id: "11111111-1111-4111-a111-111111111111" },
+            error: null,
+          }),
+        updateResult: () =>
+          Promise.resolve({
+            data: {
+              id: 1,
+              site_id: "11111111-1111-4111-a111-111111111111",
+              storage_path: "p",
+              public_url: "http://example.com/x.jpg",
+              category: null,
+              description: "updated description",
+            },
+            error: null,
+          }),
+      }) as unknown as ReturnType<typeof createServiceSupabaseClient>,
+    );
+
+    const req = new Request("http://test/api/ai-stock-images/1", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ description: "updated description" }),
+    });
+    const res = await PATCH(req, { params: Promise.resolve({ id: "1" }) });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { description: string };
+    expect(body.description).toBe("updated description");
+  });
+});
+
+describe("DELETE /api/ai-stock-images/[id]", () => {
+  it("returns 403 when target row is global (site_id null)", async () => {
+    vi.mocked(createServiceSupabaseClient).mockReturnValue(
+      mockSupabaseForById({
+        existing: () =>
+          Promise.resolve({
+            data: { id: 1, site_id: null, storage_path: "p" },
+            error: null,
+          }),
+      }) as unknown as ReturnType<typeof createServiceSupabaseClient>,
+    );
+
+    const req = new Request("http://test/api/ai-stock-images/1", { method: "DELETE" });
+    const res = await DELETE(req, { params: Promise.resolve({ id: "1" }) });
+    expect(res.status).toBe(403);
+  });
+
+  it("deletes the row and returns 204 when target is per-site", async () => {
+    vi.mocked(createServiceSupabaseClient).mockReturnValue(
+      mockSupabaseForById({
+        existing: () =>
+          Promise.resolve({
+            data: {
+              id: 1,
+              site_id: "11111111-1111-4111-a111-111111111111",
+              storage_path: "11111111-1111-4111-a111-111111111111/x.jpg",
+            },
+            error: null,
+          }),
+        deleteResult: () => Promise.resolve({ data: null, error: null }),
+      }) as unknown as ReturnType<typeof createServiceSupabaseClient>,
+    );
+
+    const req = new Request("http://test/api/ai-stock-images/1", { method: "DELETE" });
+    const res = await DELETE(req, { params: Promise.resolve({ id: "1" }) });
+    expect(res.status).toBe(204);
+  });
+});
