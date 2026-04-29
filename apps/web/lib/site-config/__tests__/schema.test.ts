@@ -493,9 +493,7 @@ describe("navLinkSchema (via navBarConfigSchema)", () => {
   }
 
   it("parses a legacy { label, href } link (kind absent → treated as external)", () => {
-    const result = navBarConfigSchema.safeParse(
-      makeNavBar([{ label: "Home", href: "/" }]),
-    );
+    const result = navBarConfigSchema.safeParse(makeNavBar([{ label: "Home", href: "/" }]));
     expect(result.success).toBe(true);
     if (result.success) {
       // kind stays undefined; readers default to 'external' at use site.
@@ -517,9 +515,7 @@ describe("navLinkSchema (via navBarConfigSchema)", () => {
   });
 
   it("rejects kind: 'external' without href", () => {
-    const result = navBarConfigSchema.safeParse(
-      makeNavBar([{ label: "Home", kind: "external" }]),
-    );
+    const result = navBarConfigSchema.safeParse(makeNavBar([{ label: "Home", kind: "external" }]));
     expect(result.success).toBe(false);
   });
 

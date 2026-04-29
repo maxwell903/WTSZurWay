@@ -106,8 +106,10 @@ export function FontSizeInput({ commands }: { commands: ToolbarCommands }) {
       </button>
       {open ? (
         <div
+          // biome-ignore lint/a11y/useSemanticElements: custom dropdown styled for the rich-text toolbar; <select>/<datalist> can't be styled to match
           role="listbox"
           aria-label="Font size presets"
+          tabIndex={-1}
           className="absolute left-0 top-full z-50 mt-1 max-h-64 w-20 overflow-y-auto rounded border border-zinc-700 bg-zinc-900 py-1 shadow-lg"
         >
           {PRESET_SIZES_PX.map((px) => {
@@ -117,6 +119,7 @@ export function FontSizeInput({ commands }: { commands: ToolbarCommands }) {
               <button
                 key={px}
                 type="button"
+                // biome-ignore lint/a11y/useSemanticElements: matches the listbox pattern above; native <option> requires a <select> parent
                 role="option"
                 aria-selected={active}
                 onMouseDown={(e) => e.preventDefault()}

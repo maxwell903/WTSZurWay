@@ -107,8 +107,7 @@ export function EditModeWrapper({
     e.stopPropagation();
     const now = performance.now();
     const last = lastRightClickRef.current;
-    const isDouble =
-      last !== null && last.id === id && now - last.t < DOUBLE_RIGHT_CLICK_MS;
+    const isDouble = last !== null && last.id === id && now - last.t < DOUBLE_RIGHT_CLICK_MS;
     lastRightClickRef.current = { id, t: now };
     onContextMenu?.(id, { isDouble });
   };
@@ -193,8 +192,7 @@ export function EditModeWrapper({
         // Hover ring is driven by React state (not Tailwind ":hover") so JSDOM
         // tests can assert it; see comment on `hovered` above.
         selected && "outline outline-2 outline-blue-500",
-        showBroadcastOutline &&
-          "outline outline-2 outline-dashed outline-orange-400",
+        showBroadcastOutline && "outline outline-2 outline-dashed outline-orange-400",
         !selected && !showBroadcastOutline && hovered && "outline outline-1 outline-blue-300",
         showXrayOutline && "outline outline-1 outline-dashed outline-zinc-400/70",
       )}

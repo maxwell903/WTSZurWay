@@ -23,13 +23,7 @@ import { extractPlainText } from "@/lib/rich-text/extract-plain-text";
 import { synthesizeDoc } from "@/lib/rich-text/synthesize-doc";
 import type { RichTextDoc } from "@/lib/site-config";
 import { EditorContent, useEditor } from "@tiptap/react";
-import {
-  type CSSProperties,
-  type MouseEvent,
-  type PointerEvent,
-  useEffect,
-  useRef,
-} from "react";
+import { type CSSProperties, type MouseEvent, type PointerEvent, useEffect, useRef } from "react";
 
 export type TipTapEditableSlotProps = {
   nodeId: string;

@@ -31,7 +31,10 @@ function headingNode(id: string, text: string): ComponentNode {
   };
 }
 
-function makeConfig(children: ComponentNode[], canvas?: SiteConfig["global"]["canvas"]): SiteConfig {
+function makeConfig(
+  children: ComponentNode[],
+  canvas?: SiteConfig["global"]["canvas"],
+): SiteConfig {
   return {
     meta: { siteName: "T", siteSlug: "t" },
     brand: { palette: "ocean", fontFamily: "Inter" },
@@ -67,11 +70,7 @@ describe("Renderer canvas wrapping", () => {
   });
 
   it("contains the entire page tree (root Section, NavBar, Footer) inside [data-canvas] — DOM is unchanged, no partitioning", () => {
-    const config = makeConfig([
-      navBarNode("nav"),
-      headingNode("h", "Body"),
-      footerNode("foot"),
-    ]);
+    const config = makeConfig([navBarNode("nav"), headingNode("h", "Body"), footerNode("foot")]);
     const { container } = render(<Renderer config={config} page="home" mode="preview" />);
     const canvas = container.querySelector("[data-canvas]");
     expect(canvas).not.toBeNull();
@@ -86,11 +85,7 @@ describe("Renderer canvas wrapping", () => {
   });
 
   it("preserves EditModeWrapper around the root Section in edit mode", () => {
-    const config = makeConfig([
-      navBarNode("nav"),
-      headingNode("h", "Body"),
-      footerNode("foot"),
-    ]);
+    const config = makeConfig([navBarNode("nav"), headingNode("h", "Body"), footerNode("foot")]);
     const { container } = render(<Renderer config={config} page="home" mode="edit" />);
     // The root + NavBar + Heading + Footer all get [data-edit-id] wrappers.
     expect(container.querySelector("[data-edit-id='cmp_root']")).not.toBeNull();
@@ -99,10 +94,11 @@ describe("Renderer canvas wrapping", () => {
   });
 
   it("applies user canvas overrides (maxWidth, sidePadding, borderRadius)", () => {
-    const config = makeConfig(
-      [headingNode("h", "Body")],
-      { maxWidth: 800, sidePadding: 40, borderRadius: 12 },
-    );
+    const config = makeConfig([headingNode("h", "Body")], {
+      maxWidth: 800,
+      sidePadding: 40,
+      borderRadius: 12,
+    });
     const { container } = render(<Renderer config={config} page="home" mode="preview" />);
     const canvas = container.querySelector("[data-canvas]") as HTMLElement | null;
     expect(canvas).not.toBeNull();

@@ -195,7 +195,6 @@ function TextPanel({
   );
 }
 
-
 function splitContainerStyle(base: CSSProperties): CSSProperties {
   return {
     ...base,

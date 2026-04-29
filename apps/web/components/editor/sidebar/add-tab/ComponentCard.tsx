@@ -1,12 +1,7 @@
 "use client";
 
 import { PaletteDraggable } from "@/components/editor/canvas/dnd/PaletteDraggable";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useEditorStore } from "@/lib/editor-state";
 import { cn } from "@/lib/utils";
 import type { ComponentCatalogEntry } from "./component-catalog";

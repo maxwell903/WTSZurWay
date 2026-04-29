@@ -35,9 +35,7 @@ export function CanvasSettings() {
           Background
         </Label>
         <div className="space-y-1">
-          <Label className="text-[11px] text-zinc-400">
-            Page background (behind canvas)
-          </Label>
+          <Label className="text-[11px] text-zinc-400">Page background (behind canvas)</Label>
           <BackgroundInput
             id="canvas-page-bg"
             testId="canvas-page-bg"

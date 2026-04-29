@@ -62,11 +62,7 @@ describe("synthesizeDoc", () => {
     it("preserves hardBreaks at the top level", () => {
       expect(synthesizeDoc("a\nb", "inline")).toEqual({
         type: "doc",
-        content: [
-          { type: "text", text: "a" },
-          { type: "hardBreak" },
-          { type: "text", text: "b" },
-        ],
+        content: [{ type: "text", text: "a" }, { type: "hardBreak" }, { type: "text", text: "b" }],
       });
     });
   });

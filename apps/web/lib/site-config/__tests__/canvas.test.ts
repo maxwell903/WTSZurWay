@@ -84,7 +84,6 @@ describe("siteConfigSchema canvas", () => {
     const cfg = baseConfig();
     cfg.global = {
       ...cfg.global,
-      // biome-ignore lint/suspicious/noExplicitAny: test fixture only
       canvas: {
         pageBackground: { kind: "color", value: "#eef" },
         canvasBackground: { kind: "color", value: "#fff" },

@@ -24,10 +24,7 @@ export type PreviewClientProps = {
 export function PreviewClient({ config, initialPageSlug }: PreviewClientProps) {
   const [pageSlug, setPageSlug] = useState(initialPageSlug);
   const knownPageSlugs = useMemo(
-    () =>
-      new Set(
-        config.pages.filter((p) => p.kind === "static").map((p) => p.slug),
-      ),
+    () => new Set(config.pages.filter((p) => p.kind === "static").map((p) => p.slug)),
     [config.pages],
   );
   const deps = {

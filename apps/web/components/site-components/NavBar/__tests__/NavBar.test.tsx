@@ -138,7 +138,10 @@ describe("<NavBar> kind: 'page' links", () => {
   it("does NOT mark legacy { label, href } links with data-internal-page-slug", () => {
     const config = makeConfigWithPages([{ slug: "home", name: "Home" }]);
     const { container } = renderWithConfig(
-      <NavBar node={makeNode({ links: [{ label: "External", href: "https://x.com" }] })} cssStyle={{}} />,
+      <NavBar
+        node={makeNode({ links: [{ label: "External", href: "https://x.com" }] })}
+        cssStyle={{}}
+      />,
       config,
     );
     const a = container.querySelector("nav[data-component-type='NavBar'] a") as HTMLElement | null;
