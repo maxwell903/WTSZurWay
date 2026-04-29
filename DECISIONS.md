@@ -1894,3 +1894,11 @@ After running `pnpm install`, the full vitest suite now passes (1576 tests pass,
 - `apps/web/components/editor/edit-panels/controls/__tests__/SlideshowImagesEditor.test.tsx`
 
 **Cross-sprint impact:** None. Future callers of `RichTextMirror` may optionally use the new `placeholder` prop.
+
+## 2026-04-29 — Task 13 (AI Stock Images route): test mock made thenable; POST test URL + UUID fixed; insert payload cast as never until db:types regenerates
+
+The plan-supplied test mock for `/api/ai-stock-images` returned a Promise from the first `.order()` call, breaking the route's `.order().order()` chain. Approved fix: make the mock builder thenable (single `.then` resolver, all chain methods return `this`), matching how the real Supabase query builder works.
+
+Two test-fixture corrections in the same scope: `public_url: "u"` (fails `z.string().url()`) was changed to `"http://example.com/x.jpg"` in the success-path POST test, and the placeholder UUID `11111111-1111-1111-1111-111111111111` was changed to a valid v4 UUID `11111111-1111-4111-a111-111111111111` (zod v4's strict UUID rejects the all-1s form).
+
+Route-side: `.insert({...})` could not typecheck because `apps/web/types/database.ts` doesn't yet include `ai_stock_images` (user runs `pnpm db:types` at desktop). Added `as never` cast on the insert payload with an inline comment explaining the cast is temporary and should be removed after db:types regenerates. Behavior unchanged. User's approval: "approving a minimal cast — the only viable path on mobile."
