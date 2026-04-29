@@ -5,7 +5,6 @@ import type { CSSProperties } from "react";
 import { CountdownTimer } from "../effects/CountdownTimer";
 import { CursorSpotlight } from "../effects/CursorSpotlight";
 import { Particles } from "../effects/Particles";
-import { RotatingHeading } from "../effects/RotatingHeading";
 import { LinearOverlay } from "../overlays/LinearOverlay";
 import { RadialOverlay } from "../overlays/RadialOverlay";
 import { SolidOverlay } from "../overlays/SolidOverlay";
@@ -37,16 +36,6 @@ export function FullBleedLayout({
     <CursorSpotlight enabled={data.cursorSpotlight} prefersReducedMotion={prefersReducedMotion} />
   );
   const particles = <Particles kind={data.particles} prefersReducedMotion={prefersReducedMotion} />;
-  const heading = (
-    <h1 style={{ fontSize: "40px", fontWeight: 700, margin: 0 }}>
-      <RotatingHeading
-        heading={data.heading}
-        rotatingWords={data.rotatingWords}
-        prefersReducedMotion={prefersReducedMotion}
-      />
-    </h1>
-  );
-
   // Corner-anchored text panel with a darker backdrop so text stays
   // legible even on busy media. Bottom-left chosen as the default; future
   // sprints can expose this as a prop.
@@ -81,7 +70,7 @@ export function FullBleedLayout({
           data={data}
           contentStyle={cornerPanelStyle}
           ctaStyle={ctaStyle}
-          headingSlot={heading}
+          prefersReducedMotion={prefersReducedMotion}
         />
         <CountdownTimer countdown={data.countdown} />
       </section>
@@ -96,7 +85,6 @@ export function FullBleedLayout({
       cornerPanelStyle={cornerPanelStyle}
       ctaStyle={ctaStyle}
       prefersReducedMotion={prefersReducedMotion}
-      heading={heading}
       overlay={overlay}
       spotlight={spotlight}
       particles={particles}
@@ -111,13 +99,11 @@ function FullBleedSlideshow({
   cornerPanelStyle,
   ctaStyle,
   prefersReducedMotion,
-  heading,
   overlay,
   spotlight,
   particles,
 }: Omit<FullBleedLayoutProps, "contentStyle"> & {
   cornerPanelStyle: CSSProperties;
-  heading: React.ReactNode;
   overlay: React.ReactNode;
   spotlight: React.ReactNode;
   particles: React.ReactNode;
@@ -151,9 +137,10 @@ function FullBleedSlideshow({
         node={node}
         data={data}
         slide={data.images[index]}
+        slideIndex={index}
         contentStyle={cornerPanelStyle}
         ctaStyle={ctaStyle}
-        headingSlot={heading}
+        prefersReducedMotion={prefersReducedMotion}
       />
       <CountdownTimer countdown={data.countdown} />
       <SlideshowControls

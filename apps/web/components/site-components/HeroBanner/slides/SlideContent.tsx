@@ -1,8 +1,11 @@
 "use client";
 
 import { EditableTextSlot } from "@/components/renderer/EditableTextSlot";
+import { synthesizeDoc } from "@/lib/rich-text/synthesize-doc";
+import type { RichTextDoc } from "@/lib/site-config";
 import type { ComponentNode } from "@/types/site-config";
 import type { CSSProperties, ReactNode } from "react";
+import { RotatingHeading } from "../effects/RotatingHeading";
 import type { HeroBannerData, Slide } from "../schema";
 
 export type SlideContentProps = {
@@ -11,11 +14,14 @@ export type SlideContentProps = {
   // Optional active slide. When provided, per-slide overrides apply with
   // banner-level fallback per the spec's Feature 1 fallback rule.
   slide?: Slide;
+  // Index of `slide` within `data.images`. Required when `slide` is given —
+  // the EditableTextSlot deep-patch builders need it to write back to the
+  // correct array element. (Used in Section E; declared now for the layout
+  // call sites to pass it.)
+  slideIndex?: number;
   contentStyle: CSSProperties;
   ctaStyle: CSSProperties;
-  // The heading slot is rendered by the parent so RotatingHeading can
-  // decorate it; if not supplied SlideContent renders the literal heading.
-  headingSlot?: ReactNode;
+  prefersReducedMotion: boolean;
 };
 
 // Per-slide overrides take precedence; when missing, fall back to the
@@ -27,13 +33,47 @@ function pickString(...values: (string | undefined)[]): string {
   return "";
 }
 
+// Heading render decision (Section D of the design):
+//  1. Rich content path — `richHeading` exists AND differs from
+//     synthesizeDoc(plain, "block"). Render TipTap. No rotation.
+//  2. Rotator path — no rich formatting AND plain string contains
+//     "{rotator}" AND rotatingWords is non-empty. Render RotatingHeading
+//     read-only.
+//  3. Plain TipTap path — default. Render TipTap, no rotation.
+type HeadingDecision =
+  | { kind: "rich" }
+  | { kind: "rotator"; plain: string; rotatingWords: readonly string[] }
+  | { kind: "plain" };
+
+function decideHeadingRender(
+  plain: string,
+  rich: RichTextDoc | undefined,
+  rotatingWords: readonly string[] | undefined,
+): HeadingDecision {
+  if (rich !== undefined) {
+    const synthesized = synthesizeDoc(plain, "block");
+    if (JSON.stringify(rich) !== JSON.stringify(synthesized)) {
+      return { kind: "rich" };
+    }
+  }
+  if (
+    plain.includes("{rotator}") &&
+    rotatingWords !== undefined &&
+    rotatingWords.length > 0
+  ) {
+    return { kind: "rotator", plain, rotatingWords };
+  }
+  return { kind: "plain" };
+}
+
 export function SlideContent({
   node,
   data,
   slide,
+  slideIndex,
   contentStyle,
   ctaStyle,
-  headingSlot,
+  prefersReducedMotion,
 }: SlideContentProps) {
   const subheading = pickString(slide?.subheading, data.subheading);
   const ctaLabel = pickString(slide?.ctaLabel, data.ctaLabel);
@@ -41,7 +81,6 @@ export function SlideContent({
   const secondaryCtaLabel = pickString(slide?.secondaryCtaLabel, data.secondaryCtaLabel);
   const secondaryCtaHref = pickString(slide?.secondaryCtaHref, data.secondaryCtaHref);
 
-  // Per-slide alignment overrides the layout's default alignment when set.
   const align = slide?.align;
   const verticalAlign = slide?.verticalAlign;
   const composedContentStyle: CSSProperties = {
@@ -50,33 +89,13 @@ export function SlideContent({
     ...(verticalAlign ? { justifyContent: vAlignToFlex(verticalAlign) } : {}),
   };
 
-  // When a per-slide override is in play we render plain text instead of
-  // EditableTextSlot — EditableTextSlot only knows how to write back to
-  // the banner-level `propKey`. The slide-level fields are edited from
-  // the per-slide editor in Sprint 8's SlideshowImagesEditor.
-  //
-  // Precedence: slide.heading wins over the layout's `headingSlot` (which
-  // wraps banner-level heading with RotatingHeading effect). This matches
-  // the spec's fallback rule: per-slide → banner-level. Rotating words
-  // therefore only animate the banner-level heading; per-slide headings
-  // render verbatim.
-  const headingNode = slide?.heading ? (
-    <h1 style={{ fontSize: "40px", fontWeight: 700, margin: 0 }}>{slide.heading}</h1>
-  ) : (
-    (headingSlot ?? (
-      <EditableTextSlot
-        nodeId={node.id}
-        propKey="heading"
-        richKey="richHeading"
-        doc={data.richHeading}
-        fallback={data.heading}
-        fullProps={node.props}
-        profile="block"
-        as="h1"
-        style={{ fontSize: "40px", fontWeight: 700, margin: 0 }}
-      />
-    ))
-  );
+  const headingNode = renderHeading({
+    node,
+    data,
+    slide,
+    slideIndex,
+    prefersReducedMotion,
+  });
 
   const subheadingNode = subheading ? (
     slide?.subheading ? (
@@ -135,6 +154,62 @@ export function SlideContent({
         </div>
       )}
     </div>
+  );
+}
+
+function renderHeading({
+  node,
+  data,
+  slide,
+  slideIndex: _slideIndex,
+  prefersReducedMotion,
+}: {
+  node: ComponentNode;
+  data: HeroBannerData;
+  slide: Slide | undefined;
+  slideIndex: number | undefined;
+  prefersReducedMotion: boolean;
+}): ReactNode {
+  // Per-slide override path is added in Section E (Task E.2). For now, when
+  // a slide.heading override is set we render plain text (existing behavior)
+  // and leave the banner-level heading alone.
+  if (slide?.heading) {
+    return (
+      <h1 style={{ fontSize: "40px", fontWeight: 700, margin: 0 }}>{slide.heading}</h1>
+    );
+  }
+
+  const decision = decideHeadingRender(
+    data.heading,
+    data.richHeading,
+    data.rotatingWords,
+  );
+  const baseStyle: CSSProperties = { fontSize: "40px", fontWeight: 700, margin: 0 };
+
+  if (decision.kind === "rotator") {
+    return (
+      <h1 style={baseStyle}>
+        <RotatingHeading
+          heading={decision.plain}
+          rotatingWords={[...decision.rotatingWords]}
+          prefersReducedMotion={prefersReducedMotion}
+        />
+      </h1>
+    );
+  }
+
+  return (
+    <EditableTextSlot
+      nodeId={node.id}
+      propKey="heading"
+      richKey="richHeading"
+      doc={data.richHeading}
+      fallback={data.heading}
+      fullProps={node.props}
+      profile="block"
+      as="h1"
+      style={baseStyle}
+    />
   );
 }
 

@@ -5,7 +5,6 @@ import { type CSSProperties, useRef } from "react";
 import { CountdownTimer } from "../effects/CountdownTimer";
 import { CursorSpotlight } from "../effects/CursorSpotlight";
 import { Particles } from "../effects/Particles";
-import { RotatingHeading } from "../effects/RotatingHeading";
 import { LinearOverlay } from "../overlays/LinearOverlay";
 import { RadialOverlay } from "../overlays/RadialOverlay";
 import { SolidOverlay } from "../overlays/SolidOverlay";
@@ -38,16 +37,6 @@ export function CenteredLayout({
     <CursorSpotlight enabled={data.cursorSpotlight} prefersReducedMotion={prefersReducedMotion} />
   );
   const particles = <Particles kind={data.particles} prefersReducedMotion={prefersReducedMotion} />;
-  const heading = (
-    <h1 style={{ fontSize: "40px", fontWeight: 700, margin: 0 }}>
-      <RotatingHeading
-        heading={data.heading}
-        rotatingWords={data.rotatingWords}
-        prefersReducedMotion={prefersReducedMotion}
-      />
-    </h1>
-  );
-
   if (data.images.length === 0) {
     return (
       <section
@@ -64,7 +53,7 @@ export function CenteredLayout({
           data={data}
           contentStyle={contentStyle}
           ctaStyle={ctaStyle}
-          headingSlot={heading}
+          prefersReducedMotion={prefersReducedMotion}
         />
         <CountdownTimer countdown={data.countdown} />
         {data.logoStrip && data.logoStrip.length > 0 ? (
@@ -82,7 +71,6 @@ export function CenteredLayout({
       contentStyle={contentStyle}
       ctaStyle={ctaStyle}
       prefersReducedMotion={prefersReducedMotion}
-      heading={heading}
       overlay={overlay}
       spotlight={spotlight}
       particles={particles}
@@ -97,12 +85,10 @@ function CenteredSlideshow({
   contentStyle,
   ctaStyle,
   prefersReducedMotion,
-  heading,
   overlay,
   spotlight,
   particles,
 }: CenteredLayoutProps & {
-  heading: React.ReactNode;
   overlay: React.ReactNode;
   spotlight: React.ReactNode;
   particles: React.ReactNode;
@@ -139,9 +125,10 @@ function CenteredSlideshow({
         node={node}
         data={data}
         slide={data.images[index]}
+        slideIndex={index}
         contentStyle={contentStyle}
         ctaStyle={ctaStyle}
-        headingSlot={heading}
+        prefersReducedMotion={prefersReducedMotion}
       />
       <CountdownTimer countdown={data.countdown} />
       <SlideshowControls

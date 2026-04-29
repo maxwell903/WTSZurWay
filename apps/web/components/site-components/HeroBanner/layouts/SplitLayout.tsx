@@ -1,11 +1,10 @@
 "use client";
 
 import type { ComponentNode } from "@/types/site-config";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties } from "react";
 import { CountdownTimer } from "../effects/CountdownTimer";
 import { CursorSpotlight } from "../effects/CursorSpotlight";
 import { Particles } from "../effects/Particles";
-import { RotatingHeading } from "../effects/RotatingHeading";
 import { LinearOverlay } from "../overlays/LinearOverlay";
 import { RadialOverlay } from "../overlays/RadialOverlay";
 import { SolidOverlay } from "../overlays/SolidOverlay";
@@ -46,7 +45,6 @@ function SplitStatic({
   const layoutName: HeroBannerData["layout"] = side === "left" ? "split-left" : "split-right";
   const textOnLeft = side === "left";
   const overlay = data.overlay ? <OverlayLayer overlay={data.overlay} /> : null;
-  const heading = headingNode(data, prefersReducedMotion);
 
   return (
     <section
@@ -61,10 +59,11 @@ function SplitStatic({
         node={node}
         data={data}
         slide={undefined}
+        slideIndex={undefined}
         contentStyle={contentStyle}
         ctaStyle={ctaStyle}
         textOnLeft={textOnLeft}
-        heading={heading}
+        prefersReducedMotion={prefersReducedMotion}
       />
       <div
         data-hero-split-pane="media"
@@ -99,7 +98,6 @@ function SplitWithSlideshow({
     node.id,
   );
   const overlay = data.overlay ? <OverlayLayer overlay={data.overlay} /> : null;
-  const heading = headingNode(data, prefersReducedMotion);
 
   return (
     <section
@@ -114,10 +112,11 @@ function SplitWithSlideshow({
         node={node}
         data={data}
         slide={data.images[index]}
+        slideIndex={index}
         contentStyle={contentStyle}
         ctaStyle={ctaStyle}
         textOnLeft={textOnLeft}
-        heading={heading}
+        prefersReducedMotion={prefersReducedMotion}
       />
       <div
         data-hero-split-pane="media"
@@ -152,18 +151,20 @@ function TextPanel({
   node,
   data,
   slide,
+  slideIndex,
   contentStyle,
   ctaStyle,
   textOnLeft,
-  heading,
+  prefersReducedMotion,
 }: {
   node: ComponentNode;
   data: HeroBannerData;
   slide: HeroBannerData["images"][number] | undefined;
+  slideIndex: number | undefined;
   contentStyle: CSSProperties;
   ctaStyle: CSSProperties;
   textOnLeft: boolean;
-  heading: ReactNode;
+  prefersReducedMotion: boolean;
 }) {
   const textPanelContentStyle: CSSProperties = {
     ...contentStyle,
@@ -184,26 +185,16 @@ function TextPanel({
         node={node}
         data={data}
         slide={slide}
+        slideIndex={slideIndex}
         contentStyle={textPanelContentStyle}
         ctaStyle={{ ...ctaStyle, background: "#0f3a5f", color: "#ffffff" }}
-        headingSlot={heading}
+        prefersReducedMotion={prefersReducedMotion}
       />
       <CountdownTimer countdown={data.countdown} />
     </div>
   );
 }
 
-function headingNode(data: HeroBannerData, prefersReducedMotion: boolean): ReactNode {
-  return (
-    <h1 style={{ fontSize: "40px", fontWeight: 700, margin: 0 }}>
-      <RotatingHeading
-        heading={data.heading}
-        rotatingWords={data.rotatingWords}
-        prefersReducedMotion={prefersReducedMotion}
-      />
-    </h1>
-  );
-}
 
 function splitContainerStyle(base: CSSProperties): CSSProperties {
   return {
