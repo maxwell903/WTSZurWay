@@ -128,10 +128,22 @@ export function TipTapEditableSlot({
   // is forbidden by the HTML content model and triggers a hydration error
   // (the browser auto-closes the outer tag). The semantic element is still
   // produced inside the editor by the active extension schema.
+  // Active-field indicator: when this slot is mounted (i.e., the user is
+  // actively editing here), draw a subtle 1px white outline + a slight
+  // translucent white background. Visible from the FIRST right-click
+  // because TipTapEditableSlot mounts in the same render tick the
+  // textEditingScope is set.
+  const indicatorStyle: CSSProperties = {
+    outline: "1px solid rgba(255, 255, 255, 0.5)",
+    outlineOffset: "2px",
+    borderRadius: "4px",
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+  };
+  const composedStyle: CSSProperties = { ...indicatorStyle, ...(style ?? {}) };
   return (
     <div
       {...(passthroughAttrs ?? {})}
-      style={style}
+      style={composedStyle}
       className={className}
       onPointerDown={swallowPointer}
       onMouseDown={swallowPointer}
