@@ -48,6 +48,7 @@ export function Canvas() {
   const selectedComponentId = useEditorStore((s) => s.selectedComponentId);
   const textEditingScope = useEditorStore((s) => s.textEditingScope);
   const selectComponent = useEditorStore((s) => s.selectComponent);
+  const deselectAll = useEditorStore((s) => s.deselectAll);
   const enterElementEditMode = useEditorStore((s) => s.enterElementEditMode);
   const enterTextEditing = useEditorStore((s) => s.enterTextEditing);
   const enterBroadcastTextEditing = useEditorStore((s) => s.enterBroadcastTextEditing);
@@ -112,7 +113,8 @@ export function Canvas() {
   return (
     <main
       data-testid="editor-canvas"
-      className="relative flex-1 overflow-y-auto bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.04)_1px,transparent_0)] [background-size:16px_16px]"
+      data-canvas-bg-surface
+      className="relative flex-1 overflow-y-auto bg-[radial-gradient(circle_at_3px_3px,rgba(255,255,255,0.04)_3px,transparent_0)] [background-size:16px_16px]"
       onClick={(e) => {
         const outcome = handlePreviewLinkClick(
           e.target,
@@ -126,20 +128,25 @@ export function Canvas() {
           knownPageSlugs,
         );
         if (outcome === "internal" || outcome === "external") return;
-        if (e.target === e.currentTarget) {
-          selectComponent(null);
+        const target = e.target as HTMLElement;
+        if (target.matches?.("[data-canvas-bg-surface]")) {
+          deselectAll();
         }
       }}
       onKeyDown={(e) => {
-        if (e.target !== e.currentTarget) return;
+        const target = e.target as HTMLElement;
+        if (!target.matches?.("[data-canvas-bg-surface]")) return;
         if (e.key === " " || e.key === "Enter") {
           e.preventDefault();
-          selectComponent(null);
+          deselectAll();
         }
       }}
     >
       {!previewMode ? <CanvasDropOverlay /> : null}
-      <div className="mx-auto my-6 w-full max-w-[1280px] rounded-lg border border-zinc-800 bg-white text-zinc-900 shadow-2xl">
+      <div
+        data-canvas-bg-surface
+        className="mx-auto my-6 w-full max-w-[1280px] rounded-lg border border-zinc-800 bg-white text-zinc-900 shadow-2xl"
+      >
         <Renderer
           config={draftConfig}
           page={currentPage.slug}

@@ -66,6 +66,38 @@ describe("editor store", () => {
     expect(useEditorStore.getState().selectedComponentId).toBeNull();
   });
 
+  it("deselectAll clears every engaged piece of editor state in one transition", () => {
+    useEditorStore.getState().hydrate({
+      siteId: "s",
+      siteSlug: "x",
+      workingVersionId: "v",
+      initialConfig: makeFixtureConfig(),
+    });
+    // Drive the store into a fully-engaged state: selected + hovered +
+    // element-edit panel + broadcast text-editing scope.
+    useEditorStore.getState().enterElementEditMode("cmp_h1");
+    useEditorStore.getState().setElementEditTab("style");
+    useEditorStore.getState().setHoveredComponent("cmp_root");
+    useEditorStore.getState().enterBroadcastTextEditing("cmp_root", ["cmp_h1"]);
+    useEditorStore.getState().deselectAll();
+    const s = useEditorStore.getState();
+    expect(s.selectedComponentId).toBeNull();
+    expect(s.hoveredComponentId).toBeNull();
+    expect(s.textEditingScope).toBeNull();
+    expect(s.leftSidebarMode).toBe("primary");
+    expect(s.elementEditTab).toBe("content");
+  });
+
+  it("deselectAll on a clean state leaves the cleared fields unchanged", () => {
+    useEditorStore.getState().deselectAll();
+    const s = useEditorStore.getState();
+    expect(s.selectedComponentId).toBeNull();
+    expect(s.hoveredComponentId).toBeNull();
+    expect(s.textEditingScope).toBeNull();
+    expect(s.leftSidebarMode).toBe("primary");
+    expect(s.elementEditTab).toBe("content");
+  });
+
   it("setLeftSidebarTab persists the active tab in the store", () => {
     useEditorStore.getState().setLeftSidebarTab("site");
     expect(useEditorStore.getState().leftSidebarTab).toBe("site");

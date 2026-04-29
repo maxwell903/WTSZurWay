@@ -80,8 +80,8 @@ export function Renderer({
   };
 
   const wrapped = (
-    <div style={pageStyle}>
-      <div data-canvas style={canvasStyle}>
+    <div data-canvas-bg-surface style={pageStyle}>
+      <div data-canvas data-canvas-bg-surface style={canvasStyle}>
         {tree}
       </div>
     </div>

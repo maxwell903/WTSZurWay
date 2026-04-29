@@ -62,14 +62,53 @@ describe("<Canvas>", () => {
     expect(useEditorStore.getState().selectedComponentId).toBeNull();
   });
 
-  it("clicking the canvas background deselects", () => {
+  it("clicking the dotted canvas main deselects everything", () => {
     const { getByTestId } = render(<Canvas />);
     act(() => {
-      useEditorStore.getState().selectComponent("cmp_h1");
+      useEditorStore.getState().enterElementEditMode("cmp_h1");
     });
     expect(useEditorStore.getState().selectedComponentId).toBe("cmp_h1");
+    expect(useEditorStore.getState().leftSidebarMode).toBe("element-edit");
     fireEvent.click(getByTestId("editor-canvas"));
+    const s = useEditorStore.getState();
+    expect(s.selectedComponentId).toBeNull();
+    expect(s.leftSidebarMode).toBe("primary");
+  });
+
+  it("clicking a Renderer page-background surface deselects everything", () => {
+    const { container } = render(<Canvas />);
+    act(() => {
+      useEditorStore.getState().enterElementEditMode("cmp_h1");
+    });
+    // The Renderer's data-canvas wrapper carries the marker. It is the
+    // innermost background surface and is reachable by id.
+    const dataCanvas = container.querySelector("[data-canvas][data-canvas-bg-surface]");
+    expect(dataCanvas).not.toBeNull();
+    fireEvent.click(dataCanvas as Element);
     expect(useEditorStore.getState().selectedComponentId).toBeNull();
+    expect(useEditorStore.getState().leftSidebarMode).toBe("primary");
+  });
+
+  it("clicking the canvas background exits broadcast text-editing", () => {
+    const { getByTestId } = render(<Canvas />);
+    act(() => {
+      useEditorStore.getState().enterBroadcastTextEditing("cmp_root", ["cmp_h1"]);
+    });
+    expect(useEditorStore.getState().textEditingScope?.mode).toBe("broadcast");
+    fireEvent.click(getByTestId("editor-canvas"));
+    expect(useEditorStore.getState().textEditingScope).toBeNull();
+  });
+
+  it("clicking on a component does not deselect", () => {
+    const { container } = render(<Canvas />);
+    act(() => {
+      useEditorStore.getState().enterElementEditMode("cmp_h1");
+    });
+    const heading = container.querySelector('[data-edit-id="cmp_h1"]');
+    expect(heading).not.toBeNull();
+    fireEvent.click(heading as Element);
+    // Selection must persist — only direct clicks on a marked surface clear it.
+    expect(useEditorStore.getState().selectedComponentId).toBe("cmp_h1");
   });
 
   it("hides the selection breadcrumb in preview mode", () => {

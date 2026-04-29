@@ -86,6 +86,7 @@ export type EditorState = {
 export type EditorActions = {
   hydrate: (input: EditorHydrateInput) => void;
   selectComponent: (id: ComponentId | null) => void;
+  deselectAll: () => void;
   setHoveredComponent: (id: ComponentId | null) => void;
   setCurrentPageSlug: (slug: string) => void;
   setPreviewMode: (preview: boolean) => void;

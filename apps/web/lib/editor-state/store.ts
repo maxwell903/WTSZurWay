@@ -93,6 +93,14 @@ const creator: StateCreator<EditorStore> = (set) => ({
     }),
 
   selectComponent: (id) => set({ selectedComponentId: id }),
+  deselectAll: () =>
+    set({
+      selectedComponentId: null,
+      hoveredComponentId: null,
+      textEditingScope: null,
+      leftSidebarMode: "primary",
+      elementEditTab: "content",
+    }),
   setHoveredComponent: (id) => set({ hoveredComponentId: id }),
   setCurrentPageSlug: (slug) =>
     set({
