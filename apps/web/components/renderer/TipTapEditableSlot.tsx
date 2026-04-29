@@ -25,7 +25,6 @@ import type { RichTextDoc } from "@/lib/site-config";
 import { EditorContent, useEditor } from "@tiptap/react";
 import {
   type CSSProperties,
-  type ElementType,
   type MouseEvent,
   type PointerEvent,
   useEffect,
@@ -44,7 +43,6 @@ export type TipTapEditableSlotProps = {
   doc: RichTextDoc | undefined;
   fallback: string;
   profile: RichTextProfile;
-  as?: ElementType;
   style?: CSSProperties;
   className?: string;
   passthroughAttrs?: Record<string, unknown>;
@@ -65,7 +63,6 @@ export function TipTapEditableSlot({
   doc,
   fallback,
   profile,
-  as,
   style,
   className,
   passthroughAttrs,
@@ -124,9 +121,15 @@ export function TipTapEditableSlot({
     e.stopPropagation();
   };
 
-  const Tag = (as ?? "div") as ElementType;
+  // The wrapper is always a <div>, even when the visitor render uses a
+  // phrasing-only tag (Paragraph → <p>, Heading → <h*>, Button label →
+  // <span>, etc.). TipTap's <EditorContent> emits a <div class="ProseMirror">
+  // for the ProseMirror view; nesting that inside <p>/<h*>/<span>/<button>
+  // is forbidden by the HTML content model and triggers a hydration error
+  // (the browser auto-closes the outer tag). The semantic element is still
+  // produced inside the editor by the active extension schema.
   return (
-    <Tag
+    <div
       {...(passthroughAttrs ?? {})}
       style={style}
       className={className}
@@ -134,6 +137,6 @@ export function TipTapEditableSlot({
       onMouseDown={swallowPointer}
     >
       <EditorContent editor={editor} />
-    </Tag>
+    </div>
   );
 }

@@ -133,7 +133,6 @@ export function EditableTextSlot({
       fallback={fallback}
       profile={profile}
       fullProps={fullProps}
-      as={as}
       style={style}
       className={className}
       passthroughAttrs={editAwareAttrs}

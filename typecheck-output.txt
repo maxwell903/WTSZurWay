@@ -1,0 +1,14 @@
+
+> orions-belt@0.0.0 typecheck C:\Users\maxwa\WTSZurWay
+> pnpm --filter web typecheck
+
+
+> web@0.0.0 typecheck C:\Users\maxwa\WTSZurWay\apps\web
+> tsc --noEmit
+
+lib/editor-state/store.ts(52,53): error TS2322: Type '{ siteId: string; siteSlug: string; workingVersionId: string; draftConfig: { meta: { siteName: string; siteSlug: string; description?: string | undefined; favicon?: string | undefined; }; brand: { ...; }; global: { ...; }; pages: { ...; }[]; forms: { ...; }[]; }; ... 55 more ...; exitTextEditing: () => void; }' is not assignable to type 'EditorStore'.
+  Property 'slideshowPaused' is missing in type '{ siteId: string; siteSlug: string; workingVersionId: string; draftConfig: { meta: { siteName: string; siteSlug: string; description?: string | undefined; favicon?: string | undefined; }; brand: { ...; }; global: { ...; }; pages: { ...; }[]; forms: { ...; }[]; }; ... 55 more ...; exitTextEditing: () => void; }' but required in type 'EditorState'.
+C:\Users\maxwa\WTSZurWay\apps\web:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  web@0.0.0 typecheck: `tsc --noEmit`
+Exit status 2
+ ELIFECYCLE  Command failed with exit code 2.
