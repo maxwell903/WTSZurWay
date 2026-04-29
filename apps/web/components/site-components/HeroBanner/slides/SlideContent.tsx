@@ -66,6 +66,23 @@ function decideHeadingRender(
   return { kind: "plain" };
 }
 
+// Builds a deep-patch function for a single slide field. The patch must
+// include the entire `images` array so siblings are not clobbered.
+function makeSlideFieldPatcher(
+  data: HeroBannerData,
+  slideIndex: number,
+  plainKey: keyof Slide,
+  richKey: string,
+): (json: RichTextDoc, plain: string) => Record<string, unknown> {
+  return (json, plain) => {
+    const next = data.images.slice();
+    const current = next[slideIndex];
+    if (!current) return {};
+    next[slideIndex] = { ...current, [plainKey]: plain, [richKey]: json };
+    return { images: next };
+  };
+}
+
 export function SlideContent({
   node,
   data,
@@ -75,7 +92,6 @@ export function SlideContent({
   ctaStyle,
   prefersReducedMotion,
 }: SlideContentProps) {
-  const subheading = pickString(slide?.subheading, data.subheading);
   const ctaLabel = pickString(slide?.ctaLabel, data.ctaLabel);
   const ctaHref = pickString(slide?.ctaHref, data.ctaHref);
   const secondaryCtaLabel = pickString(slide?.secondaryCtaLabel, data.secondaryCtaLabel);
@@ -97,23 +113,7 @@ export function SlideContent({
     prefersReducedMotion,
   });
 
-  const subheadingNode = subheading ? (
-    slide?.subheading ? (
-      <p style={{ fontSize: "18px", margin: 0, maxWidth: "640px" }}>{slide.subheading}</p>
-    ) : (
-      <EditableTextSlot
-        nodeId={node.id}
-        propKey="subheading"
-        richKey="richSubheading"
-        doc={data.richSubheading}
-        fallback={data.subheading}
-        fullProps={node.props}
-        profile="block"
-        as="p"
-        style={{ fontSize: "18px", margin: 0, maxWidth: "640px" }}
-      />
-    )
-  ) : null;
+  const subheadingNode = renderSubheading({ node, data, slide, slideIndex });
 
   const secondaryCtaStyle: CSSProperties = {
     ...ctaStyle,
@@ -130,25 +130,12 @@ export function SlideContent({
         <div data-hero-cta-row="true" style={{ display: "flex", gap: 12 }}>
           {ctaLabel ? (
             <a href={ctaHref || "#"} data-hero-cta="primary" style={ctaStyle}>
-              {slide?.ctaLabel ? (
-                ctaLabel
-              ) : (
-                <EditableTextSlot
-                  nodeId={node.id}
-                  propKey="ctaLabel"
-                  richKey="richCtaLabel"
-                  doc={data.richCtaLabel}
-                  fallback={data.ctaLabel}
-                  fullProps={node.props}
-                  profile="inline"
-                  as="span"
-                />
-              )}
+              {renderCtaLabel({ node, data, slide, slideIndex })}
             </a>
           ) : null}
           {secondaryCtaLabel ? (
             <a href={secondaryCtaHref || "#"} data-hero-cta="secondary" style={secondaryCtaStyle}>
-              {secondaryCtaLabel}
+              {renderSecondaryCtaLabel({ node, data, slide, slideIndex })}
             </a>
           ) : null}
         </div>
@@ -161,7 +148,7 @@ function renderHeading({
   node,
   data,
   slide,
-  slideIndex: _slideIndex,
+  slideIndex,
   prefersReducedMotion,
 }: {
   node: ComponentNode;
@@ -170,21 +157,34 @@ function renderHeading({
   slideIndex: number | undefined;
   prefersReducedMotion: boolean;
 }): ReactNode {
-  // Per-slide override path is added in Section E (Task E.2). For now, when
-  // a slide.heading override is set we render plain text (existing behavior)
-  // and leave the banner-level heading alone.
-  if (slide?.heading) {
+  const baseStyle: CSSProperties = { fontSize: "40px", fontWeight: 700, margin: 0 };
+
+  // Per-slide override path
+  if (slide && slideIndex !== undefined && (slide.heading !== undefined || slide.richHeading !== undefined)) {
+    const slidePlain = slide.heading ?? "";
+    const slideRich = slide.richHeading;
     return (
-      <h1 style={{ fontSize: "40px", fontWeight: 700, margin: 0 }}>{slide.heading}</h1>
+      <EditableTextSlot
+        nodeId={node.id}
+        propKey={`images.${slideIndex}.heading`}
+        richKey={`images.${slideIndex}.richHeading`}
+        doc={slideRich}
+        fallback={slidePlain}
+        fullProps={node.props}
+        profile="block"
+        as="h1"
+        style={baseStyle}
+        buildWritePatch={makeSlideFieldPatcher(data, slideIndex, "heading", "richHeading")}
+      />
     );
   }
 
+  // Banner-level path (rich / rotator / plain)
   const decision = decideHeadingRender(
     data.heading,
     data.richHeading,
     data.rotatingWords,
   );
-  const baseStyle: CSSProperties = { fontSize: "40px", fontWeight: 700, margin: 0 };
 
   if (decision.kind === "rotator") {
     return (
@@ -209,6 +209,144 @@ function renderHeading({
       profile="block"
       as="h1"
       style={baseStyle}
+    />
+  );
+}
+
+function renderSubheading({
+  node,
+  data,
+  slide,
+  slideIndex,
+}: {
+  node: ComponentNode;
+  data: HeroBannerData;
+  slide: Slide | undefined;
+  slideIndex: number | undefined;
+}): ReactNode {
+  const slideHasOverride =
+    slide && (slide.subheading !== undefined || slide.richSubheading !== undefined);
+  const baseStyle: CSSProperties = { fontSize: "18px", margin: 0, maxWidth: "640px" };
+
+  if (slideHasOverride && slide && slideIndex !== undefined) {
+    return (
+      <EditableTextSlot
+        nodeId={node.id}
+        propKey={`images.${slideIndex}.subheading`}
+        richKey={`images.${slideIndex}.richSubheading`}
+        doc={slide.richSubheading}
+        fallback={slide.subheading ?? ""}
+        fullProps={node.props}
+        profile="block"
+        as="p"
+        style={baseStyle}
+        buildWritePatch={makeSlideFieldPatcher(data, slideIndex, "subheading", "richSubheading")}
+      />
+    );
+  }
+
+  if (!data.subheading && !data.richSubheading) return null;
+  return (
+    <EditableTextSlot
+      nodeId={node.id}
+      propKey="subheading"
+      richKey="richSubheading"
+      doc={data.richSubheading}
+      fallback={data.subheading}
+      fullProps={node.props}
+      profile="block"
+      as="p"
+      style={baseStyle}
+    />
+  );
+}
+
+function renderCtaLabel({
+  node,
+  data,
+  slide,
+  slideIndex,
+}: {
+  node: ComponentNode;
+  data: HeroBannerData;
+  slide: Slide | undefined;
+  slideIndex: number | undefined;
+}): ReactNode {
+  const slideHasOverride =
+    slide && (slide.ctaLabel !== undefined || slide.richCtaLabel !== undefined);
+  if (slideHasOverride && slide && slideIndex !== undefined) {
+    return (
+      <EditableTextSlot
+        nodeId={node.id}
+        propKey={`images.${slideIndex}.ctaLabel`}
+        richKey={`images.${slideIndex}.richCtaLabel`}
+        doc={slide.richCtaLabel}
+        fallback={slide.ctaLabel ?? ""}
+        fullProps={node.props}
+        profile="inline"
+        as="span"
+        buildWritePatch={makeSlideFieldPatcher(data, slideIndex, "ctaLabel", "richCtaLabel")}
+      />
+    );
+  }
+  return (
+    <EditableTextSlot
+      nodeId={node.id}
+      propKey="ctaLabel"
+      richKey="richCtaLabel"
+      doc={data.richCtaLabel}
+      fallback={data.ctaLabel}
+      fullProps={node.props}
+      profile="inline"
+      as="span"
+    />
+  );
+}
+
+function renderSecondaryCtaLabel({
+  node,
+  data,
+  slide,
+  slideIndex,
+}: {
+  node: ComponentNode;
+  data: HeroBannerData;
+  slide: Slide | undefined;
+  slideIndex: number | undefined;
+}): ReactNode {
+  const slideHasOverride =
+    slide &&
+    (slide.secondaryCtaLabel !== undefined || slide.richSecondaryCtaLabel !== undefined);
+  if (slideHasOverride && slide && slideIndex !== undefined) {
+    return (
+      <EditableTextSlot
+        nodeId={node.id}
+        propKey={`images.${slideIndex}.secondaryCtaLabel`}
+        richKey={`images.${slideIndex}.richSecondaryCtaLabel`}
+        doc={slide.richSecondaryCtaLabel}
+        fallback={slide.secondaryCtaLabel ?? ""}
+        fullProps={node.props}
+        profile="inline"
+        as="span"
+        buildWritePatch={makeSlideFieldPatcher(
+          data,
+          slideIndex,
+          "secondaryCtaLabel",
+          "richSecondaryCtaLabel",
+        )}
+      />
+    );
+  }
+  return (
+    <EditableTextSlot
+      nodeId={node.id}
+      propKey="secondaryCtaLabel"
+      richKey="richSecondaryCtaLabel"
+      doc={data.richSecondaryCtaLabel}
+      fallback={data.secondaryCtaLabel ?? ""}
+      fullProps={node.props}
+      profile="inline"
+      as="span"
     />
   );
 }
