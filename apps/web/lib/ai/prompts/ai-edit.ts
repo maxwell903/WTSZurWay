@@ -23,6 +23,7 @@
 import { buildComponentCatalog } from "@/lib/ai/prompts/snippets/component-catalog";
 import { DATA_SOURCES_PROSE } from "@/lib/ai/prompts/snippets/data-sources";
 import { SCHEMA_PROSE } from "@/lib/ai/prompts/snippets/schema-prose";
+import { type StockImageRow, buildStockImagesProse } from "@/lib/ai/prompts/snippets/stock-images";
 import type { ComponentNode, SiteConfig } from "@/lib/site-config";
 
 export type AiEditSelection = {
@@ -34,6 +35,7 @@ export type AiEditSelection = {
 export type AiEditPromptInput = {
   config: SiteConfig;
   selection: AiEditSelection | null;
+  stockImages?: StockImageRow[];
 };
 
 const OPERATIONS_VOCABULARY = String.raw`
@@ -206,6 +208,7 @@ export function buildAiEditSystemPrompt(input: AiEditPromptInput): string {
   const componentCatalog = buildComponentCatalog();
   const selectionBlock = serializeSelection(input);
   const configJson = JSON.stringify(input.config, null, 2);
+  const stockImagesProse = buildStockImagesProse(input.stockImages ?? []);
 
   return `You are producing a diff of operations against an existing SiteConfig
 for a property management website. The user is in the editor and wants
@@ -264,6 +267,7 @@ Repeater \`dataBinding.source\` and the field expressions used by
 
 ${DATA_SOURCES_PROSE}
 
+${stockImagesProse ? `${stockImagesProse}\n` : ""}
 # Operations
 ${OPERATIONS_VOCABULARY}
 

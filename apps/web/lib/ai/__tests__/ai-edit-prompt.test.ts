@@ -147,3 +147,48 @@ describe("buildAiEditSystemPrompt", () => {
     expect(a).toBe(b);
   });
 });
+
+import type { StockImageRow } from "@/lib/ai/prompts/snippets/stock-images";
+
+describe("buildAiEditSystemPrompt — stock images", () => {
+  const stockImages: StockImageRow[] = [
+    {
+      id: 1,
+      site_id: null,
+      storage_path: "default/CustomerPhotos/A.jpg",
+      public_url: "https://example.com/a.jpg",
+      category: "CustomerPhotos",
+      description: "Headshot A",
+    },
+  ];
+
+  it("omits the section when no stock images are passed", () => {
+    const out = buildAiEditSystemPrompt({ config: makeConfig(), selection: null });
+    expect(out).not.toContain("# Available stock images");
+  });
+
+  it("inserts the section when stock images are passed", () => {
+    const out = buildAiEditSystemPrompt({
+      config: makeConfig(),
+      selection: null,
+      stockImages,
+    });
+    expect(out).toContain("# Available stock images");
+    expect(out).toContain("https://example.com/a.jpg");
+    expect(out).toContain("Headshot A");
+  });
+
+  it("places the stock-images section between data sources and operations", () => {
+    const out = buildAiEditSystemPrompt({
+      config: makeConfig(),
+      selection: null,
+      stockImages,
+    });
+    const dataSourcesIdx = out.indexOf("# Data sources");
+    const stockIdx = out.indexOf("# Available stock images");
+    const opsIdx = out.indexOf("# Operations");
+    expect(dataSourcesIdx).toBeGreaterThan(-1);
+    expect(stockIdx).toBeGreaterThan(dataSourcesIdx);
+    expect(opsIdx).toBeGreaterThan(stockIdx);
+  });
+});
