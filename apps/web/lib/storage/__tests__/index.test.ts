@@ -16,7 +16,13 @@
 // names — easy to manually prune in the Supabase dashboard).
 
 import path from "node:path";
-import { LOGO_BUCKET, sanitizeFilename, uploadAttachment, uploadLogo } from "@/lib/storage";
+import {
+  LOGO_BUCKET,
+  sanitizeFilename,
+  uploadAttachment,
+  uploadLogo,
+  uploadStockImage,
+} from "@/lib/storage";
 import { config as loadEnv } from "dotenv";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -93,5 +99,18 @@ describe.skipIf(skipIntegration)("lib/storage (integration: live Supabase)", () 
     expect(url).toMatch(/^https?:\/\//);
     expect(url).toContain("ai-attachments");
     uploadedPaths.push({ bucket: "ai-attachments", path: storedPath });
+  }, 30_000);
+
+  it("uploadStockImage prefixes the path with siteId", async () => {
+    const fakeSiteId = "11111111-1111-1111-1111-111111111111";
+    const file = makeTinyPngFile("integration-stock.png");
+    const { url, path: storedPath } = await uploadStockImage(file, fakeSiteId);
+
+    expect(url).toMatch(/^https?:\/\//);
+    expect(url).toContain("ai-stock-images");
+    expect(storedPath.startsWith(`${fakeSiteId}/`)).toBe(true);
+    expect(storedPath).toMatch(/\d+-integration-stock\.png$/);
+
+    uploadedPaths.push({ bucket: "ai-stock-images", path: storedPath });
   }, 30_000);
 });

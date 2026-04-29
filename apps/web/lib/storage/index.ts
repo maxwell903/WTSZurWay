@@ -15,6 +15,7 @@ export type UploadResult = { url: string; path: string };
 export const LOGO_BUCKET = "logos";
 export const ATTACHMENT_BUCKET = "ai-attachments";
 export const SITE_MEDIA_BUCKET = "site-media";
+export const AI_STOCK_IMAGES_BUCKET = "ai-stock-images";
 
 // Lowercase, swap whitespace for `-`, drop anything that isn't `[a-z0-9._-]`.
 // Combined with a `Date.now()` prefix this makes paths unambiguous and
@@ -28,9 +29,9 @@ export function sanitizeFilename(name: string): string {
   return cleaned.length > 0 ? cleaned : "file";
 }
 
-async function uploadTo(bucket: string, file: File): Promise<UploadResult> {
+async function uploadTo(bucket: string, file: File, pathOverride?: string): Promise<UploadResult> {
   const supabase = createBrowserSupabaseClient();
-  const path = `${Date.now()}-${sanitizeFilename(file.name)}`;
+  const path = pathOverride ?? `${Date.now()}-${sanitizeFilename(file.name)}`;
 
   const { error: uploadError } = await supabase.storage.from(bucket).upload(path, file, {
     cacheControl: "3600",
@@ -60,4 +61,9 @@ export function uploadAttachment(file: File): Promise<UploadResult> {
 
 export function uploadSiteMedia(file: File): Promise<UploadResult> {
   return uploadTo(SITE_MEDIA_BUCKET, file);
+}
+
+export function uploadStockImage(file: File, siteId: string): Promise<UploadResult> {
+  const path = `${siteId}/${Date.now()}-${sanitizeFilename(file.name)}`;
+  return uploadTo(AI_STOCK_IMAGES_BUCKET, file, path);
 }
