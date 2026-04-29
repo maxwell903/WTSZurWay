@@ -1,5 +1,6 @@
 "use client";
 
+import { HrefInput } from "@/components/editor/edit-panels/controls/HrefInput";
 import { TextInput } from "@/components/editor/edit-panels/controls/TextInput";
 import { type SectionProps, readString } from "./utils";
 
@@ -35,13 +36,12 @@ export function CtaSection({ node, writePartial }: SectionProps) {
         tooltip="The text on the primary call-to-action button. Leave blank to hide it."
         onChange={(next) => writePartial({ ctaLabel: next })}
       />
-      <TextInput
+      <HrefInput
         id="hero-cta-href"
-        label="CTA href"
+        label="CTA link"
         value={readString(node.props, "ctaHref", "#")}
-        placeholder="#"
         testId="hero-cta-href"
-        tooltip="Where the primary CTA button links to."
+        tooltip="Where the primary CTA button links to. Pick a page in the site, or enter an external URL."
         onChange={(next) => writePartial({ ctaHref: next })}
       />
       <TextInput
@@ -53,13 +53,12 @@ export function CtaSection({ node, writePartial }: SectionProps) {
         tooltip="Adds an outlined secondary CTA next to the primary. Leave blank to hide."
         onChange={(next) => writePartial({ secondaryCtaLabel: next === "" ? undefined : next })}
       />
-      <TextInput
+      <HrefInput
         id="hero-secondary-cta-href"
-        label="Secondary CTA href"
+        label="Secondary CTA link"
         value={readString(node.props, "secondaryCtaHref")}
-        placeholder="#"
         testId="hero-secondary-cta-href"
-        tooltip="Where the secondary CTA links to."
+        tooltip="Where the secondary CTA links to. Pick a page in the site, or enter an external URL."
         onChange={(next) => writePartial({ secondaryCtaHref: next === "" ? undefined : next })}
       />
       <TextInput

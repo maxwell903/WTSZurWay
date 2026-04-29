@@ -30,6 +30,7 @@ import {
   Video,
 } from "lucide-react";
 import { useState } from "react";
+import { HrefInput } from "./HrefInput";
 import { MediaUpload } from "./MediaUpload";
 import { TextInput } from "./TextInput";
 import { WithTooltip } from "./with-tooltip";
@@ -461,14 +462,14 @@ function ContentFields({
         tooltip="Overrides the primary CTA button text on this slide."
         onChange={(next) => onChange({ ctaLabel: next })}
       />
-      <TextInput
+      <HrefInput
         id={`${idPrefix}-cta-href`}
-        label="Primary CTA href"
+        label="Primary CTA link"
         value={slide.ctaHref ?? ""}
         placeholder={placeholderFor(inheritance?.ctaHref)}
         testId={testId ? `${testId}-cta-href` : undefined}
-        tooltip="Overrides where the primary CTA links to on this slide."
-        onChange={(next) => onChange({ ctaHref: next })}
+        tooltip="Overrides where the primary CTA links to on this slide. Pick a page or enter an external URL."
+        onChange={(next) => onChange({ ctaHref: next === "" ? undefined : next })}
       />
       <TextInput
         id={`${idPrefix}-secondary-cta-label`}
@@ -479,14 +480,14 @@ function ContentFields({
         tooltip="Adds an outlined secondary CTA next to the primary. Leave blank to hide."
         onChange={(next) => onChange({ secondaryCtaLabel: next })}
       />
-      <TextInput
+      <HrefInput
         id={`${idPrefix}-secondary-cta-href`}
-        label="Secondary CTA href"
+        label="Secondary CTA link"
         value={slide.secondaryCtaHref ?? ""}
         placeholder={placeholderFor(inheritance?.secondaryCtaHref)}
         testId={testId ? `${testId}-secondary-cta-href` : undefined}
-        tooltip="Where the secondary CTA links to."
-        onChange={(next) => onChange({ secondaryCtaHref: next })}
+        tooltip="Where the secondary CTA links to. Pick a page or enter an external URL."
+        onChange={(next) => onChange({ secondaryCtaHref: next === "" ? undefined : next })}
       />
     </div>
   );
