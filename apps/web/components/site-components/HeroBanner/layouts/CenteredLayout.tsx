@@ -11,6 +11,7 @@ import { RadialOverlay } from "../overlays/RadialOverlay";
 import { SolidOverlay } from "../overlays/SolidOverlay";
 import type { HeroBannerData } from "../schema";
 import { SlideContent } from "../slides/SlideContent";
+import { LogoMarquee } from "./LogoMarquee";
 import { SlideshowControls, SlideshowSlides, useHeroSlideshow } from "./SlideshowFrame";
 
 export type CenteredLayoutProps = {
@@ -66,6 +67,9 @@ export function CenteredLayout({
           headingSlot={heading}
         />
         <CountdownTimer countdown={data.countdown} />
+        {data.logoStrip && data.logoStrip.length > 0 ? (
+          <LogoMarquee logos={data.logoStrip} />
+        ) : null}
       </section>
     );
   }
@@ -149,6 +153,7 @@ function CenteredSlideshow({
         next={next}
         prev={prev}
       />
+      {data.logoStrip && data.logoStrip.length > 0 ? <LogoMarquee logos={data.logoStrip} /> : null}
     </section>
   );
 }

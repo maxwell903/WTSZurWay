@@ -268,13 +268,18 @@ describe("LogoEditPanel", () => {
 });
 
 describe("GalleryEditPanel", () => {
+  // Sprint 8 (HeroBanner v2): SlideshowImagesEditor (shared by Gallery
+  // too) became a collapsible-row editor. Per-slide fields live inside the
+  // expanded card; testid pattern changed from `{prefix}-src-{idx}-url`
+  // → `{prefix}-{idx}-src-url`. The `add` testid was preserved.
   it("adding a slide, editing src/alt, and changing columns/gap all write through the store", () => {
     render(<PanelHost id="cmp_gallery" Panel={GalleryEditPanel} />);
     fireEvent.click(screen.getByTestId("gallery-images-add"));
-    fireEvent.change(screen.getByTestId("gallery-images-src-0-url"), {
+    fireEvent.click(screen.getByTestId("gallery-images-0-toggle"));
+    fireEvent.change(screen.getByTestId("gallery-images-0-src-url"), {
       target: { value: "https://example.com/g.png" },
     });
-    fireEvent.change(screen.getByTestId("gallery-images-alt-0"), {
+    fireEvent.change(screen.getByTestId("gallery-images-0-alt"), {
       target: { value: "Lobby" },
     });
     fireEvent.change(screen.getByTestId("gallery-columns"), { target: { value: "4" } });

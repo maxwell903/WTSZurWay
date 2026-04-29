@@ -16,6 +16,7 @@ export function TimingSection({ node, writePartial }: SectionProps) {
         label="Autoplay"
         value={readBool(node.props, "autoplay", true)}
         testId="hero-autoplay"
+        tooltip="Automatically advances to the next slide on a timer."
         onChange={(next) => writePartial({ autoplay: next })}
       />
       <NumberInput
@@ -26,6 +27,7 @@ export function TimingSection({ node, writePartial }: SectionProps) {
         step={500}
         placeholder="5000"
         testId="hero-interval-ms"
+        tooltip="Sets how long each slide stays on screen before advancing, in milliseconds."
         onChange={(next) => writePartial({ intervalMs: next ?? 5000 })}
       />
       <SwitchInput
@@ -33,6 +35,7 @@ export function TimingSection({ node, writePartial }: SectionProps) {
         label="Loop"
         value={readBool(node.props, "loop", true)}
         testId="hero-loop"
+        tooltip="Wraps from the last slide back to the first when autoplaying."
         onChange={(next) => writePartial({ loop: next })}
       />
       <SwitchInput
@@ -40,6 +43,7 @@ export function TimingSection({ node, writePartial }: SectionProps) {
         label="Pause on hover"
         value={readBool(node.props, "pauseOnHover", true)}
         testId="hero-pause-on-hover"
+        tooltip="Stops the autoplay timer while the visitor's mouse is over the hero."
         onChange={(next) => writePartial({ pauseOnHover: next })}
       />
       <SwitchInput
@@ -47,6 +51,7 @@ export function TimingSection({ node, writePartial }: SectionProps) {
         label="Show dots"
         value={readBool(node.props, "showDots", true)}
         testId="hero-show-dots"
+        tooltip="Displays clickable position indicators along the bottom of the hero."
         onChange={(next) => writePartial({ showDots: next })}
       />
       <SwitchInput
@@ -54,6 +59,7 @@ export function TimingSection({ node, writePartial }: SectionProps) {
         label="Show arrows"
         value={readBool(node.props, "showArrows", false)}
         testId="hero-show-arrows"
+        tooltip="Displays previous/next navigation arrows on the sides of the hero."
         onChange={(next) => writePartial({ showArrows: next })}
       />
     </div>
