@@ -182,6 +182,27 @@ describe("HeroBannerEditPanel — slideshow images editor", () => {
   });
 });
 
+describe("<HeroBannerEditPanel> — per-slide override RichTextMirror", () => {
+  it("typing in slide-0 heading writes both plain and rich keys on images[0]", () => {
+    hydrateWith({
+      heading: "",
+      images: [{ src: "https://x/1.png", alt: "1" }],
+    });
+    render(<PanelHost id="cmp_hero" Panel={HeroBannerEditPanel} />);
+    // Expand slide row 0 first.
+    const expandToggle = screen.getByTestId("hero-slides-0-toggle");
+    fireEvent.click(expandToggle);
+    const headingTextarea = screen.getByTestId("hero-slides-0-heading");
+    fireEvent.change(headingTextarea, { target: { value: "Slide override" } });
+    const after = getNode("cmp_hero").props as { images: Array<Record<string, unknown>> };
+    const firstSlide = after.images[0];
+    expect(firstSlide).toBeDefined();
+    if (!firstSlide) throw new Error("no slide");
+    expect(firstSlide.heading).toBe("Slide override");
+    expect(firstSlide.richHeading).toEqual(synthesizeDoc("Slide override", "block"));
+  });
+});
+
 describe("<HeroBannerEditPanel> — RichTextMirror bidirectional sync", () => {
   it("writes both plain and rich keys when the user types in the heading textarea", () => {
     hydrateWith({ heading: "" });

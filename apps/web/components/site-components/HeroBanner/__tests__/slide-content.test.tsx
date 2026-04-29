@@ -121,6 +121,56 @@ describe("SlideContent — per-slide overrides + banner-level fallback", () => {
   });
 });
 
+describe("SlideContent — per-slide rich-text overrides", () => {
+  it("renders per-slide richHeading via the rich-text path", () => {
+    const formattedDoc = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Bold slide", marks: [{ type: "bold" }] }],
+        },
+      ],
+    };
+    const { container } = render(
+      <HeroBanner
+        node={makeNode({
+          heading: "Banner heading",
+          autoplay: false,
+          images: [
+            {
+              src: "https://x/1.png",
+              alt: "1",
+              heading: "Bold slide",
+              richHeading: formattedDoc,
+            },
+          ],
+        })}
+        cssStyle={{}}
+      />,
+    );
+    const root = getRoot(container);
+    const h1 = root?.querySelector("h1");
+    expect(h1?.textContent).toBe("Bold slide");
+    expect(h1?.querySelector("strong")).not.toBeNull();
+  });
+
+  it("falls back to per-slide plain heading when no richHeading is set", () => {
+    const { container } = render(
+      <HeroBanner
+        node={makeNode({
+          heading: "Banner heading",
+          autoplay: false,
+          images: [{ src: "https://x/1.png", alt: "1", heading: "Slide-specific heading" }],
+        })}
+        cssStyle={{}}
+      />,
+    );
+    const root = getRoot(container);
+    expect(root?.querySelector("h1")?.textContent).toBe("Slide-specific heading");
+  });
+});
+
 describe("SlideContent — heading decision tree", () => {
   it("renders RotatingHeading when {rotator} token + rotatingWords present and no rich formatting", () => {
     const { container } = render(
