@@ -54,10 +54,14 @@ export type OverlayConfig = z.infer<typeof overlayConfigSchema>;
 
 const slideContentFieldsSchema = {
   heading: z.string().optional(),
+  richHeading: richTextDocSchema.optional(),
   subheading: z.string().optional(),
+  richSubheading: richTextDocSchema.optional(),
   ctaLabel: z.string().optional(),
+  richCtaLabel: richTextDocSchema.optional(),
   ctaHref: z.string().optional(),
   secondaryCtaLabel: z.string().optional(),
+  richSecondaryCtaLabel: richTextDocSchema.optional(),
   secondaryCtaHref: z.string().optional(),
   align: z.enum(["left", "center", "right"]).optional(),
   verticalAlign: z.enum(["top", "center", "bottom"]).optional(),
