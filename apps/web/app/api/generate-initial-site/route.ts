@@ -20,6 +20,7 @@
 
 import type { AiError } from "@/lib/ai/errors";
 import { generateInitialSite } from "@/lib/ai/generate-initial-site";
+import type { StockImageRow } from "@/lib/ai/prompts/snippets/stock-images";
 import { deriveSiteSlug, ensureUniqueSlug } from "@/lib/ai/slug";
 import { setupFormSchema } from "@/lib/setup-form/schema";
 import { createServiceSupabaseClient } from "@/lib/supabase";
@@ -72,7 +73,9 @@ export async function POST(request: Request): Promise<Response> {
     });
   }
 
-  const generation = await generateInitialSite({ form, inspirationImages });
+  const supabaseForFetch = createServiceSupabaseClient();
+  const stockImages = await fetchGlobalStockImages(supabaseForFetch);
+  const generation = await generateInitialSite({ form, inspirationImages, stockImages });
   if (generation.kind === "error") {
     return jsonError(httpStatusForError(generation.error), generation.error);
   }
@@ -138,6 +141,22 @@ function jsonError(status: number, error: AiError): Response {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+async function fetchGlobalStockImages(
+  supabase: ReturnType<typeof createServiceSupabaseClient>,
+): Promise<StockImageRow[]> {
+  const { data, error } = await supabase
+    .from("ai_stock_images")
+    .select("id, site_id, storage_path, public_url, category, description")
+    .is("site_id", null)
+    .order("category", { ascending: true })
+    .order("id", { ascending: true });
+  if (error) {
+    console.warn(`[generate-initial-site] stock-images fetch failed: ${error.message}`);
+    return [];
+  }
+  return (data ?? []) as StockImageRow[];
 }
 
 function httpStatusForError(error: AiError): number {

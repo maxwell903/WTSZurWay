@@ -79,11 +79,32 @@ const VALID_CONFIG = {
   forms: [],
 };
 
+// Task 11: the route fetches the global stock-image catalog before calling
+// the orchestrator, so every test path -- including the error-path tests
+// that don't otherwise touch the Supabase client -- needs a chainable
+// `.from("ai_stock_images")` default. Returning an empty list keeps the
+// existing behavior intact (the prompt simply omits the section).
+function aiStockImagesEmptyChain() {
+  return {
+    select: () => ({
+      is: () => ({
+        order: () => ({
+          order: async () => ({ data: [], error: null }),
+        }),
+      }),
+    }),
+  };
+}
+
 describe("POST /api/generate-initial-site", () => {
   beforeEach(() => {
     generateInitialSiteMock.mockReset();
     ensureUniqueSlugMock.mockReset();
     fromMock.mockReset();
+    fromMock.mockImplementation((table: string) => {
+      if (table === "ai_stock_images") return aiStockImagesEmptyChain();
+      throw new Error(`Unexpected table: ${table}`);
+    });
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -123,6 +144,21 @@ describe("POST /api/generate-initial-site", () => {
       error: null,
     });
     fromMock.mockImplementation((table: string) => {
+      if (table === "ai_stock_images") {
+        // Task 11: the route fetches the global stock-image catalog before
+        // calling the orchestrator. The mock returns an empty list so the
+        // prompt simply omits the catalog section -- graceful degradation,
+        // no behavior change for the existing test cases.
+        return {
+          select: () => ({
+            is: () => ({
+              order: () => ({
+                order: async () => ({ data: [], error: null }),
+              }),
+            }),
+          }),
+        };
+      }
       if (table === "sites") return { insert: sitesInsert.insert };
       if (table === "site_versions") return { insert: versionsInsert.insert };
       throw new Error(`Unexpected table: ${table}`);
@@ -180,6 +216,21 @@ describe("POST /api/generate-initial-site", () => {
       error: null,
     });
     fromMock.mockImplementation((table: string) => {
+      if (table === "ai_stock_images") {
+        // Task 11: the route fetches the global stock-image catalog before
+        // calling the orchestrator. The mock returns an empty list so the
+        // prompt simply omits the catalog section -- graceful degradation,
+        // no behavior change for the existing test cases.
+        return {
+          select: () => ({
+            is: () => ({
+              order: () => ({
+                order: async () => ({ data: [], error: null }),
+              }),
+            }),
+          }),
+        };
+      }
       if (table === "sites") return { insert: sitesInsert.insert };
       if (table === "site_versions") return { insert: versionsInsert.insert };
       throw new Error(`Unexpected table: ${table}`);
@@ -263,6 +314,21 @@ describe("POST /api/generate-initial-site", () => {
       error: null,
     });
     fromMock.mockImplementation((table: string) => {
+      if (table === "ai_stock_images") {
+        // Task 11: the route fetches the global stock-image catalog before
+        // calling the orchestrator. The mock returns an empty list so the
+        // prompt simply omits the catalog section -- graceful degradation,
+        // no behavior change for the existing test cases.
+        return {
+          select: () => ({
+            is: () => ({
+              order: () => ({
+                order: async () => ({ data: [], error: null }),
+              }),
+            }),
+          }),
+        };
+      }
       if (table === "sites") return { insert: sitesInsert.insert };
       if (table === "site_versions") return { insert: versionsInsert.insert };
       throw new Error(`Unexpected table: ${table}`);
