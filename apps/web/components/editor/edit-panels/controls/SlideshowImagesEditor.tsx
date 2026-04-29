@@ -437,15 +437,14 @@ function ContentFields({
 }) {
   // Bridge RichTextMirror's writePartial into our `update(idx, patch)` model.
   // Each call site builds a localized patch that targets one slide field.
-  const writePartialFor = (
-    plainKey: keyof SlideshowImage,
-    richKey: keyof SlideshowImage,
-  ) => (patch: Record<string, unknown>) => {
-    onChange({
-      [plainKey]: patch[plainKey as string] as string | undefined,
-      [richKey]: patch[richKey as string],
-    } as Partial<SlideshowImage>);
-  };
+  const writePartialFor =
+    (plainKey: keyof SlideshowImage, richKey: keyof SlideshowImage) =>
+    (patch: Record<string, unknown>) => {
+      onChange({
+        [plainKey]: patch[plainKey as string] as string | undefined,
+        [richKey]: patch[richKey as string],
+      } as Partial<SlideshowImage>);
+    };
 
   const placeholderFor = (val: string | undefined) =>
     val && val.length > 0 ? `(inherits "${val}")` : "(inherits banner)";

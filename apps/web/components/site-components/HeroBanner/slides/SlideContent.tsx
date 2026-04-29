@@ -56,11 +56,7 @@ function decideHeadingRender(
       return { kind: "rich" };
     }
   }
-  if (
-    plain.includes("{rotator}") &&
-    rotatingWords !== undefined &&
-    rotatingWords.length > 0
-  ) {
+  if (plain.includes("{rotator}") && rotatingWords !== undefined && rotatingWords.length > 0) {
     return { kind: "rotator", plain, rotatingWords };
   }
   return { kind: "plain" };
@@ -160,7 +156,11 @@ function renderHeading({
   const baseStyle: CSSProperties = { fontSize: "40px", fontWeight: 700, margin: 0 };
 
   // Per-slide override path
-  if (slide && slideIndex !== undefined && (slide.heading !== undefined || slide.richHeading !== undefined)) {
+  if (
+    slide &&
+    slideIndex !== undefined &&
+    (slide.heading !== undefined || slide.richHeading !== undefined)
+  ) {
     const slidePlain = slide.heading ?? "";
     const slideRich = slide.richHeading;
     return (
@@ -180,11 +180,7 @@ function renderHeading({
   }
 
   // Banner-level path (rich / rotator / plain)
-  const decision = decideHeadingRender(
-    data.heading,
-    data.richHeading,
-    data.rotatingWords,
-  );
+  const decision = decideHeadingRender(data.heading, data.richHeading, data.rotatingWords);
 
   if (decision.kind === "rotator") {
     return (
@@ -315,8 +311,7 @@ function renderSecondaryCtaLabel({
   slideIndex: number | undefined;
 }): ReactNode {
   const slideHasOverride =
-    slide &&
-    (slide.secondaryCtaLabel !== undefined || slide.richSecondaryCtaLabel !== undefined);
+    slide && (slide.secondaryCtaLabel !== undefined || slide.richSecondaryCtaLabel !== undefined);
   if (slideHasOverride && slide && slideIndex !== undefined) {
     return (
       <EditableTextSlot
