@@ -40,7 +40,7 @@ export function RichTextToolbar() {
       data-toolbar-mode={commands.mode ?? ""}
       role="toolbar"
       aria-label="Text formatting"
-      className="pointer-events-auto flex flex-nowrap items-center gap-2 overflow-x-auto whitespace-nowrap rounded-md border border-zinc-700 bg-zinc-900/95 px-2 py-1 shadow-lg backdrop-blur"
+      className="pointer-events-auto flex flex-nowrap items-center gap-2 whitespace-nowrap rounded-md border border-zinc-700 bg-zinc-900/95 px-2 py-1 shadow-lg backdrop-blur"
     >
       {commands.mode === "broadcast" ? (
         <span
