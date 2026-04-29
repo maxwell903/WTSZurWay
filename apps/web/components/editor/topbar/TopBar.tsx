@@ -3,6 +3,7 @@
 import { Sparkles } from "lucide-react";
 import { DeployButton } from "./DeployButton";
 import { PageSelector } from "./PageSelector";
+import { PauseSlideshowToggle } from "./PauseSlideshowToggle";
 import { PreviewToggle } from "./PreviewToggle";
 import { SaveIndicator } from "./SaveIndicator";
 import { ShowComponentTypesToggle } from "./ShowComponentTypesToggle";
@@ -24,6 +25,7 @@ export function TopBar() {
       </div>
       <div className="ml-auto flex items-center gap-3">
         <SaveIndicator />
+        <PauseSlideshowToggle />
         <ShowComponentTypesToggle />
         <PreviewToggle />
         <DeployButton />
