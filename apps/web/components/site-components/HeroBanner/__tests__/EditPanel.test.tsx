@@ -1,6 +1,7 @@
 import { __resetEditorStoreForTests, useEditorStore } from "@/lib/editor-state/store";
+import { synthesizeDoc } from "@/lib/rich-text/synthesize-doc";
 import type { ComponentNode, SiteConfig } from "@/lib/site-config";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentType } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { HeroBannerEditPanel } from "../EditPanel";
@@ -178,5 +179,49 @@ describe("HeroBannerEditPanel — slideshow images editor", () => {
       target: { value: "3000" },
     });
     expect(getNode("cmp_hero").props.intervalMs).toBe(3000);
+  });
+});
+
+describe("<HeroBannerEditPanel> — RichTextMirror bidirectional sync", () => {
+  it("writes both plain and rich keys when the user types in the heading textarea", () => {
+    hydrateWith({ heading: "" });
+    render(<PanelHost id="cmp_hero" Panel={HeroBannerEditPanel} />);
+    const textarea = screen.getByTestId("hero-heading");
+    fireEvent.change(textarea, { target: { value: "Hello" } });
+    const after = getNode("cmp_hero").props;
+    expect(after.heading).toBe("Hello");
+    expect(after.richHeading).toEqual(synthesizeDoc("Hello", "block"));
+  });
+
+  it("shows the read-only mirror when richHeading has formatting", () => {
+    hydrateWith({
+      heading: "Hello",
+      richHeading: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Hello", marks: [{ type: "bold" }] }],
+          },
+        ],
+      },
+    });
+    render(<PanelHost id="cmp_hero" Panel={HeroBannerEditPanel} />);
+    expect(screen.getByTestId("hero-heading-formatted-badge")).toBeInTheDocument();
+    expect(screen.getByTestId("hero-heading-readonly")).toHaveTextContent("Hello");
+    expect(screen.queryByTestId("hero-heading")).toBeNull();
+  });
+
+  it("re-renders heading textarea after a TipTap-style write to richHeading + heading", () => {
+    hydrateWith({ heading: "" });
+    render(<PanelHost id="cmp_hero" Panel={HeroBannerEditPanel} />);
+    expect((screen.getByTestId("hero-heading") as HTMLTextAreaElement).value).toBe("");
+    act(() => {
+      useEditorStore.getState().setComponentProps("cmp_hero", {
+        heading: "Inline edit",
+        richHeading: synthesizeDoc("Inline edit", "block"),
+      });
+    });
+    expect((screen.getByTestId("hero-heading") as HTMLTextAreaElement).value).toBe("Inline edit");
   });
 });
