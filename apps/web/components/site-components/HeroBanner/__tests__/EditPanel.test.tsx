@@ -201,6 +201,37 @@ describe("<HeroBannerEditPanel> — per-slide override RichTextMirror", () => {
     expect(firstSlide.heading).toBe("Slide override");
     expect(firstSlide.richHeading).toEqual(synthesizeDoc("Slide override", "block"));
   });
+
+  // Regression: readImages was previously projecting each slide down to
+  // {src, alt}, silently dropping every override field on every render. The
+  // visible symptom was "I can't type" — characters appeared and instantly
+  // vanished as readImages stripped the patch on the next render.
+  it("preserves all four override text fields across re-renders (subheading, ctaLabel, secondaryCtaLabel)", () => {
+    hydrateWith({
+      heading: "",
+      images: [{ src: "https://x/1.png", alt: "1" }],
+    });
+    render(<PanelHost id="cmp_hero" Panel={HeroBannerEditPanel} />);
+    fireEvent.click(screen.getByTestId("hero-slides-0-toggle"));
+    fireEvent.change(screen.getByTestId("hero-slides-0-subheading"), {
+      target: { value: "Sub override" },
+    });
+    fireEvent.change(screen.getByTestId("hero-slides-0-cta-label"), {
+      target: { value: "Cta override" },
+    });
+    fireEvent.change(screen.getByTestId("hero-slides-0-secondary-cta-label"), {
+      target: { value: "Secondary override" },
+    });
+    const after = getNode("cmp_hero").props as { images: Array<Record<string, unknown>> };
+    const slide = after.images[0];
+    if (!slide) throw new Error("no slide");
+    expect(slide.subheading).toBe("Sub override");
+    expect(slide.ctaLabel).toBe("Cta override");
+    expect(slide.secondaryCtaLabel).toBe("Secondary override");
+    expect(slide.richSubheading).toEqual(synthesizeDoc("Sub override", "block"));
+    expect(slide.richCtaLabel).toEqual(synthesizeDoc("Cta override", "inline"));
+    expect(slide.richSecondaryCtaLabel).toEqual(synthesizeDoc("Secondary override", "inline"));
+  });
 });
 
 describe("<HeroBannerEditPanel> — RichTextMirror bidirectional sync", () => {
