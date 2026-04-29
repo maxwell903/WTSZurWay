@@ -1807,3 +1807,36 @@ authoring on 2026-04-28.
 + KenBurns + Parallax), and 10 (Rotating heading + Countdown) all
 import from these packages without filing further deviations.
 
+## 2026-04-29 — HeroBanner-TipTap-sync Plan — Vitest jsdom env unblocked via pnpm overrides
+
+**Context:** While executing Task A.2 of `docs/superpowers/plans/2026-04-28-hero-banner-tiptap-sync.md`, every `vitest run` failed during environment setup with `require() of ES Module @exodus/bytes/encoding.js from jsdom@29.1.0/lib/api.js not supported`. Reproduced on the parent commit `026619e` (before this plan touched any file), confirming the breakage is pre-existing — not introduced by the current sprint's work.
+
+**Original plan:** The plan's tasks each end with `pnpm test path/to/file.test.ts -t name` to verify TDD; the §15.7 final gate runs the full suite. Both commands depend on a working jsdom test environment.
+
+**What changed:** Added a minimal `pnpm.overrides` block to root `package.json` pinning three transitive deps that triggered the ESM/CJS conflict:
+
+```json
+"overrides": {
+  "html-encoding-sniffer": "^4.0.0",
+  "whatwg-url": "^14.2.0",
+  "jsdom": "26.1.0"
+}
+```
+
+After running `pnpm install`, the full vitest suite now passes (1576 tests pass, 2 skipped, 0 failures). Typecheck passes. The override unifies on the jsdom@26 / html-encoding-sniffer@4 / whatwg-url@14 line that vitest already pulled in (and which is internally consistent), evicting the isomorphic-dompurify-pulled jsdom@29 + html-encoding-sniffer@6 + whatwg-url@16 chain whose `@exodus/bytes` ESM dep is unloadable from CJS contexts on Node ≥20.
+
+**Rationale:** This is config-file housekeeping that fits the §15.9 carve-out — surgical, behavior-preserving, < 5 lines per file, in a config file. Without it, every task in this plan and every later sprint would be blocked from running tests. The encoding-sniff and URL APIs are stable across the v4↔v6 / v14↔v16 boundaries, so isomorphic-dompurify's runtime sanitize path (the only consumer of the down-pinned versions in production) remains correct.
+
+**User approval (verbatim):** "Option 1" — chosen 2026-04-29 in response to the structural-blocker report listing three options (override / skip tests / file Deviation).
+
+**Trade-offs accepted:**
+- Gain: Entire vitest suite is unblocked. TDD steps in this plan can verify behavior. Future sprints inherit a working test environment.
+- Lose: isomorphic-dompurify on the server uses jsdom@26 / html-encoding-sniffer@4 / whatwg-url@14 instead of the versions its `dependencies` block requested. The HTML-sanitize path is exercised at runtime in `RichTextRenderer` for visitor-side rich-text output; the API surface is identical at the consumer level.
+- Risk: A future bump of isomorphic-dompurify (or jsdom@29-only API drift) could clash with the override. Mitigated by the override being a single 3-key block easy to remove or update.
+
+**Affected files / modules:**
+- `package.json` — added `pnpm.overrides` with three keys.
+- `pnpm-lock.yaml` — regenerated.
+
+**Cross-sprint impact:** All remaining tasks in `2026-04-28-hero-banner-tiptap-sync.md` and every future sprint that runs vitest. Future sprints should NOT remove these overrides without first verifying the dep chain's ESM/CJS situation has resolved upstream.
+
