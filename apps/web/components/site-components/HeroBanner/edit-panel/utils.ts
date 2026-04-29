@@ -25,15 +25,18 @@ export function readNumber(
   return typeof props[key] === "number" ? (props[key] as number) : fallback;
 }
 
+// Preserve every field on each slide so the editor's per-slide override
+// inputs (heading, subheading, ctaLabel, secondaryCtaLabel + their rich
+// twins, kind, videoSrc, align, etc.) round-trip through the panel.
+// Filtering down to {src, alt} here would silently strip user edits on
+// every re-render — the visible symptom is "I can't type in any slide
+// override field."
 export function readImages(props: Record<string, unknown>): SlideshowImage[] {
   if (!Array.isArray(props.images)) return [];
   return props.images
     .map((entry): SlideshowImage | null => {
       if (!entry || typeof entry !== "object") return null;
-      const e = entry as Record<string, unknown>;
-      const src = typeof e.src === "string" ? e.src : "";
-      const alt = typeof e.alt === "string" ? e.alt : undefined;
-      return { src, alt };
+      return entry as SlideshowImage;
     })
     .filter((entry): entry is SlideshowImage => entry !== null);
 }
