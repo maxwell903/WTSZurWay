@@ -79,6 +79,10 @@ export type EditorState = {
   saveError: string | null;
   // Phase 6 Task 6.1 — transient toggle, defaults ON each editor load (no persistence).
   showComponentTypes: boolean;
+  // Editor-only: pause every HeroBanner slideshow on the canvas. Transient,
+  // defaults OFF each editor load (no persistence). Mirrors the
+  // showComponentTypes pattern. Visitor renders ignore this flag.
+  slideshowPaused: boolean;
   // Rich-text Phase 1 — null when the floating rich-text toolbar is closed.
   textEditingScope: TextEditingScope | null;
 };
@@ -157,6 +161,8 @@ export type EditorActions = {
   markError: (message: string) => void;
   // Phase 6 Task 6.1 — toggle the canvas-wide component type overlay.
   toggleShowComponentTypes: () => void;
+  // Editor-only — flip the slideshow pause flag for every HeroBanner.
+  toggleSlideshowPaused: () => void;
   // Sprint 13 — site-wide NavBar lock + per-instance override.
   setGlobalNavBarLocked: (value: boolean) => void;
   setNavBarOverrideShared: (id: ComponentId, value: boolean) => void;
