@@ -26,6 +26,7 @@ vi.mock("@/lib/ai/fixtures", () => ({
   lookupGenerationFixture: () => lookupGenerationFixtureMock(),
 }));
 
+import type { StockImageRow } from "@/lib/ai/prompts/snippets/stock-images";
 import { generateInitialSite } from "../generate-initial-site";
 import { buildInitialGenerationSystemPrompt } from "../prompts/initial-generation";
 
@@ -546,5 +547,38 @@ describe("buildInitialGenerationSystemPrompt", () => {
     const a = buildInitialGenerationSystemPrompt({ form: MIN_FORM });
     const b = buildInitialGenerationSystemPrompt({ form: MIN_FORM });
     expect(a).toBe(b);
+  });
+});
+
+describe("buildInitialGenerationSystemPrompt — stock images", () => {
+  // Reuse the same MIN_FORM literal the rest of the suite uses; spec asks for
+  // a `makeForm()` helper but the existing file already pins a minimal form
+  // value, so wrap it in a tiny factory to keep the spec wording faithful.
+  const makeForm = (): SetupFormValues => MIN_FORM;
+
+  const stockImages: StockImageRow[] = [
+    {
+      id: 1,
+      site_id: null,
+      storage_path: "default/InteriorPics/Interior1.jpg",
+      public_url: "https://example.com/interior.jpg",
+      category: "InteriorPics",
+      description: "Modern interior",
+    },
+  ];
+
+  it("omits the section when no stock images are passed", () => {
+    const out = buildInitialGenerationSystemPrompt({ form: makeForm() });
+    expect(out).not.toContain("# Available stock images");
+  });
+
+  it("inserts the section when stock images are passed", () => {
+    const out = buildInitialGenerationSystemPrompt({
+      form: makeForm(),
+      stockImages,
+    });
+    expect(out).toContain("# Available stock images");
+    expect(out).toContain("https://example.com/interior.jpg");
+    expect(out).toContain("Prefer images whose category matches");
   });
 });

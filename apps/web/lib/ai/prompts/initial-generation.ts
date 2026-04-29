@@ -19,13 +19,15 @@ import type { SetupFormValues } from "@/lib/setup-form/types";
 import { buildComponentCatalog } from "./snippets/component-catalog";
 import { DATA_SOURCES_PROSE } from "./snippets/data-sources";
 import { SCHEMA_PROSE } from "./snippets/schema-prose";
+import { type StockImageRow, buildStockImagesProse } from "./snippets/stock-images";
 
 export type InitialGenerationInput = {
   form: SetupFormValues;
   inspirationImages?: { url: string }[];
+  stockImages?: StockImageRow[];
 };
 
-export function buildInitialGenerationSystemPrompt(_input: InitialGenerationInput): string {
+export function buildInitialGenerationSystemPrompt(input: InitialGenerationInput): string {
   // The user-specific payload (company name, palette, etc.) goes in the user
   // message rather than the system prompt -- the system prompt is the
   // persistent, deterministic contract; the user message is the per-request
@@ -33,6 +35,16 @@ export function buildInitialGenerationSystemPrompt(_input: InitialGenerationInpu
   // viable in later sprints (Sprint 14 may add caching).
 
   const componentCatalog = buildComponentCatalog();
+  const stockImagesProse = buildStockImagesProse(input.stockImages ?? []);
+  const stockImagesSection = stockImagesProse
+    ? `${stockImagesProse}
+
+When populating Image components in the generated site, choose \`src\`
+from this catalog. Prefer images whose category matches the property
+type the user described. Do not invent image URLs.
+
+`
+    : "";
 
   return `You are generating a complete SiteConfig JSON for a property management website.
 
@@ -89,7 +101,7 @@ Repeater \`dataBinding.source\` MUST be one of:
 
 ${DATA_SOURCES_PROSE}
 
-# Style and palette
+${stockImagesSection}# Style and palette
 
 The user picked a palette from \`brand.palette\`. Apply it consistently
 across the site:
