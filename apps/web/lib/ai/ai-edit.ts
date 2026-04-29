@@ -32,6 +32,7 @@ import {
   type AiEditSelection,
   buildAiEditSystemPrompt,
 } from "@/lib/ai/prompts/ai-edit";
+import type { StockImageRow } from "@/lib/ai/prompts/snippets/stock-images";
 import type { SiteConfig } from "@/lib/site-config";
 import { type Operation, operationSchema } from "@/lib/site-config/ops";
 import type Anthropic from "@anthropic-ai/sdk";
@@ -71,6 +72,7 @@ export type AiEditInput = {
   history?: AiEditHistoryTurn[];
   siteId?: string;
   currentVersionId?: string;
+  stockImages?: StockImageRow[];
 };
 
 export type AiEditOk = {
@@ -116,6 +118,7 @@ export async function aiEdit(
   const promptInput: AiEditPromptInput = {
     config: input.config,
     selection: input.selection,
+    stockImages: input.stockImages,
   };
   const systemPrompt = buildAiEditSystemPrompt(promptInput);
 

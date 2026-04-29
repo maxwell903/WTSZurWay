@@ -328,3 +328,46 @@ describe("aiEdit", () => {
     }
   });
 });
+
+describe("aiEdit — stockImages forwarding", () => {
+  it("passes stockImages through to the system prompt", async () => {
+    const captured: { system: string } = { system: "" };
+    const mockClient = {
+      messages: {
+        create: async (args: { system: string }) => {
+          captured.system = args.system;
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({ kind: "ok", summary: "noop", operations: [] }),
+              },
+            ],
+          };
+        },
+      },
+    } as unknown as Parameters<typeof aiEdit>[1];
+
+    await aiEdit(
+      {
+        prompt: "do nothing",
+        config: makeConfig(),
+        selection: null,
+        stockImages: [
+          {
+            id: 1,
+            site_id: null,
+            storage_path: "default/X/y.jpg",
+            public_url: "https://example.com/x.jpg",
+            category: "X",
+            description: "test image",
+          },
+        ],
+      },
+      mockClient,
+    );
+
+    expect(captured.system).toContain("# Available stock images");
+    expect(captured.system).toContain("https://example.com/x.jpg");
+  });
+});
