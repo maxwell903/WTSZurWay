@@ -1,116 +1,26 @@
 "use client";
 
-import { EditableTextSlot } from "@/components/renderer/EditableTextSlot";
-import { richTextDocSchema } from "@/lib/site-config";
 import type { ComponentNode } from "@/types/site-config";
-import { type CSSProperties, useEffect, useState } from "react";
-import { z } from "zod";
-
-const slideshowImageSchema = z.object({
-  src: z.string(),
-  alt: z.string().optional(),
-});
-
-const heroBannerPropsSchema = z.object({
-  heading: z.string().default("Welcome"),
-  // Rich-text Phase 4: optional formatted variants of heading/subheading/ctaLabel.
-  // Renderer prefers each rich doc; plain strings remain the fallback.
-  richHeading: richTextDocSchema.optional(),
-  subheading: z.string().default(""),
-  richSubheading: richTextDocSchema.optional(),
-  ctaLabel: z.string().default(""),
-  // Inline profile (CTA renders inside <a>) — matches Button.
-  richCtaLabel: richTextDocSchema.optional(),
-  ctaHref: z.string().default("#"),
-  backgroundImage: z.string().optional(),
-  overlay: z.boolean().default(true),
-  height: z.string().default("480px"),
-  images: z.array(slideshowImageSchema).default([]),
-  autoplay: z.boolean().default(true),
-  intervalMs: z.number().int().min(500).default(5000),
-  loop: z.boolean().default(true),
-  pauseOnHover: z.boolean().default(true),
-  showDots: z.boolean().default(true),
-  showArrows: z.boolean().default(false),
-});
-
-type HeroBannerData = z.infer<typeof heroBannerPropsSchema>;
-
-const FALLBACK_DATA: HeroBannerData = {
-  heading: "Welcome",
-  richHeading: undefined,
-  subheading: "",
-  richSubheading: undefined,
-  ctaLabel: "",
-  richCtaLabel: undefined,
-  ctaHref: "#",
-  backgroundImage: undefined,
-  overlay: true,
-  height: "480px",
-  images: [],
-  autoplay: true,
-  intervalMs: 5000,
-  loop: true,
-  pauseOnHover: true,
-  showDots: true,
-  showArrows: false,
-};
+import type { CSSProperties } from "react";
+import { usePrefersReducedMotion } from "./hooks/usePrefersReducedMotion";
+import { CenteredLayout } from "./layouts/CenteredLayout";
+import { FullBleedLayout } from "./layouts/FullBleedLayout";
+import { SplitLayout } from "./layouts/SplitLayout";
+import { HERO_BANNER_FALLBACK, type HeroBannerData, heroBannerPropsSchema } from "./schema";
 
 type HeroBannerProps = {
   node: ComponentNode;
   cssStyle: CSSProperties;
 };
 
-function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduced(mq.matches);
-    const onChange = (e: MediaQueryListEvent) => setReduced(e.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-  return reduced;
-}
-
-type UseSlideshowArgs = {
-  count: number;
-  autoplay: boolean;
-  intervalMs: number;
-  loop: boolean;
-  paused: boolean;
-  prefersReducedMotion: boolean;
-};
-
-function useSlideshow({
-  count,
-  autoplay,
-  intervalMs,
-  loop,
-  paused,
-  prefersReducedMotion,
-}: UseSlideshowArgs) {
-  const [index, setIndex] = useState(0);
-
-  useEffect(() => {
-    if (count <= 1 || !autoplay || paused || prefersReducedMotion) return;
-    const id = window.setInterval(() => {
-      setIndex((i) => (loop ? (i + 1) % count : Math.min(i + 1, count - 1)));
-    }, intervalMs);
-    return () => window.clearInterval(id);
-  }, [count, autoplay, intervalMs, loop, paused, prefersReducedMotion]);
-
-  const goTo = (i: number) => setIndex(Math.max(0, Math.min(i, Math.max(0, count - 1))));
-  const next = () => setIndex((i) => (loop ? (i + 1) % count : Math.min(i + 1, count - 1)));
-  const prev = () => setIndex((i) => (loop ? (i - 1 + count) % count : Math.max(i - 1, 0)));
-
-  return { index, goTo, next, prev };
-}
-
+// Wave 2 thin entry. Parses props via the v2 schema, builds the shared
+// container/content/cta inline styles the layouts share, and dispatches
+// to the layout component selected by `data.layout`. Wave 3 sprints fill
+// in layouts/effects/overlays without re-editing this file.
 export function HeroBanner({ node, cssStyle }: HeroBannerProps) {
   const parsed = heroBannerPropsSchema.safeParse(node.props);
-  const data: HeroBannerData = parsed.success ? parsed.data : FALLBACK_DATA;
+  const data: HeroBannerData = parsed.success ? parsed.data : HERO_BANNER_FALLBACK;
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   const containerStyle: CSSProperties = {
     position: "relative",
@@ -122,13 +32,6 @@ export function HeroBanner({ node, cssStyle }: HeroBannerProps) {
     backgroundPosition: "center",
     color: "#ffffff",
     ...cssStyle,
-  };
-
-  const overlayStyle: CSSProperties = {
-    position: "absolute",
-    inset: 0,
-    background: "rgba(0, 0, 0, 0.45)",
-    zIndex: 1,
   };
 
   const contentStyle: CSSProperties = {
@@ -155,244 +58,17 @@ export function HeroBanner({ node, cssStyle }: HeroBannerProps) {
     fontWeight: 600,
   };
 
-  // Backwards-compat path: no slideshow images → render today's static hero
-  // tree exactly as before. The three pre-existing tests all route here.
-  if (data.images.length === 0) {
-    return (
-      <section data-component-id={node.id} data-component-type="HeroBanner" style={containerStyle}>
-        {data.backgroundImage && data.overlay ? (
-          <div data-hero-overlay="true" style={overlayStyle} />
-        ) : null}
-        <HeroContent node={node} data={data} contentStyle={contentStyle} ctaStyle={ctaStyle} />
-      </section>
-    );
-  }
-
-  return (
-    <SlideshowHero
-      key={data.images.length}
-      data={data}
-      node={node}
-      containerStyle={containerStyle}
-      overlayStyle={overlayStyle}
-      contentStyle={contentStyle}
-      ctaStyle={ctaStyle}
-    />
-  );
-}
-
-type SlideshowHeroProps = {
-  data: HeroBannerData;
-  node: ComponentNode;
-  containerStyle: CSSProperties;
-  overlayStyle: CSSProperties;
-  contentStyle: CSSProperties;
-  ctaStyle: CSSProperties;
-};
-
-function SlideshowHero({
-  data,
-  node,
-  containerStyle,
-  overlayStyle,
-  contentStyle,
-  ctaStyle,
-}: SlideshowHeroProps) {
-  const [paused, setPaused] = useState(false);
-  const prefersReducedMotion = usePrefersReducedMotion();
-  const { index, goTo, next, prev } = useSlideshow({
-    count: data.images.length,
-    autoplay: data.autoplay,
-    intervalMs: data.intervalMs,
-    loop: data.loop,
-    paused: data.pauseOnHover ? paused : false,
+  const layoutProps = {
+    node,
+    data,
+    containerStyle,
+    contentStyle,
+    ctaStyle,
     prefersReducedMotion,
-  });
+  };
 
-  const transition = prefersReducedMotion ? "none" : "opacity 600ms ease-in-out";
-  const atFirst = index === 0;
-  const atLast = index === data.images.length - 1;
-  const arrowDisabledPrev = !data.loop && atFirst;
-  const arrowDisabledNext = !data.loop && atLast;
-
-  return (
-    <section
-      data-component-id={node.id}
-      data-component-type="HeroBanner"
-      data-slideshow-index={index}
-      style={containerStyle}
-      onMouseEnter={data.pauseOnHover ? () => setPaused(true) : undefined}
-      onMouseLeave={data.pauseOnHover ? () => setPaused(false) : undefined}
-    >
-      {data.images.map((image, i) => (
-        <img
-          // biome-ignore lint/suspicious/noArrayIndexKey: slideshow order is the identifier
-          key={i}
-          data-hero-slide={i}
-          src={image.src}
-          alt={image.alt ?? ""}
-          loading={i === 0 ? "eager" : "lazy"}
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            opacity: i === index ? 1 : 0,
-            transition,
-            zIndex: 0,
-          }}
-        />
-      ))}
-      {data.overlay ? <div data-hero-overlay="true" style={overlayStyle} /> : null}
-      <HeroContent node={node} data={data} contentStyle={contentStyle} ctaStyle={ctaStyle} />
-      {data.showArrows && data.images.length > 1 ? (
-        <>
-          <button
-            type="button"
-            aria-label="Previous slide"
-            data-hero-arrow="prev"
-            disabled={arrowDisabledPrev}
-            aria-disabled={arrowDisabledPrev || undefined}
-            onClick={prev}
-            style={{
-              position: "absolute",
-              left: 16,
-              top: "50%",
-              transform: "translateY(-50%)",
-              zIndex: 3,
-              width: 36,
-              height: 36,
-              borderRadius: "999px",
-              border: "none",
-              background: "rgba(0, 0, 0, 0.45)",
-              color: "#ffffff",
-              fontSize: 20,
-              cursor: arrowDisabledPrev ? "default" : "pointer",
-              opacity: arrowDisabledPrev ? 0.4 : 1,
-            }}
-          >
-            ‹
-          </button>
-          <button
-            type="button"
-            aria-label="Next slide"
-            data-hero-arrow="next"
-            disabled={arrowDisabledNext}
-            aria-disabled={arrowDisabledNext || undefined}
-            onClick={next}
-            style={{
-              position: "absolute",
-              right: 16,
-              top: "50%",
-              transform: "translateY(-50%)",
-              zIndex: 3,
-              width: 36,
-              height: 36,
-              borderRadius: "999px",
-              border: "none",
-              background: "rgba(0, 0, 0, 0.45)",
-              color: "#ffffff",
-              fontSize: 20,
-              cursor: arrowDisabledNext ? "default" : "pointer",
-              opacity: arrowDisabledNext ? 0.4 : 1,
-            }}
-          >
-            ›
-          </button>
-        </>
-      ) : null}
-      {data.showDots && data.images.length > 1 ? (
-        <div
-          style={{
-            position: "absolute",
-            bottom: 16,
-            left: 0,
-            right: 0,
-            zIndex: 3,
-            display: "flex",
-            justifyContent: "center",
-            gap: 8,
-          }}
-        >
-          {data.images.map((_image, i) => (
-            <button
-              // biome-ignore lint/suspicious/noArrayIndexKey: slideshow order is the identifier
-              key={i}
-              type="button"
-              aria-label={`Go to slide ${i + 1}`}
-              aria-current={i === index ? "true" : undefined}
-              data-hero-dot={i}
-              onClick={() => goTo(i)}
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: "999px",
-                border: "none",
-                padding: 0,
-                background: i === index ? "#ffffff" : "rgba(255, 255, 255, 0.5)",
-                cursor: "pointer",
-              }}
-            />
-          ))}
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-// Shared content (heading + subheading + CTA) used by both the static and
-// slideshow render paths. Each text field is rendered through
-// `EditableTextSlot` so right-clicking the heading on the canvas opens the
-// rich-text toolbar; the visitor render is read-only `RichTextRenderer`.
-type HeroContentProps = {
-  node: ComponentNode;
-  data: HeroBannerData;
-  contentStyle: CSSProperties;
-  ctaStyle: CSSProperties;
-};
-
-function HeroContent({ node, data, contentStyle, ctaStyle }: HeroContentProps) {
-  return (
-    <div style={contentStyle}>
-      <EditableTextSlot
-        nodeId={node.id}
-        propKey="heading"
-        richKey="richHeading"
-        doc={data.richHeading}
-        fallback={data.heading}
-        fullProps={node.props}
-        profile="block"
-        as="h1"
-        style={{ fontSize: "40px", fontWeight: 700, margin: 0 }}
-      />
-      {data.subheading || data.richSubheading ? (
-        <EditableTextSlot
-          nodeId={node.id}
-          propKey="subheading"
-          richKey="richSubheading"
-          doc={data.richSubheading}
-          fallback={data.subheading}
-          fullProps={node.props}
-          profile="block"
-          as="p"
-          style={{ fontSize: "18px", margin: 0, maxWidth: "640px" }}
-        />
-      ) : null}
-      {data.ctaLabel || data.richCtaLabel ? (
-        <a href={data.ctaHref} style={ctaStyle}>
-          <EditableTextSlot
-            nodeId={node.id}
-            propKey="ctaLabel"
-            richKey="richCtaLabel"
-            doc={data.richCtaLabel}
-            fallback={data.ctaLabel}
-            fullProps={node.props}
-            profile="inline"
-            as="span"
-          />
-        </a>
-      ) : null}
-    </div>
-  );
+  if (data.layout === "split-left") return <SplitLayout {...layoutProps} side="left" />;
+  if (data.layout === "split-right") return <SplitLayout {...layoutProps} side="right" />;
+  if (data.layout === "full-bleed") return <FullBleedLayout {...layoutProps} />;
+  return <CenteredLayout {...layoutProps} />;
 }

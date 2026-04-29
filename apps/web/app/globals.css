@@ -10,3 +10,19 @@
 @theme {
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 }
+
+/* HeroBanner v2 Sprint 9 — particle keyframes consumed by
+ * components/site-components/HeroBanner/effects/Particles.tsx. Each
+ * animation is a slow infinite drift via background-position. */
+@keyframes hero-particles-drift {
+  from { background-position: 0 0, 0 0, 0 0, 0 0; }
+  to   { background-position: 240px 240px, -320px 320px, 180px -180px, -200px -200px; }
+}
+@keyframes hero-particles-float {
+  from { background-position: 0 0, 0 0; }
+  to   { background-position: 120px 0, -160px 80px; }
+}
+@keyframes hero-particles-grid {
+  from { background-position: 0 0; }
+  to   { background-position: 32px 32px; }
+}

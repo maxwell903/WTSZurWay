@@ -11,6 +11,12 @@ function getRoot(container: HTMLElement): HTMLElement | null {
   return container.querySelector("[data-component-type='HeroBanner']") as HTMLElement | null;
 }
 
+function requireRoot(container: HTMLElement): HTMLElement {
+  const root = getRoot(container);
+  if (!root) throw new Error("HeroBanner root not found");
+  return root;
+}
+
 describe("<HeroBanner> — backwards-compat (no slideshow images)", () => {
   it("renders heading, subheading, and CTA when all are provided", () => {
     const { container } = render(
@@ -182,7 +188,7 @@ describe("<HeroBanner> — autoplay behavior", () => {
         cssStyle={{}}
       />,
     );
-    const root = getRoot(container)!;
+    const root = requireRoot(container);
     expect(root.getAttribute("data-slideshow-index")).toBe("0");
     act(() => {
       vi.advanceTimersByTime(1000);
@@ -212,7 +218,7 @@ describe("<HeroBanner> — autoplay behavior", () => {
         cssStyle={{}}
       />,
     );
-    const root = getRoot(container)!;
+    const root = requireRoot(container);
     act(() => {
       vi.advanceTimersByTime(5000);
     });
@@ -231,7 +237,7 @@ describe("<HeroBanner> — autoplay behavior", () => {
         cssStyle={{}}
       />,
     );
-    const root = getRoot(container)!;
+    const root = requireRoot(container);
     act(() => {
       vi.advanceTimersByTime(10_000);
     });
@@ -251,7 +257,7 @@ describe("<HeroBanner> — autoplay behavior", () => {
         cssStyle={{}}
       />,
     );
-    const root = getRoot(container)!;
+    const root = requireRoot(container);
     fireEvent.mouseEnter(root);
     act(() => {
       vi.advanceTimersByTime(3000);
@@ -277,7 +283,7 @@ describe("<HeroBanner> — autoplay behavior", () => {
         cssStyle={{}}
       />,
     );
-    const root = getRoot(container)!;
+    const root = requireRoot(container);
     fireEvent.mouseEnter(root);
     act(() => {
       vi.advanceTimersByTime(1000);
@@ -305,7 +311,7 @@ describe("<HeroBanner> — manual navigation", () => {
         cssStyle={{}}
       />,
     );
-    const root = getRoot(container)!;
+    const root = requireRoot(container);
     const dot2 = root.querySelector("[data-hero-dot='2']") as HTMLButtonElement;
     fireEvent.click(dot2);
     expect(root.getAttribute("data-slideshow-index")).toBe("2");
@@ -324,7 +330,7 @@ describe("<HeroBanner> — manual navigation", () => {
         cssStyle={{}}
       />,
     );
-    const root = getRoot(container)!;
+    const root = requireRoot(container);
     const next = root.querySelector("[data-hero-arrow='next']") as HTMLButtonElement;
     const prev = root.querySelector("[data-hero-arrow='prev']") as HTMLButtonElement;
     fireEvent.click(next);
@@ -352,7 +358,7 @@ describe("<HeroBanner> — manual navigation", () => {
         cssStyle={{}}
       />,
     );
-    const root = getRoot(container)!;
+    const root = requireRoot(container);
     const prev = root.querySelector("[data-hero-arrow='prev']") as HTMLButtonElement;
     const next = root.querySelector("[data-hero-arrow='next']") as HTMLButtonElement;
     expect(prev.disabled).toBe(true);
@@ -368,19 +374,16 @@ describe("<HeroBanner> — manual navigation", () => {
 describe("<HeroBanner> — prefers-reduced-motion", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.stubGlobal(
-      "matchMedia",
-      (query: string) => ({
-        matches: query.includes("prefers-reduced-motion"),
-        media: query,
-        onchange: null,
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        addListener: () => {},
-        removeListener: () => {},
-        dispatchEvent: () => false,
-      }),
-    );
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("prefers-reduced-motion"),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }));
   });
 
   afterEach(() => {
@@ -405,7 +408,7 @@ describe("<HeroBanner> — prefers-reduced-motion", () => {
         cssStyle={{}}
       />,
     );
-    const root = getRoot(container)!;
+    const root = requireRoot(container);
     act(() => {
       vi.advanceTimersByTime(5000);
     });

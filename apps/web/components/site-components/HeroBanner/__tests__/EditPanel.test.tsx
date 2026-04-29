@@ -97,10 +97,14 @@ describe("HeroBannerEditPanel — basic prop fields", () => {
     expect(getNode("cmp_hero").props.heading).toBe("New tagline");
   });
 
-  it("toggling the Overlay switch writes node.props.overlay", () => {
+  // Sprint 5: the v1 boolean SwitchInput was replaced by the OverlayInput
+  // (kind: none / solid / linear / radial). Choosing "None" writes
+  // `overlay: false` so the renderer's schema preprocess doesn't fall back
+  // to the default solid.
+  it("clicking the Overlay 'None' kind writes overlay=false (replaces v1 boolean toggle)", () => {
     hydrateWith({ heading: "X", overlay: true });
     render(<PanelHost id="cmp_hero" Panel={HeroBannerEditPanel} />);
-    fireEvent.click(screen.getByTestId("hero-overlay"));
+    fireEvent.click(screen.getByTestId("hero-overlay-kind-none"));
     expect(getNode("cmp_hero").props.overlay).toBe(false);
   });
 });
@@ -116,20 +120,30 @@ describe("HeroBannerEditPanel — slideshow images editor", () => {
     expect(getNode("cmp_hero").props.images).toEqual([{ src: "", alt: "" }]);
   });
 
-  it("editing a slide src writes through to the store", () => {
+  // Sprint 8: SlideshowImagesEditor became collapsible. Per-slide controls
+  // (src, alt, etc.) live inside the expanded card; remove + drag are on
+  // the collapsed row header. Testids changed accordingly:
+  //   - row remove:  `hero-slides-{idx}-remove`  (was `hero-slides-remove-{idx}`)
+  //   - row toggle:  `hero-slides-{idx}-toggle`  (new)
+  //   - src URL:     `hero-slides-{idx}-src-url` (was `hero-slides-src-{idx}-url`)
+  //   - alt:         `hero-slides-{idx}-alt`     (was `hero-slides-alt-{idx}`)
+  // These swaps are documented in the Sprint 8 Completion Report.
+  it("editing a slide src writes through to the store (after expanding the row)", () => {
     hydrateWith({ heading: "Hi", images: [{ src: "", alt: "" }] });
     render(<PanelHost id="cmp_hero" Panel={HeroBannerEditPanel} />);
-    fireEvent.change(screen.getByTestId("hero-slides-src-0-url"), {
+    fireEvent.click(screen.getByTestId("hero-slides-0-toggle"));
+    fireEvent.change(screen.getByTestId("hero-slides-0-src-url"), {
       target: { value: "https://example.com/a.png" },
     });
     const images = getNode("cmp_hero").props.images as { src: string; alt?: string }[];
     expect(images[0]?.src).toBe("https://example.com/a.png");
   });
 
-  it("editing a slide alt writes through to the store", () => {
+  it("editing a slide alt writes through to the store (after expanding the row)", () => {
     hydrateWith({ heading: "Hi", images: [{ src: "x", alt: "" }] });
     render(<PanelHost id="cmp_hero" Panel={HeroBannerEditPanel} />);
-    fireEvent.change(screen.getByTestId("hero-slides-alt-0"), {
+    fireEvent.click(screen.getByTestId("hero-slides-0-toggle"));
+    fireEvent.change(screen.getByTestId("hero-slides-0-alt"), {
       target: { value: "City skyline" },
     });
     const images = getNode("cmp_hero").props.images as { src: string; alt?: string }[];
@@ -145,7 +159,7 @@ describe("HeroBannerEditPanel — slideshow images editor", () => {
       ],
     });
     render(<PanelHost id="cmp_hero" Panel={HeroBannerEditPanel} />);
-    fireEvent.click(screen.getByTestId("hero-slides-remove-0"));
+    fireEvent.click(screen.getByTestId("hero-slides-0-remove"));
     const images = getNode("cmp_hero").props.images as { src: string; alt?: string }[];
     expect(images).toEqual([{ src: "b", alt: "" }]);
   });

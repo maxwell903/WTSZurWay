@@ -1756,3 +1756,54 @@ this sprint uses (`useEditor`, `EditorContent`, `StarterKit`, `generateHTML`).
 **Cross-sprint impact:** Phase 2 custom extensions will be written against
 v3's extension API, not v2. Phase 3 broadcast transformers are pure JSON,
 unaffected.
+
+## 2026-04-28 — HeroBanner v2 Sprint 1 — Install framer-motion + react-colorful
+
+**Context:** HeroBanner v2 multi-sprint plan (`hero-banner-v2-fuzzy-petal.md`),
+Sprint 1 (Wave 1 foundation). The v2 spec lists Framer Motion and
+react-colorful as locked dependencies and says "all already in the
+repo. Do not add new top-level libraries." Verification at the start of
+Sprint 1 found that neither package was actually present in
+`apps/web/package.json`.
+
+**Original plan:** Spec implies these are pre-installed. Sprint 1 was
+to consume them immediately.
+
+**What changed:** Sprint 1 installs them via
+`pnpm --filter web add framer-motion@latest react-colorful@latest`,
+resolved to `framer-motion@12.38.0` and `react-colorful@5.6.1`. The
+two packages are required by Wave 3 sprints — `framer-motion` for
+Feature 6 (slide transitions via `AnimatePresence`) and Feature 15
+(rotating heading fade), `react-colorful` for Feature 5
+(`OverlayInput`'s color pickers). Installing them in Wave 1 lets
+Wave 3 sprints consume them without each filing its own deviation.
+
+**Rationale:** The spec's "no new top-level libraries" rule is
+incompatible with its own feature requirements. Installing these two
+packages once, in the foundation sprint, is the smallest deviation
+that satisfies both the spec's behavioral requirements and the §15.7
+gates downstream. Both packages have permissive licenses, are widely
+used, and are zero-risk additions.
+
+**User approval (verbatim):** "Install in Wave 1 under a logged
+deviation (Recommended)" — chosen via AskUserQuestion during plan
+authoring on 2026-04-28.
+
+**Trade-offs accepted:**
+- Gain: Wave 3 sprints (S5, S6, S10) ship without needing their own
+  deviations; transition + color-picker UX is best-in-class.
+- Lose: Two new top-level deps (~85 KB gzipped combined). Not material
+  for an editor-only context.
+- Risk: Future Framer Motion major-version bumps could touch our
+  transition components. Mitigated by pinning to the resolved
+  `12.38.0` line.
+
+**Affected files / modules:**
+- `apps/web/package.json` — added `framer-motion: 12.38.0` and
+  `react-colorful: 5.6.1`.
+- `pnpm-lock.yaml` — regenerated.
+
+**Cross-sprint impact:** Wave 3 Sprints 5 (Overlays), 6 (Transitions
++ KenBurns + Parallax), and 10 (Rotating heading + Countdown) all
+import from these packages without filing further deviations.
+
