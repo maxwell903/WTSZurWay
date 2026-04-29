@@ -1,3 +1,4 @@
+import { synthesizeDoc } from "@/lib/rich-text/synthesize-doc";
 import type { ComponentNode } from "@/types/site-config";
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -117,5 +118,67 @@ describe("SlideContent — per-slide overrides + banner-level fallback", () => {
       />,
     );
     expect(getRoot(container)?.querySelector("[data-hero-cta='primary']")).toBeNull();
+  });
+});
+
+describe("SlideContent — heading decision tree", () => {
+  it("renders RotatingHeading when {rotator} token + rotatingWords present and no rich formatting", () => {
+    const { container } = render(
+      <HeroBanner
+        node={makeNode({
+          heading: "Hello {rotator} world",
+          rotatingWords: ["beautiful"],
+          autoplay: false,
+          images: [],
+        })}
+        cssStyle={{}}
+      />,
+    );
+    const root = getRoot(container);
+    // RotatingHeading renders a span with `data-hero-rotator`.
+    expect(root?.querySelector("[data-hero-rotator]")).not.toBeNull();
+  });
+
+  it("DOES NOT animate the rotator when richHeading has formatting", () => {
+    const formattedDoc = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Hello {rotator} world", marks: [{ type: "bold" }] }],
+        },
+      ],
+    };
+    const { container } = render(
+      <HeroBanner
+        node={makeNode({
+          heading: "Hello {rotator} world",
+          richHeading: formattedDoc,
+          rotatingWords: ["beautiful"],
+          autoplay: false,
+          images: [],
+        })}
+        cssStyle={{}}
+      />,
+    );
+    const root = getRoot(container);
+    expect(root?.querySelector("[data-hero-rotator]")).toBeNull();
+  });
+
+  it("renders TipTap path (no RotatingHeading) when richHeading is plain (matches synthesize)", () => {
+    const { container } = render(
+      <HeroBanner
+        node={makeNode({
+          heading: "Plain heading",
+          richHeading: synthesizeDoc("Plain heading", "block"),
+          autoplay: false,
+          images: [],
+        })}
+        cssStyle={{}}
+      />,
+    );
+    const root = getRoot(container);
+    expect(root?.querySelector("h1")?.textContent).toBe("Plain heading");
+    expect(root?.querySelector("[data-hero-rotator]")).toBeNull();
   });
 });
