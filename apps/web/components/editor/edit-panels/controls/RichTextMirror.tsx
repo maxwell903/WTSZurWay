@@ -26,6 +26,7 @@ export type RichTextMirrorProps = {
   plain: string;
   rawRich: unknown;
   rows?: number;
+  placeholder?: string;
   // Profile selects the rich-text synthesis shape — block (paragraph
   // wrapper) for Heading / Paragraph; inline (flat text*) for Button.
   profile?: SynthesizeProfile;
@@ -51,6 +52,7 @@ export function RichTextMirror({
   plain,
   rawRich,
   rows = 3,
+  placeholder,
   profile = "block",
   writePartial,
 }: RichTextMirrorProps) {
@@ -107,6 +109,7 @@ export function RichTextMirror({
           id={fieldId}
           data-testid={fieldId}
           value={plain}
+          placeholder={placeholder}
           onChange={(e) => handlePlainChange(e.target.value)}
           rows={rows}
           className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-400/40"

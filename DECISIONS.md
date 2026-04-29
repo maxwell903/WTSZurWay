@@ -1865,3 +1865,32 @@ After running `pnpm install`, the full vitest suite now passes (1576 tests pass,
 
 **Cross-sprint impact:** None.
 
+---
+
+## 2026-04-29 — HeroBanner-TipTap-sync Plan — Fix SlideshowImagesEditor tests broken by Task E.4
+
+**Context:** Task E.4 (`cc8b3b9`) swapped the per-slide heading and secondary-CTA-label inputs to `RichTextMirror`. This broke 4 tests in `SlideshowImagesEditor.test.tsx` that depended on: (a) `id="s"` with testid-prefix queries expecting `"slides-0-*"` (mismatch between `fieldId` and the testId prefix), and (b) a `placeholder` attribute on the heading textarea that `RichTextMirror` did not yet accept. Verified via `git checkout cc8b3b9~1` that tests passed before E.4.
+
+**Original plan:** E.4 did not include corresponding test updates in `SlideshowImagesEditor.test.tsx`.
+
+**What changed:**
+1. Added `placeholder?: string` prop to `RichTextMirror` and forwarded it to the textarea.
+2. Passed `placeholderFor(inheritance?.heading)` to the heading `RichTextMirror` in `ContentFields`.
+3. Fixed three tests that used `id="s"` to use `id="slides"` so `fieldId` matches the queried testids.
+4. Ran `pnpm biome format --write` on the three modified files to clear CRLF format drift.
+
+**Rationale:** E.4 owned these test failures; they are corrected as part of this plan's F.1 quality gate cleanup.
+
+**User approval (verbatim):** Implicit — fixing tests broken by this plan's own earlier task, required for §15.7 gate passage.
+
+**Trade-offs accepted:**
+- Gain: §15.7 test gate passes. `RichTextMirror` gains a `placeholder` prop (additive, backward-compatible).
+- Lose: Nothing.
+- Risk: Zero — test fixes + one additive optional prop.
+
+**Affected files / modules:**
+- `apps/web/components/editor/edit-panels/controls/RichTextMirror.tsx`
+- `apps/web/components/editor/edit-panels/controls/SlideshowImagesEditor.tsx`
+- `apps/web/components/editor/edit-panels/controls/__tests__/SlideshowImagesEditor.test.tsx`
+
+**Cross-sprint impact:** None. Future callers of `RichTextMirror` may optionally use the new `placeholder` prop.

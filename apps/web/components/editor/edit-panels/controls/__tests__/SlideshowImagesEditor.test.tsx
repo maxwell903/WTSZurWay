@@ -65,7 +65,12 @@ describe("<SlideshowImagesEditor> — per-slide field writes", () => {
   it("editing the per-slide heading writes through to onChange", () => {
     const onChange = vi.fn();
     render(
-      <SlideshowImagesEditor id="s" value={[{ src: "" }]} onChange={onChange} testId="slides" />,
+      <SlideshowImagesEditor
+        id="slides"
+        value={[{ src: "" }]}
+        onChange={onChange}
+        testId="slides"
+      />,
     );
     fireEvent.click(screen.getByTestId("slides-0-toggle"));
     fireEvent.change(screen.getByTestId("slides-0-heading"), {
@@ -79,7 +84,12 @@ describe("<SlideshowImagesEditor> — per-slide field writes", () => {
   it("editing the secondary CTA label writes through to onChange", () => {
     const onChange = vi.fn();
     render(
-      <SlideshowImagesEditor id="s" value={[{ src: "" }]} onChange={onChange} testId="slides" />,
+      <SlideshowImagesEditor
+        id="slides"
+        value={[{ src: "" }]}
+        onChange={onChange}
+        testId="slides"
+      />,
     );
     fireEvent.click(screen.getByTestId("slides-0-toggle"));
     fireEvent.change(screen.getByTestId("slides-0-secondary-cta-label"), {
@@ -120,7 +130,7 @@ describe("<SlideshowImagesEditor> — inheritance placeholders", () => {
   it("falls back to '(inherits banner)' when the banner-level value is empty", () => {
     const { container } = render(
       <SlideshowImagesEditor
-        id="s"
+        id="slides"
         value={[{ src: "" }]}
         onChange={vi.fn()}
         testId="slides"

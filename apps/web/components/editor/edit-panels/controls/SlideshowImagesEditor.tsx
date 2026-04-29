@@ -459,6 +459,7 @@ function ContentFields({
         richKey="richHeading"
         plain={slide.heading ?? ""}
         rawRich={slide.richHeading}
+        placeholder={placeholderFor(inheritance?.heading)}
         profile="block"
         writePartial={writePartialFor("heading", "richHeading")}
       />
