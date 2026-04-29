@@ -16,6 +16,12 @@ importers:
       '@biomejs/biome':
         specifier: 1.9.4
         version: 1.9.4
+      '@supabase/supabase-js':
+        specifier: 2.104.1
+        version: 2.104.1
+      dotenv:
+        specifier: 17.4.2
+        version: 17.4.2
       tsx:
         specifier: 4.20.6
         version: 4.20.6
