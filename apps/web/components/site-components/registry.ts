@@ -227,6 +227,12 @@ export const componentRegistry: Record<ComponentType, RegistryEntry> = {
           label: "CTA label",
           profile: "inline",
         },
+        {
+          propKey: "secondaryCtaLabel",
+          richKey: "richSecondaryCtaLabel",
+          label: "Secondary CTA label",
+          profile: "inline",
+        },
       ],
     },
   },

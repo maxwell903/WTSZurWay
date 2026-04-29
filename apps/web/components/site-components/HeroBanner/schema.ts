@@ -137,6 +137,7 @@ export const heroBannerPropsSchema = z.object({
 
   // v2 — dual-CTA banner-level secondary
   secondaryCtaLabel: z.string().optional(),
+  richSecondaryCtaLabel: richTextDocSchema.optional(),
   secondaryCtaHref: z.string().optional(),
 
   // v2 — layout + slide transition
