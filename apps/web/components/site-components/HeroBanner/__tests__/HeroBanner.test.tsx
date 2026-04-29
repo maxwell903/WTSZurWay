@@ -1,3 +1,5 @@
+import { RenderModeProvider } from "@/components/renderer/RenderModeContext";
+import { __resetEditorStoreForTests, useEditorStore } from "@/lib/editor-state/store";
 import type { ComponentNode } from "@/types/site-config";
 import { act, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -413,5 +415,94 @@ describe("<HeroBanner> — prefers-reduced-motion", () => {
       vi.advanceTimersByTime(5000);
     });
     expect(root.getAttribute("data-slideshow-index")).toBe("0");
+  });
+});
+
+describe("<HeroBanner> — edit-mode pause", () => {
+  beforeEach(() => __resetEditorStoreForTests());
+  afterEach(() => vi.useRealTimers());
+
+  it("freezes on slide 0 when slideshowPaused is true (edit mode)", () => {
+    vi.useFakeTimers();
+    const { container } = render(
+      <RenderModeProvider value="edit">
+        <HeroBanner
+          node={makeNode({
+            heading: "X",
+            autoplay: true,
+            intervalMs: 1000,
+            images: [
+              { src: "https://x/1.png", alt: "1" },
+              { src: "https://x/2.png", alt: "2" },
+            ],
+          })}
+          cssStyle={{}}
+        />
+      </RenderModeProvider>,
+    );
+    act(() => {
+      useEditorStore.getState().toggleSlideshowPaused();
+    });
+    act(() => {
+      vi.advanceTimersByTime(2500);
+    });
+    const root = requireRoot(container);
+    expect(root.getAttribute("data-slideshow-index")).toBe("0");
+  });
+
+  it("freezes when this banner is the selected component (edit mode)", () => {
+    vi.useFakeTimers();
+    const { container } = render(
+      <RenderModeProvider value="edit">
+        <HeroBanner
+          node={makeNode({
+            heading: "X",
+            autoplay: true,
+            intervalMs: 1000,
+            images: [
+              { src: "https://x/1.png", alt: "1" },
+              { src: "https://x/2.png", alt: "2" },
+            ],
+          })}
+          cssStyle={{}}
+        />
+      </RenderModeProvider>,
+    );
+    act(() => {
+      useEditorStore.getState().selectComponent("cmp_hero");
+    });
+    act(() => {
+      vi.advanceTimersByTime(2500);
+    });
+    const root = requireRoot(container);
+    expect(root.getAttribute("data-slideshow-index")).toBe("0");
+  });
+
+  it("ignores slideshowPaused in preview mode", () => {
+    vi.useFakeTimers();
+    const { container } = render(
+      <RenderModeProvider value="preview">
+        <HeroBanner
+          node={makeNode({
+            heading: "X",
+            autoplay: true,
+            intervalMs: 1000,
+            images: [
+              { src: "https://x/1.png", alt: "1" },
+              { src: "https://x/2.png", alt: "2" },
+            ],
+          })}
+          cssStyle={{}}
+        />
+      </RenderModeProvider>,
+    );
+    act(() => {
+      useEditorStore.getState().toggleSlideshowPaused();
+    });
+    act(() => {
+      vi.advanceTimersByTime(1100);
+    });
+    const root = requireRoot(container);
+    expect(root.getAttribute("data-slideshow-index")).toBe("1");
   });
 });
