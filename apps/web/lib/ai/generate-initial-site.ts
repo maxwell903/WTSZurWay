@@ -31,6 +31,7 @@ import { createAnthropicClient } from "@/lib/ai/client";
 import { type AiError, categorizeAiError } from "@/lib/ai/errors";
 import { lookupGenerationFixture } from "@/lib/ai/fixtures";
 import { buildInitialGenerationSystemPrompt } from "@/lib/ai/prompts/initial-generation";
+import type { StockImageRow } from "@/lib/ai/prompts/snippets/stock-images";
 import type { SetupFormValues } from "@/lib/setup-form/types";
 import {
   type ComponentNode,
@@ -64,6 +65,7 @@ export type InspirationImage = { url: string };
 export type InitialGenerationInput = {
   form: SetupFormValues;
   inspirationImages?: InspirationImage[];
+  stockImages?: StockImageRow[];
 };
 
 export type GenerateInitialSiteResult =
