@@ -155,21 +155,20 @@ function renderHeading({
 }): ReactNode {
   const baseStyle: CSSProperties = { fontSize: "40px", fontWeight: 700, margin: 0 };
 
-  // Per-slide override path
-  if (
-    slide &&
-    slideIndex !== undefined &&
-    (slide.heading !== undefined || slide.richHeading !== undefined)
-  ) {
-    const slidePlain = slide.heading ?? "";
-    const slideRich = slide.richHeading;
+  // When a slide is active, ALL canvas editing routes to that slide's
+  // per-slide override fields. The visible content falls back to banner-
+  // level when the slide has no override yet, but TipTap writes back to
+  // images[slideIndex] so the per-slide panel field and the per-slide
+  // canvas TipTap stay in 1:1 sync (and the banner-level field is left
+  // untouched, acting only as the initial default).
+  if (slide && slideIndex !== undefined) {
     return (
       <EditableTextSlot
         nodeId={node.id}
         propKey={`images.${slideIndex}.heading`}
         richKey={`images.${slideIndex}.richHeading`}
-        doc={slideRich}
-        fallback={slidePlain}
+        doc={slide.richHeading ?? data.richHeading}
+        fallback={slide.heading || data.heading}
         fullProps={node.props}
         profile="block"
         as="h1"
@@ -179,7 +178,7 @@ function renderHeading({
     );
   }
 
-  // Banner-level path (rich / rotator / plain)
+  // No slide active (static, no-slides hero) — banner-level path.
   const decision = decideHeadingRender(data.heading, data.richHeading, data.rotatingWords);
 
   if (decision.kind === "rotator") {
@@ -220,18 +219,21 @@ function renderSubheading({
   slide: Slide | undefined;
   slideIndex: number | undefined;
 }): ReactNode {
-  const slideHasOverride =
-    slide && (slide.subheading !== undefined || slide.richSubheading !== undefined);
   const baseStyle: CSSProperties = { fontSize: "18px", margin: 0, maxWidth: "640px" };
 
-  if (slideHasOverride && slide && slideIndex !== undefined) {
+  // Slide-active path: TipTap edits always write to the per-slide override.
+  // Hide entirely only when both slide and banner are empty.
+  if (slide && slideIndex !== undefined) {
+    const slidePlain = slide.subheading || data.subheading;
+    const slideRich = slide.richSubheading ?? data.richSubheading;
+    if (!slidePlain && !slideRich) return null;
     return (
       <EditableTextSlot
         nodeId={node.id}
         propKey={`images.${slideIndex}.subheading`}
         richKey={`images.${slideIndex}.richSubheading`}
-        doc={slide.richSubheading}
-        fallback={slide.subheading ?? ""}
+        doc={slideRich}
+        fallback={slidePlain}
         fullProps={node.props}
         profile="block"
         as="p"
@@ -268,16 +270,15 @@ function renderCtaLabel({
   slide: Slide | undefined;
   slideIndex: number | undefined;
 }): ReactNode {
-  const slideHasOverride =
-    slide && (slide.ctaLabel !== undefined || slide.richCtaLabel !== undefined);
-  if (slideHasOverride && slide && slideIndex !== undefined) {
+  // Slide-active path: TipTap edits always write to the per-slide override.
+  if (slide && slideIndex !== undefined) {
     return (
       <EditableTextSlot
         nodeId={node.id}
         propKey={`images.${slideIndex}.ctaLabel`}
         richKey={`images.${slideIndex}.richCtaLabel`}
-        doc={slide.richCtaLabel}
-        fallback={slide.ctaLabel ?? ""}
+        doc={slide.richCtaLabel ?? data.richCtaLabel}
+        fallback={slide.ctaLabel || data.ctaLabel}
         fullProps={node.props}
         profile="inline"
         as="span"
@@ -310,16 +311,15 @@ function renderSecondaryCtaLabel({
   slide: Slide | undefined;
   slideIndex: number | undefined;
 }): ReactNode {
-  const slideHasOverride =
-    slide && (slide.secondaryCtaLabel !== undefined || slide.richSecondaryCtaLabel !== undefined);
-  if (slideHasOverride && slide && slideIndex !== undefined) {
+  // Slide-active path: TipTap edits always write to the per-slide override.
+  if (slide && slideIndex !== undefined) {
     return (
       <EditableTextSlot
         nodeId={node.id}
         propKey={`images.${slideIndex}.secondaryCtaLabel`}
         richKey={`images.${slideIndex}.richSecondaryCtaLabel`}
-        doc={slide.richSecondaryCtaLabel}
-        fallback={slide.secondaryCtaLabel ?? ""}
+        doc={slide.richSecondaryCtaLabel ?? data.richSecondaryCtaLabel}
+        fallback={slide.secondaryCtaLabel || data.secondaryCtaLabel || ""}
         fullProps={node.props}
         profile="inline"
         as="span"
