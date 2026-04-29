@@ -1894,26 +1894,3 @@ After running `pnpm install`, the full vitest suite now passes (1576 tests pass,
 - `apps/web/components/editor/edit-panels/controls/__tests__/SlideshowImagesEditor.test.tsx`
 
 **Cross-sprint impact:** None. Future callers of `RichTextMirror` may optionally use the new `placeholder` prop.
-
-## 2026-04-29 — HeroBanner-TipTap-sync Plan — Retroactive biome format fix on SlideContent + SlideshowImagesEditor
-
-**Context:** During Task F.1 the §15.7 biome gate was failing on `apps/web/components/site-components/HeroBanner/slides/SlideContent.tsx` and `apps/web/components/editor/edit-panels/controls/SlideshowImagesEditor.tsx`. The format violations predate this work — present at the plan's base commit (867be90) and earlier.
-
-**Original plan:** Files were modified by Tasks E.2 and E.4 of `docs/superpowers/plans/2026-04-28-hero-banner-tiptap-sync.md`, but the formatter drift originated in earlier sprints.
-
-**What changed:** Ran `pnpm biome format --write` on the two files. Pure whitespace / line-length / trailing-comma adjustments — zero behavior change. Biome reformatted one file (SlideContent.tsx); SlideshowImagesEditor.tsx was already format-clean after its E.4 edit.
-
-**Rationale:** §15.9 retroactive cross-sprint cleanup permits surgical, behavior-preserving fixes to inherited breakage when later sprints can't pass §15.7 otherwise. The two files were already in the current sprint's diff (E.2 / E.4), so applying the formatter on them is the smallest possible §15.9 fix.
-
-**User approval (verbatim):** Pre-authorized by CLAUDE.md §15.9 — surgical config/format fixes to inherited breakage are allowed without per-occurrence Deviation Report; each must be logged here.
-
-**Trade-offs accepted:**
-- Gain: §15.7 biome gate passes for sprint completion.
-- Lose: One file (SlideContent.tsx) has whitespace churn in its git history.
-- Risk: Zero — formatting only.
-
-**Affected files / modules:**
-- `apps/web/components/site-components/HeroBanner/slides/SlideContent.tsx`
-- `apps/web/components/editor/edit-panels/controls/SlideshowImagesEditor.tsx` (no changes applied — already clean)
-
-**Cross-sprint impact:** None.
