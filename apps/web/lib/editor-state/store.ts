@@ -69,6 +69,8 @@ const creator: StateCreator<EditorStore> = (set) => ({
   // 2026-04-27 evening progressive-disclosure pivot — see DECISIONS.md.
   // ON gives the everything-labelled inspection view.
   showComponentTypes: false,
+  // Editor-only slideshow pause flag. Transient — visitor renders ignore it.
+  slideshowPaused: false,
   // Rich-text Phase 1 — toolbar closed by default.
   textEditingScope: null,
 
@@ -89,6 +91,7 @@ const creator: StateCreator<EditorStore> = (set) => ({
       saveState: "idle",
       lastSavedAt: null,
       saveError: null,
+      slideshowPaused: false,
       textEditingScope: null,
     }),
 
@@ -390,6 +393,8 @@ const creator: StateCreator<EditorStore> = (set) => ({
   toggleShowComponentTypes: () =>
     set((state) => ({ showComponentTypes: !state.showComponentTypes })),
 
+  toggleSlideshowPaused: () => set((state) => ({ slideshowPaused: !state.slideshowPaused })),
+
   // Sprint 13 — site-wide NavBar lock. When flipping ON, the helper picks a
   // canonical NavBar and replicates its content/style to every other NavBar
   // not in override mode so they all align immediately.
@@ -476,6 +481,7 @@ export function __resetEditorStoreForTests(): void {
     lastSavedAt: null,
     saveError: null,
     showComponentTypes: false,
+    slideshowPaused: false,
     textEditingScope: null,
   });
 }

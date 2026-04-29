@@ -873,3 +873,44 @@ describe("locked NavBar replication: setComponentProps + setComponentStyle propa
     expect(navB?.props.logoPlacement).toBe("right");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Task A.2 -- slideshowPaused transient flag
+// ---------------------------------------------------------------------------
+
+describe("slideshowPaused", () => {
+  beforeEach(() => __resetEditorStoreForTests());
+
+  it("defaults to false", () => {
+    expect(useEditorStore.getState().slideshowPaused).toBe(false);
+  });
+
+  it("toggleSlideshowPaused flips the flag", () => {
+    const { toggleSlideshowPaused } = useEditorStore.getState();
+    toggleSlideshowPaused();
+    expect(useEditorStore.getState().slideshowPaused).toBe(true);
+    toggleSlideshowPaused();
+    expect(useEditorStore.getState().slideshowPaused).toBe(false);
+  });
+
+  it("hydrate resets the flag to false", () => {
+    useEditorStore.getState().toggleSlideshowPaused();
+    expect(useEditorStore.getState().slideshowPaused).toBe(true);
+    useEditorStore.getState().hydrate({
+      siteId: "s",
+      siteSlug: "x",
+      workingVersionId: "w",
+      initialConfig: {
+        meta: { siteName: "x", siteSlug: "x" },
+        brand: { palette: "ocean", fontFamily: "Inter" },
+        global: {
+          navBar: { links: [], logoPlacement: "left", sticky: false },
+          footer: { columns: [], copyright: "" },
+        },
+        pages: [],
+        forms: [],
+      },
+    });
+    expect(useEditorStore.getState().slideshowPaused).toBe(false);
+  });
+});
