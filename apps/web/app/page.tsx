@@ -4,7 +4,7 @@ export default function HomePage() {
   return (
     <main className="grid min-h-screen place-items-center bg-neutral-950 px-6 text-center">
       <div className="flex max-w-md flex-col items-center gap-4 rounded-2xl border border-neutral-800 bg-neutral-900 px-10 py-12 shadow-xl">
-        <h1 className="text-4xl font-bold tracking-tight text-white">Orion's Belt</h1>
+        <h1 className="text-4xl font-bold tracking-tight text-white">Nebula</h1>
         <p className="text-base text-neutral-400">Generative websites for Rent Manager.</p>
         <Link
           href="/setup"
