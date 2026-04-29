@@ -146,6 +146,10 @@ export const heroBannerPropsSchema = z.object({
 
   // v2 — layout + slide transition
   layout: z.enum(["centered", "split-left", "split-right", "full-bleed"]).default("centered"),
+  // Background of the text panel in split-left / split-right layouts. Hex
+  // color (e.g. "#ffffff") or the literal "transparent". Ignored by other
+  // layouts. Default preserves the v1 white panel for backwards compat.
+  splitTextPanelBackground: z.string().default("#ffffff"),
   slideTransition: z
     .enum(["crossfade", "slide-left", "slide-right", "zoom", "fade-up"])
     .default("crossfade"),

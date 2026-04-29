@@ -178,7 +178,7 @@ function TextPanel({
       style={{
         ...halfPanelStyle,
         order: textOnLeft ? 1 : 2,
-        background: "#ffffff",
+        background: data.splitTextPanelBackground,
       }}
     >
       <SlideContent
