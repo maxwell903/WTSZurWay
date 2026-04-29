@@ -111,6 +111,7 @@ function CenteredSlideshow({
   const { index, goTo, next, prev, renderEntries, mouseHandlers } = useHeroSlideshow(
     data,
     prefersReducedMotion,
+    node.id,
     sectionRef,
   );
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { useRenderMode } from "@/components/renderer/RenderModeContext";
+import { useEditorStore } from "@/lib/editor-state";
 import { type CSSProperties, type RefObject, useCallback, useRef, useState } from "react";
 import { KenBurns } from "../effects/KenBurns";
 import { Parallax } from "../effects/Parallax";
@@ -18,16 +20,19 @@ import type { SlideRenderEntry, SlideTransitionKind } from "../transitions/types
 // state, mouse handlers (for pause-on-hover), the pre-built SlideRenderEntry
 // list, and controls. Each layout composes the rest of its DOM around this.
 //
-// If `swipeTargetRef` is provided, attaches Sprint 8's pointer-event swipe
-// detection: swipe-left → next, swipe-right → prev. The ref is for the
-// container element you want swipes detected on (usually the layout's
-// section root or the slideshow's media pane).
+// Edit-mode pause: when the global slideshowPaused flag is on, OR this
+// banner is the currently-selected component, the slideshow freezes on
+// its active slide. Visitor renders ignore both flags.
 export function useHeroSlideshow(
   data: HeroBannerData,
   prefersReducedMotion: boolean,
+  nodeId: string,
   swipeTargetRef?: RefObject<HTMLElement | null>,
 ) {
-  const [paused, setPaused] = useState(false);
+  const [hoverPaused, setHoverPaused] = useState(false);
+  const mode = useRenderMode();
+  const globalPaused = useEditorStore((s) => s.slideshowPaused);
+  const selectedId = useEditorStore((s) => s.selectedComponentId);
 
   // Sprint 7: per-slide video durations reported by VideoSlide on
   // `loadedmetadata`. Used to extend the slideshow's dwell to
@@ -41,12 +46,16 @@ export function useHeroSlideshow(
     return known ?? null;
   }, []);
 
+  const hoverContribution = data.pauseOnHover ? hoverPaused : false;
+  const editorContribution = mode === "edit" ? globalPaused || selectedId === nodeId : false;
+  const paused = hoverContribution || editorContribution;
+
   const { index, goTo, next, prev } = useSlideshow({
     count: data.images.length,
     autoplay: data.autoplay,
     intervalMs: data.intervalMs,
     loop: data.loop,
-    paused: data.pauseOnHover ? paused : false,
+    paused,
     prefersReducedMotion,
     getDwellMsOverride,
   });
@@ -84,15 +93,11 @@ export function useHeroSlideshow(
 
   const mouseHandlers = data.pauseOnHover
     ? {
-        onMouseEnter: () => setPaused(true),
-        onMouseLeave: () => setPaused(false),
+        onMouseEnter: () => setHoverPaused(true),
+        onMouseLeave: () => setHoverPaused(false),
       }
     : {};
 
-  // Sprint 8: pointer-event swipe (50px horizontal, vertical < 50px)
-  // attaches to the layout's chosen target ref. Swipe-left → next slide,
-  // swipe-right → prev slide. The hook is a no-op when no target ref is
-  // supplied or when no slides exist.
   useSwipe({
     ref: swipeTargetRef ?? { current: null },
     onSwipeLeft: data.images.length > 1 ? next : undefined,

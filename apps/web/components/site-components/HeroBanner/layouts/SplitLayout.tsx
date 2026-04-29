@@ -96,6 +96,7 @@ function SplitWithSlideshow({
   const { index, goTo, next, prev, renderEntries, mouseHandlers } = useHeroSlideshow(
     data,
     prefersReducedMotion,
+    node.id,
   );
   const overlay = data.overlay ? <OverlayLayer overlay={data.overlay} /> : null;
   const heading = headingNode(data, prefersReducedMotion);
