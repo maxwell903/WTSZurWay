@@ -246,3 +246,23 @@ describe("<HeroBannerEditPanel> — RichTextMirror bidirectional sync", () => {
     expect((screen.getByTestId("hero-heading") as HTMLTextAreaElement).value).toBe("Inline edit");
   });
 });
+
+describe("<HeroBannerEditPanel> — per-slide override RichTextMirror", () => {
+  it("typing in slide-0 heading writes both plain and rich keys on images[0]", () => {
+    hydrateWith({
+      heading: "",
+      images: [{ src: "https://x/1.png", alt: "1" }],
+    });
+    render(<PanelHost id="cmp_hero" Panel={HeroBannerEditPanel} />);
+    const expandToggle = screen.getByTestId("hero-slides-0-toggle");
+    fireEvent.click(expandToggle);
+    const headingTextarea = screen.getByTestId("hero-slides-0-heading");
+    fireEvent.change(headingTextarea, { target: { value: "Slide override" } });
+    const after = getNode("cmp_hero").props as { images: Array<Record<string, unknown>> };
+    const firstSlide = after.images[0];
+    expect(firstSlide).toBeDefined();
+    if (!firstSlide) throw new Error("no slide");
+    expect(firstSlide.heading).toBe("Slide override");
+    expect(firstSlide.richHeading).toEqual(synthesizeDoc("Slide override", "block"));
+  });
+});
