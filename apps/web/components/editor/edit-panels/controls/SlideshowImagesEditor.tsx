@@ -32,6 +32,7 @@ import {
 import { useState } from "react";
 import { HrefInput } from "./HrefInput";
 import { MediaUpload } from "./MediaUpload";
+import { RichTextMirror } from "./RichTextMirror";
 import { TextInput } from "./TextInput";
 import { WithTooltip } from "./with-tooltip";
 
@@ -46,12 +47,16 @@ export type SlideshowImage = {
   videoSrc?: string;
   videoSrcWebm?: string;
   videoPoster?: string;
-  // Per-slide content overrides (Sprint 8)
+  // Per-slide content overrides (Sprint 8) + their rich-text companions.
   heading?: string;
+  richHeading?: unknown;
   subheading?: string;
+  richSubheading?: unknown;
   ctaLabel?: string;
+  richCtaLabel?: unknown;
   ctaHref?: string;
   secondaryCtaLabel?: string;
+  richSecondaryCtaLabel?: unknown;
   secondaryCtaHref?: string;
   align?: "left" | "center" | "right";
   verticalAlign?: "top" | "center" | "bottom";
@@ -430,37 +435,53 @@ function ContentFields({
   testId?: string;
   onChange: (patch: Partial<SlideshowImage>) => void;
 }) {
+  // Bridge RichTextMirror's writePartial into our `update(idx, patch)` model.
+  // Each call site builds a localized patch that targets one slide field.
+  const writePartialFor = (
+    plainKey: keyof SlideshowImage,
+    richKey: keyof SlideshowImage,
+  ) => (patch: Record<string, unknown>) => {
+    onChange({
+      [plainKey]: patch[plainKey as string] as string | undefined,
+      [richKey]: patch[richKey as string],
+    } as Partial<SlideshowImage>);
+  };
+
   const placeholderFor = (val: string | undefined) =>
     val && val.length > 0 ? `(inherits "${val}")` : "(inherits banner)";
+
   return (
     <div className="space-y-1.5 rounded-md border border-zinc-800 bg-zinc-950/30 p-1.5">
       <p className="text-[10px] uppercase tracking-wider text-zinc-500">Per-slide content</p>
-      <TextInput
-        id={`${idPrefix}-heading`}
-        label="Heading"
-        value={slide.heading ?? ""}
-        placeholder={placeholderFor(inheritance?.heading)}
-        testId={testId ? `${testId}-heading` : undefined}
-        tooltip="Overrides the banner heading on this slide. Leave blank to inherit."
-        onChange={(next) => onChange({ heading: next })}
+      <RichTextMirror
+        fieldId={`${idPrefix}-heading`}
+        fieldLabel="Heading"
+        plainKey="heading"
+        richKey="richHeading"
+        plain={slide.heading ?? ""}
+        rawRich={slide.richHeading}
+        profile="block"
+        writePartial={writePartialFor("heading", "richHeading")}
       />
-      <TextInput
-        id={`${idPrefix}-subheading`}
-        label="Sub-heading"
-        value={slide.subheading ?? ""}
-        placeholder={placeholderFor(inheritance?.subheading)}
-        testId={testId ? `${testId}-subheading` : undefined}
-        tooltip="Overrides the banner sub-heading on this slide."
-        onChange={(next) => onChange({ subheading: next })}
+      <RichTextMirror
+        fieldId={`${idPrefix}-subheading`}
+        fieldLabel="Sub-heading"
+        plainKey="subheading"
+        richKey="richSubheading"
+        plain={slide.subheading ?? ""}
+        rawRich={slide.richSubheading}
+        profile="block"
+        writePartial={writePartialFor("subheading", "richSubheading")}
       />
-      <TextInput
-        id={`${idPrefix}-cta-label`}
-        label="Primary CTA label"
-        value={slide.ctaLabel ?? ""}
-        placeholder={placeholderFor(inheritance?.ctaLabel)}
-        testId={testId ? `${testId}-cta-label` : undefined}
-        tooltip="Overrides the primary CTA button text on this slide."
-        onChange={(next) => onChange({ ctaLabel: next })}
+      <RichTextMirror
+        fieldId={`${idPrefix}-cta-label`}
+        fieldLabel="Primary CTA label"
+        plainKey="ctaLabel"
+        richKey="richCtaLabel"
+        plain={slide.ctaLabel ?? ""}
+        rawRich={slide.richCtaLabel}
+        profile="inline"
+        writePartial={writePartialFor("ctaLabel", "richCtaLabel")}
       />
       <HrefInput
         id={`${idPrefix}-cta-href`}
@@ -471,14 +492,15 @@ function ContentFields({
         tooltip="Overrides where the primary CTA links to on this slide. Pick a page or enter an external URL."
         onChange={(next) => onChange({ ctaHref: next === "" ? undefined : next })}
       />
-      <TextInput
-        id={`${idPrefix}-secondary-cta-label`}
-        label="Secondary CTA label"
-        value={slide.secondaryCtaLabel ?? ""}
-        placeholder={placeholderFor(inheritance?.secondaryCtaLabel)}
-        testId={testId ? `${testId}-secondary-cta-label` : undefined}
-        tooltip="Adds an outlined secondary CTA next to the primary. Leave blank to hide."
-        onChange={(next) => onChange({ secondaryCtaLabel: next })}
+      <RichTextMirror
+        fieldId={`${idPrefix}-secondary-cta-label`}
+        fieldLabel="Secondary CTA label"
+        plainKey="secondaryCtaLabel"
+        richKey="richSecondaryCtaLabel"
+        plain={slide.secondaryCtaLabel ?? ""}
+        rawRich={slide.richSecondaryCtaLabel}
+        profile="inline"
+        writePartial={writePartialFor("secondaryCtaLabel", "richSecondaryCtaLabel")}
       />
       <HrefInput
         id={`${idPrefix}-secondary-cta-href`}
