@@ -22,6 +22,7 @@
 
 import { aiEdit } from "@/lib/ai/ai-edit";
 import type { AiError } from "@/lib/ai/errors";
+import type { StockImageRow } from "@/lib/ai/prompts/snippets/stock-images";
 import { type SiteConfig, safeParseSiteConfig } from "@/lib/site-config";
 import { type Operation, OperationInvalidError, applyOperations } from "@/lib/site-config/ops";
 import { createServiceSupabaseClient } from "@/lib/supabase";
@@ -65,6 +66,23 @@ type SuccessResponseBody =
   | { kind: "clarify"; question: string };
 
 type ErrorResponseBody = { error: AiError };
+
+async function fetchStockImagesForSite(
+  supabase: ReturnType<typeof createServiceSupabaseClient>,
+  siteId: string,
+): Promise<StockImageRow[]> {
+  const { data, error } = await supabase
+    .from("ai_stock_images")
+    .select("id, site_id, storage_path, public_url, category, description")
+    .or(`site_id.is.null,site_id.eq.${siteId}`)
+    .order("category", { ascending: true })
+    .order("id", { ascending: true });
+  if (error) {
+    console.warn(`[ai-edit] stock-images fetch failed: ${error.message}`);
+    return [];
+  }
+  return (data ?? []) as StockImageRow[];
+}
 
 export async function POST(request: Request): Promise<Response> {
   let raw: unknown;
@@ -134,6 +152,7 @@ export async function POST(request: Request): Promise<Response> {
   }
   const config: SiteConfig = configParse.data;
 
+  const stockImages = await fetchStockImagesForSite(supabase, body.siteId);
   const orchestrator = await aiEdit({
     prompt: body.prompt,
     config,
@@ -144,6 +163,7 @@ export async function POST(request: Request): Promise<Response> {
     // does not otherwise read these fields.
     siteId: body.siteId,
     currentVersionId: body.currentVersionId,
+    stockImages,
   });
 
   if (orchestrator.kind === "error") {

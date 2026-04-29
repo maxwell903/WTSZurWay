@@ -75,6 +75,21 @@ type RowResult = {
 function buildSupabaseMock(returns: { count: CountResult; row: RowResult }) {
   fromMock.mockReset();
   fromMock.mockImplementation((table: string) => {
+    if (table === "ai_stock_images") {
+      // Task 8: the route fetches the stock-image catalog after loading the
+      // version row. The mock returns an empty list so the prompt simply
+      // omits the catalog section — graceful degradation, no behavior change
+      // for the existing test cases.
+      return {
+        select: () => ({
+          or: () => ({
+            order: () => ({
+              order: async () => ({ data: [], error: null }),
+            }),
+          }),
+        }),
+      };
+    }
     if (table !== "site_versions") {
       throw new Error(`Unexpected table: ${table}`);
     }
