@@ -14,11 +14,7 @@
 import { type ComponentNode, type ComponentType, newComponentId } from "@/lib/site-config";
 
 const DEFAULT_PROPS: Record<ComponentType, Record<string, unknown>> = {
-  // New Sections from the palette default to free-placement so resizing
-  // or AI-inserting one child can't reflow its siblings out of the box.
-  // The toggle in the Section's Content tab is still authoritative — the
-  // user can flip it off if they want classic flow layout.
-  Section: { as: "section", freePlacement: true },
+  Section: { as: "section" },
   Row: { gap: 16, alignItems: "stretch", justifyContent: "start", wrap: false },
   Column: { span: 12, gap: 8, alignItems: "stretch" },
   Heading: { text: "New heading", level: 2 },

@@ -52,11 +52,14 @@ function makeEmptySection(): ComponentNode {
   return {
     id: newComponentId("cmp"),
     type: "Section",
-    // Default new page roots to free-placement so AI inserts and resize
-    // operations can't reflow siblings out of the box. Existing Sections
-    // (already in saved configs) are unaffected — only freshly-created
-    // empty Sections opt in by default.
-    props: { freePlacement: true },
+    // New page roots start in flow mode (default `freePlacement: undefined`).
+    // AI generation expects normal block layout — defaulting to free-placement
+    // caused the AI to ship overlapping / mis-sized components because it
+    // doesn't reason about absolute coordinates well. Users opt into free
+    // placement per-section via the toggle in the Content tab once a layout
+    // is in place; the toggle's snapshot captures the existing flow layout
+    // so dragging stays smooth.
+    props: {},
     style: {},
     children: [],
   };

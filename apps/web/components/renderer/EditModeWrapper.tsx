@@ -4,19 +4,47 @@ import { DropZoneIndicator } from "@/components/editor/canvas/dnd/DropZoneIndica
 import { useNodeSortable } from "@/components/editor/canvas/dnd/SortableNodeContext";
 import { SideDropZones } from "@/components/editor/canvas/dnd/sideDropZones";
 import { componentRegistry } from "@/components/site-components/registry";
-import { useEditorStore } from "@/lib/editor-state";
+import { findComponentById, selectCurrentPage, useEditorStore } from "@/lib/editor-state";
 import type { ComponentType } from "@/lib/site-config";
 import { cn } from "@/lib/utils";
 import { CSS } from "@dnd-kit/utilities";
 import {
   type CSSProperties,
-  type KeyboardEvent,
-  type MouseEvent,
-  type PointerEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
+  type PointerEvent as ReactPointerEvent,
   useRef,
   useState,
 } from "react";
+
+// Drag-to-reposition activation: only start a real drag once the cursor
+// moves more than this many CSS px from the pointer-down point. Below the
+// threshold we let normal click-through happen (so a quick click still
+// selects the component without nudging it).
+const FREE_PLACEMENT_DRAG_THRESHOLD_PX = 5;
+// Snap step for free-placement drags. Hold Shift to escape the snap and
+// move at 1-px resolution. Mirrors ResizeHandles' PX_SNAP.
+const FREE_PLACEMENT_SNAP_PX = 8;
+
+function snapToStep(px: number, step: number, snap: boolean): number {
+  return snap ? Math.round(px / step) * step : Math.round(px);
+}
+
+function readNodePosition(nodeId: string): { x: number; y: number } {
+  const page = selectCurrentPage(useEditorStore.getState());
+  if (!page) return { x: 0, y: 0 };
+  const node = findComponentById(page.rootComponent, nodeId);
+  return { x: node?.position?.x ?? 0, y: node?.position?.y ?? 0 };
+}
+
+// Tag names + selectors that should NOT initiate a free-placement drag —
+// the user is interacting with something inside the component (a resize
+// handle, a button, a link, a text field, contenteditable). Without this
+// guard a click on a NavBar link or a contenteditable heading would start
+// dragging the whole component.
+const FREE_PLACEMENT_DRAG_IGNORE_SELECTOR =
+  "[data-resize-axis],[contenteditable=true],[contenteditable=plaintext-only],a,button,input,textarea,select";
 
 // Rich-text Phase 1 — browsers don't fire `dblcontextmenu`. Track the last
 // right-click per node and treat a second right-click on the same id within
@@ -40,6 +68,10 @@ type Props = {
   // Column's `flex: <span>` lands on the inner div but the wrapper sits
   // between it and the parent Row, breaking the flex chain.
   passthroughStyle?: CSSProperties;
+  // True when this node's direct parent is a Section in free-placement
+  // mode. Switches the wrapper to use a custom pointer-drag handler that
+  // updates `position.{x,y}` instead of dnd-kit's sortable reorder.
+  parentIsFreePlacement?: boolean;
   children: ReactNode;
 };
 
@@ -51,8 +83,10 @@ export function EditModeWrapper({
   onSelect,
   onContextMenu,
   passthroughStyle,
+  parentIsFreePlacement = false,
   children,
 }: Props) {
+  const setComponentPosition = useEditorStore((s) => s.setComponentPosition);
   // Sprint 7: when wrapped in a DndCanvasProvider, this returns dnd-kit's
   // sortable state for this node id. Otherwise (preview mode, standalone
   // tests, public site) it returns null and the wrapper behaves exactly
@@ -90,19 +124,125 @@ export function EditModeWrapper({
   // the actual right-clicked root) but sits above hover and X-ray.
   const showBroadcastOutline = mode === "edit" && inBroadcastScope && !selected;
 
-  const handleClick = (e: MouseEvent<HTMLDivElement>) => {
+  // Free-placement drag-to-reposition. Only relevant when the parent is a
+  // free-placement Section. When a real drag occurs we set this flag so the
+  // subsequent click event (fired by the browser on pointerup) is suppressed
+  // and doesn't get interpreted as a "select" — the drag itself was the
+  // user's intent, not a click.
+  const dragRef = useRef<{
+    startClientX: number;
+    startClientY: number;
+    startPosX: number;
+    startPosY: number;
+    isDragging: boolean;
+  } | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const dragJustEndedRef = useRef(false);
+
+  const handleClick = (e: ReactMouseEvent<HTMLDivElement>) => {
     // Anchor clicks must bubble up to the canvas-level link interceptor
     // so it can preventDefault + swap the page. If we stopPropagation here,
     // the browser still executes the <a>'s default navigation (404 on
     // root-relative slugs that don't exist as top-level routes).
     if (e.target instanceof Element && e.target.closest("a")) return;
+    // Suppress the click that immediately follows a drag — without this the
+    // user clicks-and-drags to move a component and then the trailing click
+    // event re-selects it (cosmetic, but also re-triggers any selection
+    // side effects like opening the edit panel).
+    if (dragJustEndedRef.current) {
+      dragJustEndedRef.current = false;
+      e.stopPropagation();
+      return;
+    }
     e.stopPropagation();
     onSelect?.(id);
   };
 
+  const handleFreePlacementPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!parentIsFreePlacement) return;
+    if (mode !== "edit") return;
+    if (e.button !== 0) return;
+    if (e.target instanceof Element && e.target.closest(FREE_PLACEMENT_DRAG_IGNORE_SELECTOR))
+      return;
+    e.stopPropagation();
+
+    const start = readNodePosition(id);
+    dragRef.current = {
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startPosX: start.x,
+      startPosY: start.y,
+      isDragging: false,
+    };
+
+    function applyMove(clientX: number, clientY: number, shiftHeld: boolean): void {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const dx = clientX - drag.startClientX;
+      const dy = clientY - drag.startClientY;
+      const moved = Math.hypot(dx, dy);
+      if (!drag.isDragging) {
+        if (moved < FREE_PLACEMENT_DRAG_THRESHOLD_PX) return;
+        drag.isDragging = true;
+      }
+      const newX = snapToStep(drag.startPosX + dx, FREE_PLACEMENT_SNAP_PX, !shiftHeld);
+      const newY = snapToStep(drag.startPosY + dy, FREE_PLACEMENT_SNAP_PX, !shiftHeld);
+      setComponentPosition(id, { x: newX, y: newY });
+    }
+
+    function onMove(ev: PointerEvent | MouseEvent): void {
+      if (!dragRef.current) return;
+      const shift = "shiftKey" in ev ? ev.shiftKey : false;
+      if (rafRef.current === null) {
+        rafRef.current = window.requestAnimationFrame(() => {
+          rafRef.current = null;
+          applyMove(ev.clientX, ev.clientY, shift);
+        });
+      }
+    }
+
+    function onUp(ev: PointerEvent | MouseEvent): void {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const shift = "shiftKey" in ev ? ev.shiftKey : false;
+      // Final write at exact cursor position (no rAF throttle on release).
+      applyMove(ev.clientX, ev.clientY, shift);
+      if (drag.isDragging) {
+        dragJustEndedRef.current = true;
+      }
+      cleanup();
+    }
+
+    function onKey(ev: KeyboardEvent): void {
+      if (ev.key !== "Escape") return;
+      const drag = dragRef.current;
+      if (!drag) return;
+      // Revert to start position. Only fire a write if we'd actually moved.
+      if (drag.isDragging) {
+        setComponentPosition(id, { x: drag.startPosX, y: drag.startPosY });
+      }
+      cleanup();
+    }
+
+    function cleanup(): void {
+      window.removeEventListener("pointermove", onMove as EventListener);
+      window.removeEventListener("pointerup", onUp as EventListener);
+      window.removeEventListener("keydown", onKey);
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      dragRef.current = null;
+    }
+
+    window.addEventListener("pointermove", onMove as EventListener);
+    window.addEventListener("pointerup", onUp as EventListener);
+    window.addEventListener("keydown", onKey);
+  };
+
   const lastRightClickRef = useRef<{ id: string; t: number } | null>(null);
 
-  const handleContextMenu = (e: MouseEvent<HTMLDivElement>) => {
+  const handleContextMenu = (e: ReactMouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     const now = performance.now();
@@ -122,7 +262,7 @@ export function EditModeWrapper({
   // Without this guard, typing a space inside a TipTap contenteditable
   // child bubbles up here, gets preventDefault'd, and the user can't type
   // spaces. Same pattern Canvas.tsx uses for its global Esc handler.
-  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+  const handleKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
@@ -151,7 +291,13 @@ export function EditModeWrapper({
   // Merge passthrough layout styles UNDER sortableStyle so that an in-flight
   // drag transform always wins. The pass-through values are layout-shaping
   // (flex / width / height) and don't conflict with transform/opacity.
-  const wrapperStyle: CSSProperties = { ...passthroughStyle, ...sortableStyle };
+  // For free-placement children, add a `grab` cursor so the wrapper signals
+  // that the body is draggable.
+  const wrapperStyle: CSSProperties = {
+    ...passthroughStyle,
+    ...sortableStyle,
+    ...(parentIsFreePlacement && mode === "edit" ? { cursor: "grab" } : {}),
+  };
 
   // Sprint 7 "Known risks": dnd-kit's listeners spread BEFORE the explicit
   // onClick / onContextMenu / onKeyDown so the Sprint-6/8 handlers win the
@@ -159,20 +305,29 @@ export function EditModeWrapper({
   // single clicks from being interpreted as drags.
   // Hover handlers — only meaningful in edit mode; preview/public renders
   // never run this branch because EditModeWrapper isn't mounted there.
-  const handlePointerEnter = (_e: PointerEvent<HTMLDivElement>) => {
+  const handlePointerEnter = (_e: ReactPointerEvent<HTMLDivElement>) => {
     if (mode !== "edit") return;
     setHovered(true);
   };
-  const handlePointerLeave = (_e: PointerEvent<HTMLDivElement>) => {
+  const handlePointerLeave = (_e: ReactPointerEvent<HTMLDivElement>) => {
     if (mode !== "edit") return;
     setHovered(false);
   };
 
+  // For free-placement children, suppress dnd-kit's sortable listeners —
+  // reorder-by-drop semantics are meaningless in absolute layout (z-order
+  // is sibling order in `children[]` and is decoupled from spatial
+  // position). Our own `handleFreePlacementPointerDown` handles drag-to-
+  // reposition instead.
+  const sortableListeners = parentIsFreePlacement ? undefined : sortable?.listeners;
+  const sortableAttributes = parentIsFreePlacement ? undefined : sortable?.attributes;
+  const sortableRef = parentIsFreePlacement ? undefined : sortable?.setNodeRef;
+
   return (
     <div
-      ref={sortable?.setNodeRef ?? undefined}
-      {...(sortable?.attributes ?? {})}
-      {...(sortable?.listeners ?? {})}
+      ref={sortableRef ?? undefined}
+      {...(sortableAttributes ?? {})}
+      {...(sortableListeners ?? {})}
       data-edit-id={id}
       data-edit-selected={selected ? "true" : undefined}
       data-edit-hovered={hovered ? "true" : undefined}
@@ -185,6 +340,7 @@ export function EditModeWrapper({
       onKeyDown={handleKeyDown}
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}
+      onPointerDown={parentIsFreePlacement ? handleFreePlacementPointerDown : undefined}
       style={wrapperStyle}
       className={cn(
         "relative outline-offset-2 transition-[outline-color] duration-100",

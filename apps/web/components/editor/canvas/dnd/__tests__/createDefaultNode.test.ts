@@ -145,11 +145,8 @@ describe("createDefaultNode — props match the runtime safeParse contract", () 
     expect("primaryImageUrl" in node.props).toBe(false);
   });
 
-  it("Section default props include freePlacement=true so new sections opt into absolute layout", () => {
-    expect(createDefaultNode("Section").props).toEqual({
-      as: "section",
-      freePlacement: true,
-    });
+  it("Section default props match Sprint-7 table verbatim", () => {
+    expect(createDefaultNode("Section").props).toEqual({ as: "section" });
   });
 
   it("Row default props match Sprint-7 table verbatim", () => {

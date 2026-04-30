@@ -1,6 +1,8 @@
+"use client";
+
 import type { ComponentNode } from "@/types/site-config";
 import type { CSSProperties, ReactNode } from "react";
-import { Children } from "react";
+import { Children, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 
 const sectionPropsSchema = z.object({
@@ -46,6 +48,59 @@ export function Section({ node, cssStyle, children }: SectionProps) {
   const childNodes = node.children ?? [];
   const childArray = Children.toArray(children);
 
+  // Live measurement of free-placement child wrappers. Children whose
+  // `style.height` is set in the schema (e.g. via snapshot) get the
+  // wrapper rendered at that exact height — but children added via AI
+  // or palette-drop don't have an explicit height and render at auto-
+  // height (sized to their content). The schema-based min-height calc
+  // can't account for the auto-sized ones, so the section ends short
+  // of its actual content and the page background / canvas frame stop
+  // mid-page. ResizeObserver tracks the wrappers' real rendered heights
+  // and feeds them into the min-height so the section always extends
+  // past its lowest visible child.
+  const sectionElRef = useRef<HTMLElement | null>(null);
+  // Callback ref so we can attach to any of the four rendered tag variants
+  // (section / div / main / article) without dancing around the typed
+  // `RefObject<HTMLDivElement>` vs `RefObject<HTMLElement>` distinction.
+  const setSectionEl = (el: HTMLElement | null): void => {
+    sectionElRef.current = el;
+  };
+  const [measuredBottom, setMeasuredBottom] = useState(0);
+
+  // We re-run the observer setup whenever the children list changes so
+  // newly-inserted (or newly-removed) child wrappers get observed. The
+  // identity of `node.children` is reference-stable from the zustand store
+  // across renders that don't change the list — so depending on it gives
+  // us "re-run on add/remove/reorder" without re-running every render.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: childCount is the trigger; we re-run when children change so newly mounted wrappers get observed
+  useEffect(() => {
+    if (!freePlacement) return;
+    if (typeof ResizeObserver === "undefined") return;
+    const sectionEl = sectionElRef.current;
+    if (!sectionEl) return;
+    const targetEl: HTMLElement = sectionEl;
+
+    function recompute(): void {
+      let max = 0;
+      const wrappers = targetEl.querySelectorAll<HTMLElement>("[data-free-placement-child]");
+      for (const el of wrappers) {
+        const top = Number.parseFloat(el.style.top || "0") || 0;
+        const bottom = top + el.offsetHeight;
+        if (bottom > max) max = bottom;
+      }
+      const next = Math.round(max);
+      setMeasuredBottom((prev) => (prev === next ? prev : next));
+    }
+
+    recompute();
+
+    const observer = new ResizeObserver(() => recompute());
+    const wrappers = targetEl.querySelectorAll("[data-free-placement-child]");
+    for (const el of wrappers) observer.observe(el);
+
+    return () => observer.disconnect();
+  }, [freePlacement, node.children?.length, node.children]);
+
   let renderedChildren: ReactNode = children;
   let finalStyle: CSSProperties = cssStyle;
 
@@ -63,29 +118,18 @@ export function Section({ node, cssStyle, children }: SectionProps) {
     // children are absolutely positioned — they leave a tall empty void
     // below the last child. The user can still override via the Style tab,
     // but in absolute mode "fit to children" is the right default.
-    const minHeight = computeFreePlacementMinHeight(childNodes);
+    //
+    // Use `max(schemaMinHeight, measuredBottom)` so children with explicit
+    // `style.height` and children with auto-height (AI / palette inserts)
+    // both contribute correctly to the section's outer height.
+    const schemaMinHeight = computeFreePlacementMinHeight(childNodes);
+    const minHeight = Math.max(schemaMinHeight, measuredBottom);
     const { height: _h, minHeight: _mh, ...cssStyleNoHeight } = cssStyle;
     finalStyle = {
       ...cssStyleNoHeight,
       position: "relative",
       ...(minHeight > 0 ? { minHeight: `${minHeight}px` } : {}),
     };
-    if (typeof window !== "undefined") {
-      // Editor-only diagnostic: surface the computed min-height + the
-      // children's positions so we can verify the rendered section bounds
-      // match expectations.
-      console.info(
-        `[Section freePlacement] id=${node.id} minHeight=${minHeight}px children=${childNodes.length}`,
-        childNodes.map((c) => ({
-          id: c.id,
-          type: c.type,
-          x: c.position?.x,
-          y: c.position?.y,
-          w: c.style?.width,
-          h: c.style?.height,
-        })),
-      );
-    }
     renderedChildren = childArray.map((child, idx) => {
       const childNode = childNodes[idx];
       const x = childNode?.position?.x ?? 0;
@@ -140,27 +184,47 @@ export function Section({ node, cssStyle, children }: SectionProps) {
 
   if (tag === "div") {
     return (
-      <div data-component-id={node.id} data-component-type="Section" style={finalStyle}>
+      <div
+        ref={setSectionEl}
+        data-component-id={node.id}
+        data-component-type="Section"
+        style={finalStyle}
+      >
         {renderedChildren}
       </div>
     );
   }
   if (tag === "main") {
     return (
-      <main data-component-id={node.id} data-component-type="Section" style={finalStyle}>
+      <main
+        ref={setSectionEl}
+        data-component-id={node.id}
+        data-component-type="Section"
+        style={finalStyle}
+      >
         {renderedChildren}
       </main>
     );
   }
   if (tag === "article") {
     return (
-      <article data-component-id={node.id} data-component-type="Section" style={finalStyle}>
+      <article
+        ref={setSectionEl}
+        data-component-id={node.id}
+        data-component-type="Section"
+        style={finalStyle}
+      >
         {renderedChildren}
       </article>
     );
   }
   return (
-    <section data-component-id={node.id} data-component-type="Section" style={finalStyle}>
+    <section
+      ref={setSectionEl}
+      data-component-id={node.id}
+      data-component-type="Section"
+      style={finalStyle}
+    >
       {renderedChildren}
     </section>
   );

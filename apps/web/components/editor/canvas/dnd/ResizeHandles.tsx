@@ -65,6 +65,22 @@ function snapWidth(px: number, snap = true): number {
   return snapPx(px, WIDTH_MIN, snap);
 }
 
+// True when the given node's direct parent is a Section in free-placement
+// mode (or the legacy `fitToContents` flag). The L/T resize handles use this
+// to decide whether to write `position.{x,y}` (free placement) or
+// `margin.{left,top}` (flow). Read on pointer-down — reading from the live
+// store keeps it cheap and correct without re-subscribing the handles.
+function readParentIsFreePlacement(nodeId: string): boolean {
+  const page = selectCurrentPage(useEditorStore.getState());
+  if (!page) return false;
+  const parentId = findComponentParentId(page.rootComponent, nodeId);
+  if (!parentId) return false;
+  const parent = findComponentById(page.rootComponent, parentId);
+  if (!parent || parent.type !== "Section") return false;
+  const props = parent.props as { freePlacement?: unknown; fitToContents?: unknown };
+  return props.freePlacement === true || props.fitToContents === true;
+}
+
 type ViewportRect = { top: number; left: number; width: number; height: number };
 
 function rectOf(id: string): ViewportRect | null {
@@ -559,18 +575,30 @@ function BottomEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportR
 
 // ---------------------------------------------------------------------------
 // LeftEdgeHandle — drags the W edge. Width changes inversely with cursor X
-// (drag left → wider). Anchors the right edge by writing a compensating
-// `style.margin.left` so the visible right edge stays put while the left
-// edge follows the cursor (Figma-like). All math is computed against values
-// captured at pointer-down so there is no accumulation drift across frames.
+// (drag left → wider). Anchors the right edge.
+//
+// Flow-mode parent: writes `style.width` plus a compensating `style.margin.left`
+// so the visible right edge stays put while the left edge follows the cursor.
+//
+// Free-placement parent: writes `style.width` plus `position.x` (decreasing
+// by the width delta). The absolute wrapper around this child has its `top`
+// and `left` fed from `position`, so updating `position.x` shifts the left
+// edge while the captured width keeps the box's right edge anchored visually.
+// Margin would be ignored in free-placement mode (see ComponentRenderer's
+// `computeWrapperPassthroughStyle`), so writing it would be a no-op.
 // ---------------------------------------------------------------------------
 function LeftEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect }) {
   const setComponentStyle = useEditorStore((s) => s.setComponentStyle);
+  const setComponentPosition = useEditorStore((s) => s.setComponentPosition);
+  const setComponentDimension = useEditorStore((s) => s.setComponentDimension);
   const dragRef = useRef<{
     startClientX: number;
     startWidth: number;
     startMarginLeft: number;
     startStyle: StyleConfig;
+    startX: number;
+    startY: number;
+    parentIsFreePlacement: boolean;
   } | null>(null);
   const rafRef = useRef<number | null>(null);
 
@@ -578,11 +606,16 @@ function LeftEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRec
     e.preventDefault();
     e.stopPropagation();
 
+    const parentIsFreePlacement = readParentIsFreePlacement(node.id);
+
     dragRef.current = {
       startClientX: e.clientX,
       startWidth: rect.width,
       startMarginLeft: node.style.margin?.left ?? 0,
       startStyle: node.style,
+      startX: node.position?.x ?? 0,
+      startY: node.position?.y ?? 0,
+      parentIsFreePlacement,
     };
 
     function computeAndWrite(clientX: number, shiftHeld: boolean): void {
@@ -591,6 +624,20 @@ function LeftEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRec
       const cursorDx = clientX - drag.startClientX;
       const newWidth = snapWidth(drag.startWidth - cursorDx, !shiftHeld);
       const widthDelta = newWidth - drag.startWidth;
+
+      if (drag.parentIsFreePlacement) {
+        try {
+          setComponentDimension(node.id, "width", `${newWidth}px`);
+          setComponentPosition(node.id, {
+            x: Math.round(drag.startX - widthDelta),
+            y: drag.startY,
+          });
+        } catch {
+          // Apply layer rejected; silent no-op.
+        }
+        return;
+      }
+
       const newMarginLeft = drag.startMarginLeft - widthDelta;
       const newStyle: StyleConfig = {
         ...drag.startStyle,
@@ -663,19 +710,31 @@ function LeftEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRec
 
 // ---------------------------------------------------------------------------
 // TopEdgeHandle — drags the N edge. Height changes inversely with cursor Y
-// (drag up → taller). Anchors the bottom edge via compensating
-// `style.margin.top`. Spacer is a special case (height in props, not
-// style); for now top-edge resize on Spacer is a no-op (corner / bottom
-// edges remain the way to size a Spacer).
+// (drag up → taller). Anchors the bottom edge.
+//
+// Flow-mode parent: writes `style.height` plus a compensating `style.margin.top`.
+//
+// Free-placement parent: writes `style.height` plus `position.y` (decreasing
+// by the height delta). The absolute wrapper's `top` is fed from `position`,
+// so updating `position.y` shifts the top edge while the captured height
+// keeps the bottom edge anchored visually.
+//
+// Spacer is a special case (height in props, not style); top-edge resize on
+// Spacer is a no-op (corner / bottom edges remain the way to size a Spacer).
 // ---------------------------------------------------------------------------
 function TopEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect }) {
   const setComponentStyle = useEditorStore((s) => s.setComponentStyle);
+  const setComponentPosition = useEditorStore((s) => s.setComponentPosition);
+  const setComponentDimension = useEditorStore((s) => s.setComponentDimension);
   const isSpacer = node.type === "Spacer";
   const dragRef = useRef<{
     startClientY: number;
     startHeight: number;
     startMarginTop: number;
     startStyle: StyleConfig;
+    startX: number;
+    startY: number;
+    parentIsFreePlacement: boolean;
   } | null>(null);
   const rafRef = useRef<number | null>(null);
 
@@ -684,11 +743,16 @@ function TopEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect
     e.preventDefault();
     e.stopPropagation();
 
+    const parentIsFreePlacement = readParentIsFreePlacement(node.id);
+
     dragRef.current = {
       startClientY: e.clientY,
       startHeight: rect.height,
       startMarginTop: node.style.margin?.top ?? 0,
       startStyle: node.style,
+      startX: node.position?.x ?? 0,
+      startY: node.position?.y ?? 0,
+      parentIsFreePlacement,
     };
 
     function computeAndWrite(clientY: number, shiftHeld: boolean): void {
@@ -697,6 +761,20 @@ function TopEdgeHandle({ node, rect }: { node: ComponentNode; rect: ViewportRect
       const cursorDy = clientY - drag.startClientY;
       const newHeight = snapHeight(drag.startHeight - cursorDy, false, !shiftHeld);
       const heightDelta = newHeight - drag.startHeight;
+
+      if (drag.parentIsFreePlacement) {
+        try {
+          setComponentDimension(node.id, "height", `${newHeight}px`);
+          setComponentPosition(node.id, {
+            x: drag.startX,
+            y: Math.round(drag.startY - heightDelta),
+          });
+        } catch {
+          // Apply layer rejected; silent no-op.
+        }
+        return;
+      }
+
       const newMarginTop = drag.startMarginTop - heightDelta;
       const newStyle: StyleConfig = {
         ...drag.startStyle,

@@ -347,6 +347,7 @@ function ComponentRendererInner({
         onSelect={onSelect}
         onContextMenu={onContextMenu}
         passthroughStyle={computeWrapperPassthroughStyle(node, parentIsFreePlacement)}
+        parentIsFreePlacement={parentIsFreePlacement}
       >
         {rendered}
       </EditModeWrapper>
