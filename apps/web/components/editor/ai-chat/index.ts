@@ -10,6 +10,8 @@ export { MessageBubble } from "./MessageBubble";
 export type { MessageBubbleProps } from "./MessageBubble";
 export { MessageList } from "./MessageList";
 export type { MessageListProps } from "./MessageList";
+export { PageReferencePicker } from "./PageReferencePicker";
+export type { PageReferencePickerProps } from "./PageReferencePicker";
 export { RightSidebarAiChat, pendingSuggestionCount } from "./RightSidebarAiChat";
 export type { RightSidebarAiChatProps } from "./RightSidebarAiChat";
 export { SelectionChip } from "./SelectionChip";
@@ -22,6 +24,7 @@ export {
 export { SuggestedPrompts } from "./SuggestedPrompts";
 export type { SuggestedPromptsProps } from "./SuggestedPrompts";
 export type {
+  AiTurnUsage,
   AssistantClarifyMessage,
   AssistantErrorMessage,
   AssistantMessage,

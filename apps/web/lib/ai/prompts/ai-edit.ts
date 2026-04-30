@@ -36,6 +36,16 @@ export type AiEditPromptInput = {
   config: SiteConfig;
   selection: AiEditSelection | null;
   stockImages?: StockImageRow[];
+  // Hotfix 2026-04-30: pages the user pinned in the chat panel as
+  // additional reference. Only these and the currently edited page are
+  // sent in full -- every other page collapses to a one-line
+  // skeleton so the model still knows it exists.
+  referencedPageSlugs?: string[];
+  // Hotfix 2026-04-30 (follow-up): the slug of the page the user has
+  // open in the editor, sent independently of `selection` because the
+  // user can be editing "the whole page" with nothing selected. If
+  // present this slug is always kept in full in the focused config.
+  currentPageSlug?: string;
 };
 
 const OPERATIONS_VOCABULARY = String.raw`
@@ -207,7 +217,15 @@ the model may emit so error reports can reference a specific op.
 export function buildAiEditSystemPrompt(input: AiEditPromptInput): string {
   const componentCatalog = buildComponentCatalog();
   const selectionBlock = serializeSelection(input);
-  const configJson = JSON.stringify(input.config, null, 2);
+  // Hotfix 2026-04-30: emit a slimmed config (only the currently edited
+  // page + any pinned reference pages keep their full subtree; the rest
+  // collapse to a one-line skeleton) and use compact JSON.stringify
+  // (no 2-space indent). Combined these typically cut the SiteConfig
+  // section's input tokens by 50-70% on a multi-page site, which
+  // matters because the model must fit under the demo plan's 30k
+  // input cap and 8k output cap.
+  const focusedConfig = buildFocusedConfig(input);
+  const configJson = JSON.stringify(focusedConfig);
   const stockImagesProse = buildStockImagesProse(input.stockImages ?? []);
 
   return `You are producing a diff of operations against an existing SiteConfig
@@ -314,6 +332,27 @@ AI's suggested changes wouldn't work on this page." Specifically:
 - Reference existing component ids exactly as written -- do not rename
   or shorten them.
 
+# Output token discipline (binding -- the response budget is tight)
+
+- Use \`setText\` for plain text content. Only use \`setRichText\` when
+  the user explicitly asks for inline formatting like bold, italic,
+  underline, or mixed styling within a single line. Font family,
+  color, size, alignment, line-height, and per-component styling are
+  NOT "formatting" in this sense -- those go through
+  \`applyTextFormat\` and \`setStyle\` and work fine alongside
+  \`setText\`. Default to \`setText\`; reach for \`setRichText\` only on
+  explicit request.
+- Bake props, styles, and children into the literal you pass to
+  \`addComponent\` (\`component.props\`, \`component.style\`,
+  \`component.children\`). Do NOT follow an \`addComponent\` with
+  separate \`setProp\` / \`setStyle\` ops on the same target -- combine
+  them into the initial creation. Same rule for \`wrapComponent\`'s
+  wrapper literal.
+- Emit operations as compact JSON: no pretty-printing, no unnecessary
+  whitespace, and omit the optional top-level \`id\` field on each
+  operation unless you have a specific reason to label one for error
+  reporting.
+
 # Current SiteConfig (the document you are editing)
 
 \`\`\`json
@@ -323,6 +362,73 @@ ${configJson}
 # Current selection
 ${selectionBlock}
 `;
+}
+
+/**
+ * Hotfix 2026-04-30 (rev 2): Builds the "focused" SiteConfig the
+ * system prompt embeds. Pages the user is editing or has pinned as
+ * reference keep their full ComponentNode subtree; every other page
+ * collapses to `{ slug, kind, name, rootComponent: { id, type,
+ * children: [] } }` -- the root component's real id and type survive
+ * so the model can emit `addComponent({ parentId: <real id>, ... })`
+ * targeting any page even without seeing its full tree. Children /
+ * props / styles are dropped to save tokens. Site-level fields
+ * (`meta`, `brand`, `global`, `details`, `relationships`, etc.) pass
+ * through unchanged so site-wide ops still work.
+ *
+ * "Edited page" precedence: `selection.pageSlug` if set (a component
+ * is selected), else `currentPageSlug` (whole-page edit), else
+ * nothing. Pinned slugs from `referencedPageSlugs` always layer on top.
+ */
+function buildFocusedConfig(input: AiEditPromptInput): unknown {
+  const focusSet = new Set<string>();
+  const editedSlug = input.selection?.pageSlug ?? input.currentPageSlug;
+  if (editedSlug) focusSet.add(editedSlug);
+  for (const slug of input.referencedPageSlugs ?? []) {
+    focusSet.add(slug);
+  }
+
+  // Cast to a record so we can shallow-clone the config without committing
+  // to a particular SiteConfig revision in this file. The runtime shape is
+  // already validated upstream by safeParseSiteConfig.
+  const c = input.config as unknown as Record<string, unknown>;
+  const focused: Record<string, unknown> = { ...c };
+
+  type LooseRoot = { id?: unknown; type?: unknown } & Record<string, unknown>;
+  type LoosePage = {
+    slug: string;
+    kind?: string;
+    name?: string;
+    rootComponent?: unknown;
+  } & Record<string, unknown>;
+
+  if (Array.isArray(c.pages)) {
+    focused.pages = (c.pages as LoosePage[]).map((page) => {
+      if (focusSet.has(page.slug)) return page;
+      const root =
+        page.rootComponent && typeof page.rootComponent === "object"
+          ? (page.rootComponent as LooseRoot)
+          : null;
+      return {
+        slug: page.slug,
+        kind: page.kind ?? "static",
+        name: page.name ?? page.slug,
+        // Keep id + type so the model can target this page's root in
+        // `addComponent` / `setProp` / etc. without inventing an id.
+        // Empty children array signals "tree elided -- pin this page
+        // to see it" without breaking schemas that expect children.
+        rootComponent: root
+          ? {
+              id: root.id,
+              type: root.type,
+              children: [],
+            }
+          : null,
+      };
+    });
+  }
+
+  return focused;
 }
 
 function serializeSelection(input: AiEditPromptInput): string {

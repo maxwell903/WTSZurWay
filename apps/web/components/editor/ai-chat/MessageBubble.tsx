@@ -16,7 +16,15 @@ import { type AiError, formatErrorReport } from "@/lib/ai/errors";
 import { cn } from "@/lib/utils";
 import { Check, Clipboard, RotateCw, X } from "lucide-react";
 import { useState } from "react";
-import type { AssistantMessage, Message } from "./types";
+import type { AiTurnUsage, AssistantMessage, Message } from "./types";
+
+// Hotfix 2026-04-30: demo plan caps. The badge under each assistant turn
+// turns amber when input tokens cross 24k (80% of cap) or output crosses
+// 6.4k, and red when the call hit either ceiling -- so the demo operator
+// can see when a prompt was close to truncation.
+const INPUT_TOKEN_CAP = 30_000;
+const OUTPUT_TOKEN_CAP = 8_000;
+const WARN_RATIO = 0.8;
 
 export type MessageBubbleProps = {
   message: Message;
@@ -62,6 +70,7 @@ function AssistantBubble({
         <div className="max-w-[90%] space-y-2 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100">
           <p>{message.summary}</p>
           <AiSourceBadge aiSource={message.aiSource} />
+          <UsageBadge usage={message.usage} />
           {message.operations.length > 0 && (
             <ul className="list-disc space-y-0.5 pl-5 text-xs text-zinc-400">
               {message.operations.map((op, i) => (
@@ -118,13 +127,21 @@ function AssistantBubble({
         <div className="max-w-[90%] space-y-2 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100">
           <p>{message.question}</p>
           <AiSourceBadge aiSource={message.aiSource} />
+          <UsageBadge usage={message.usage} />
         </div>
       </div>
     );
   }
 
   // kind === "error"
-  return <ErrorBubble error={message.error} aiSource={message.aiSource} onRetry={onRetry} />;
+  return (
+    <ErrorBubble
+      error={message.error}
+      aiSource={message.aiSource}
+      usage={message.usage}
+      onRetry={onRetry}
+    />
+  );
 }
 
 // Sprint 14 DoD-13: dev-only `[live]`/`[fixture]` badge under the assistant
@@ -143,13 +160,36 @@ function AiSourceBadge({ aiSource }: { aiSource: "live" | "fixture" | undefined 
   );
 }
 
+// Hotfix 2026-04-30: per-turn token usage badge. Color shifts amber when
+// the call crossed 80% of either plan cap, red when it touched the cap
+// outright. Renders nothing when usage is undefined (fixture-only turn,
+// pre-flight error, etc.).
+function UsageBadge({ usage }: { usage: AiTurnUsage | undefined }) {
+  if (!usage) return null;
+  const inputRatio = usage.inputTokens / INPUT_TOKEN_CAP;
+  const outputRatio = usage.outputTokens / OUTPUT_TOKEN_CAP;
+  const peak = Math.max(inputRatio, outputRatio);
+  const tone = peak >= 1 ? "text-red-300" : peak >= WARN_RATIO ? "text-amber-300" : "text-zinc-400";
+  return (
+    <span
+      data-testid="ai-chat-turn-usage"
+      className={cn("block font-mono text-[10px] tracking-wide", tone)}
+      title={`Plan caps: ${INPUT_TOKEN_CAP.toLocaleString()} input / ${OUTPUT_TOKEN_CAP.toLocaleString()} output`}
+    >
+      {usage.inputTokens.toLocaleString()} in / {usage.outputTokens.toLocaleString()} out
+    </span>
+  );
+}
+
 function ErrorBubble({
   error,
   aiSource,
+  usage,
   onRetry,
 }: {
   error: AiError;
   aiSource: "live" | "fixture" | undefined;
+  usage: AiTurnUsage | undefined;
   onRetry: () => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -177,6 +217,7 @@ function ErrorBubble({
       >
         <p>{copy}</p>
         <AiSourceBadge aiSource={aiSource} />
+        <UsageBadge usage={usage} />
         <div className="flex gap-2 pt-1">
           {showRetry && (
             <Button

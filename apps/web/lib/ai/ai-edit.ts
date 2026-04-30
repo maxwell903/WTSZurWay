@@ -3,7 +3,7 @@
  *
  * Mirrors `generate-initial-site.ts` (Sprint 4) -- builds the system prompt,
  * attaches up to 4 image content blocks, calls Claude with the §9.7 AI Edit
- * parameters (claude-sonnet-4-5, max_tokens 6000, temperature 0.2), parses
+ * parameters (claude-sonnet-4-5, max_tokens 8000, temperature 0.2), parses
  * the JSON response, validates against the AI Edit response schema, and on
  * parse / validation failure retries ONCE with a follow-up message
  * including the validation issues. Every failure path maps to a categorized
@@ -45,7 +45,12 @@ import type { ZodIssue } from "zod";
 import { z } from "zod";
 
 const MODEL = "claude-sonnet-4-5";
-const MAX_TOKENS = 6_000;
+// Hotfix 2026-04-30: bumped 6_000 -> 8_000 (max under the demo Claude plan
+// output cap). Multi-component AI Edit prompts (testimonials grid, etc.)
+// were truncating mid-JSON because the post-Sprint-15 prompt embeds the
+// stock-images catalog and the model's operations grew. See
+// DECISIONS.md 2026-04-30.
+const MAX_TOKENS = 8_000;
 const TEMPERATURE = 0.2;
 const MAX_IMAGES = 4;
 
@@ -54,6 +59,15 @@ export type AiEditAttachment = { url: string };
 export type AiEditHistoryTurn = {
   role: "user" | "assistant";
   content: string;
+};
+
+// Hotfix 2026-04-30: surface Anthropic's per-call token usage so the
+// right-sidebar chat can render a "<input>/<output>" badge on each
+// assistant turn. Keeps the demo operator informed about how close each
+// prompt is to the 30k input / 8k output plan caps.
+export type AiEditUsage = {
+  inputTokens: number;
+  outputTokens: number;
 };
 
 /**
@@ -73,6 +87,18 @@ export type AiEditInput = {
   siteId?: string;
   currentVersionId?: string;
   stockImages?: StockImageRow[];
+  // Hotfix 2026-04-30: extra page slugs the user pinned in the chat panel
+  // so the model sees those pages' subtrees in addition to the currently
+  // edited page. Empty / undefined => only the currently edited page is
+  // sent in full; everything else collapses to a {slug,name,kind}
+  // skeleton.
+  referencedPageSlugs?: string[];
+  // Hotfix 2026-04-30 (rev 2): the slug of the page the user has open in
+  // the editor. Sent independently of `selection` because the user can
+  // be editing the whole page with nothing selected; without this the
+  // focused config has no signal for which page is "current" and elides
+  // it.
+  currentPageSlug?: string;
 };
 
 export type AiEditOk = {
@@ -80,16 +106,19 @@ export type AiEditOk = {
   summary: string;
   operations: Operation[];
   source: "live" | "fixture";
+  usage?: AiEditUsage;
 };
 export type AiEditClarify = {
   kind: "clarify";
   question: string;
   source: "live" | "fixture";
+  usage?: AiEditUsage;
 };
 export type AiEditError = {
   kind: "error";
   error: AiError;
   source: "live" | "fixture";
+  usage?: AiEditUsage;
 };
 export type AiEditResult = AiEditOk | AiEditClarify | AiEditError;
 
@@ -119,6 +148,8 @@ export async function aiEdit(
     config: input.config,
     selection: input.selection,
     stockImages: input.stockImages,
+    referencedPageSlugs: input.referencedPageSlugs,
+    currentPageSlug: input.currentPageSlug,
   };
   const systemPrompt = buildAiEditSystemPrompt(promptInput);
 
@@ -126,6 +157,7 @@ export async function aiEdit(
 
   let firstAttemptText: string | undefined;
   let firstZodIssues: ZodIssue[] | undefined;
+  let lastUsage: AiEditUsage | undefined;
 
   try {
     const response = await client.messages.create({
@@ -135,15 +167,16 @@ export async function aiEdit(
       system: systemPrompt,
       messages: initialMessages,
     });
+    lastUsage = extractUsage(response);
     const text = extractText(response);
     firstAttemptText = text;
     const parsed = parseAndValidate(text);
     if (parsed.success) {
-      return resultFromResponse(parsed.value, "live");
+      return resultFromResponse(parsed.value, "live", lastUsage);
     }
     firstZodIssues = parsed.issues;
   } catch (e) {
-    return withFixtureFallback(input, categorizeAiError(e));
+    return withFixtureFallback(input, categorizeAiError(e), lastUsage);
   }
 
   // Single retry per §9.7.
@@ -167,18 +200,23 @@ export async function aiEdit(
       system: systemPrompt,
       messages: retryMessages,
     });
+    lastUsage = extractUsage(retryResponse);
     const text = extractText(retryResponse);
     const parsed = parseAndValidate(text);
     if (parsed.success) {
-      return resultFromResponse(parsed.value, "live");
+      return resultFromResponse(parsed.value, "live", lastUsage);
     }
-    return withFixtureFallback(input, {
-      kind: "invalid_output",
-      message: "AI Edit response failed validation",
-      details: JSON.stringify(parsed.issues),
-    });
+    return withFixtureFallback(
+      input,
+      {
+        kind: "invalid_output",
+        message: "AI Edit response failed validation",
+        details: JSON.stringify(parsed.issues),
+      },
+      lastUsage,
+    );
   } catch (e) {
-    return withFixtureFallback(input, categorizeAiError(e));
+    return withFixtureFallback(input, categorizeAiError(e), lastUsage);
   }
 }
 
@@ -189,7 +227,11 @@ export async function aiEdit(
 // these (Sprint 11's existing suite) still work because the lookup just
 // hashes `null` for missing fields and misses the fixture row, falling
 // through to the original error envelope.
-async function withFixtureFallback(input: AiEditInput, error: AiError): Promise<AiEditResult> {
+async function withFixtureFallback(
+  input: AiEditInput,
+  error: AiError,
+  usage: AiEditUsage | undefined,
+): Promise<AiEditResult> {
   const lookupInput: FixtureAiEditInput = {
     prompt: input.prompt,
     siteId: input.siteId,
@@ -198,9 +240,12 @@ async function withFixtureFallback(input: AiEditInput, error: AiError): Promise<
   };
   const fixture = await lookupAiEditFixture(lookupInput);
   if (fixture) {
-    return fixture;
+    // Fixture hits don't have live usage stats; if a live attempt
+    // happened first we still report its usage so the demo operator can
+    // see how close the truncated request was to the cap.
+    return usage ? { ...fixture, usage } : fixture;
   }
-  return { kind: "error", error, source: "live" };
+  return { kind: "error", error, source: "live", usage };
 }
 
 function buildMessages(input: AiEditInput): MessageParam[] {
@@ -260,6 +305,19 @@ function extractText(response: { content: Anthropic.Messages.ContentBlock[] }): 
   return parts.join("");
 }
 
+function extractUsage(response: {
+  usage?: { input_tokens?: number; output_tokens?: number } | null;
+}): AiEditUsage | undefined {
+  // The SDK shape includes cache_* fields too; we only surface the two
+  // numbers the demo operator cares about. If either is missing we drop
+  // the whole object rather than report half-truths.
+  const u = response.usage;
+  if (!u || typeof u.input_tokens !== "number" || typeof u.output_tokens !== "number") {
+    return undefined;
+  }
+  return { inputTokens: u.input_tokens, outputTokens: u.output_tokens };
+}
+
 type ParseAndValidateResult =
   | { success: true; value: AiEditResponse }
   | { success: false; issues: ZodIssue[] };
@@ -296,16 +354,21 @@ function stripCodeFence(text: string): string {
   return text;
 }
 
-function resultFromResponse(response: AiEditResponse, source: "live" | "fixture"): AiEditResult {
+function resultFromResponse(
+  response: AiEditResponse,
+  source: "live" | "fixture",
+  usage: AiEditUsage | undefined,
+): AiEditResult {
   if (response.kind === "ok") {
     return {
       kind: "ok",
       summary: response.summary,
       operations: response.operations,
       source,
+      usage,
     };
   }
-  return { kind: "clarify", question: response.question, source };
+  return { kind: "clarify", question: response.question, source, usage };
 }
 
 // Internal helpers exported for unit tests only.

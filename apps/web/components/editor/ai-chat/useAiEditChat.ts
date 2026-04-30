@@ -17,16 +17,24 @@ import { useEditorStore } from "@/lib/editor-state";
 import { selectSelectedComponentNode } from "@/lib/editor-state/selectors";
 import type { Operation } from "@/lib/site-config/ops";
 import { useCallback, useMemo, useRef, useState } from "react";
-import type { AssistantMessage, Attachment, Message, UserMessage } from "./types";
+import type { AiTurnUsage, AssistantMessage, Attachment, Message, UserMessage } from "./types";
 
 const HISTORY_TURNS_KEPT = 6;
 
-type LastSend = { prompt: string; attachments: Attachment[] } | null;
+type LastSend = {
+  prompt: string;
+  attachments: Attachment[];
+  referencedPageSlugs: string[];
+} | null;
 
 export type UseAiEditChat = {
   messages: Message[];
   loading: boolean;
-  send: (prompt: string, attachments?: Attachment[]) => Promise<void>;
+  send: (
+    prompt: string,
+    attachments?: Attachment[],
+    referencedPageSlugs?: string[],
+  ) => Promise<void>;
   accept: (messageId: string) => void;
   discard: (messageId: string) => void;
   retry: () => Promise<void>;
@@ -73,14 +81,14 @@ export function useAiEditChat(): UseAiEditChat {
   );
 
   const performSend = useCallback(
-    async (prompt: string, attachments: Attachment[]) => {
+    async (prompt: string, attachments: Attachment[], referencedPageSlugs: string[]) => {
       const userMsg: UserMessage = {
         id: `m_${Math.random().toString(36).slice(2, 10)}`,
         role: "user",
         content: prompt,
         attachments,
       };
-      lastSendRef.current = { prompt, attachments };
+      lastSendRef.current = { prompt, attachments, referencedPageSlugs };
       setLoading(true);
 
       // Snapshot the transcript BEFORE appending the new user turn so the
@@ -95,6 +103,11 @@ export function useAiEditChat(): UseAiEditChat {
         attachments: attachments.length > 0 ? attachments : undefined,
         selection: buildSelectionPayload(),
         history: historyTurns.length > 0 ? historyTurns : undefined,
+        referencedPageSlugs: referencedPageSlugs.length > 0 ? referencedPageSlugs : undefined,
+        // Hotfix 2026-04-30 (rev 2): always send the editor's current
+        // page so the orchestrator keeps it un-elided in the focused
+        // config, even when nothing is selected.
+        currentPageSlug,
       };
 
       let response: Response;
@@ -144,6 +157,7 @@ export function useAiEditChat(): UseAiEditChat {
           operations: result.operations,
           status: "pending",
           aiSource: turnAiSource,
+          usage: result.usage,
         };
         setMessages((prev) => [...prev, assistant]);
       } else if (result.kind === "clarify") {
@@ -153,22 +167,30 @@ export function useAiEditChat(): UseAiEditChat {
           kind: "clarify",
           question: result.question,
           aiSource: turnAiSource,
+          usage: result.usage,
         };
         setMessages((prev) => [...prev, assistant]);
       } else {
         // An error envelope from the route means the live call failed AND
         // the fixture lookup also missed -- so the error itself was served
         // live (no fixture was involved).
-        appendAssistantError(setMessages, result.error, "live");
+        appendAssistantError(setMessages, result.error, "live", result.usage);
       }
       setLoading(false);
     },
-    [messages, siteId, currentVersionId, buildSelectionPayload, buildHistoryPayload],
+    [
+      messages,
+      siteId,
+      currentVersionId,
+      currentPageSlug,
+      buildSelectionPayload,
+      buildHistoryPayload,
+    ],
   );
 
   const send = useCallback(
-    async (prompt: string, attachments: Attachment[] = []) => {
-      await performSend(prompt, attachments);
+    async (prompt: string, attachments: Attachment[] = [], referencedPageSlugs: string[] = []) => {
+      await performSend(prompt, attachments, referencedPageSlugs);
     },
     [performSend],
   );
@@ -176,7 +198,7 @@ export function useAiEditChat(): UseAiEditChat {
   const retry = useCallback(async () => {
     const last = lastSendRef.current;
     if (!last) return;
-    await performSend(last.prompt, last.attachments);
+    await performSend(last.prompt, last.attachments, last.referencedPageSlugs);
   }, [performSend]);
 
   const accept = useCallback(
@@ -218,6 +240,7 @@ function appendAssistantError(
   setMessages: (updater: (prev: Message[]) => Message[]) => void,
   error: AiError,
   aiSource: "live" | "fixture",
+  usage?: AiTurnUsage,
 ): void {
   const msg: AssistantMessage = {
     id: `m_${Math.random().toString(36).slice(2, 10)}`,
@@ -225,6 +248,7 @@ function appendAssistantError(
     kind: "error",
     error,
     aiSource,
+    usage,
   };
   setMessages((prev) => [...prev, msg]);
 }
@@ -235,9 +259,9 @@ function narrowAiSource(value: string | null): "live" | "fixture" | undefined {
 }
 
 type Interpreted =
-  | { kind: "ok"; summary: string; operations: Operation[] }
-  | { kind: "clarify"; question: string }
-  | { kind: "error"; error: AiError };
+  | { kind: "ok"; summary: string; operations: Operation[]; usage?: AiTurnUsage }
+  | { kind: "clarify"; question: string; usage?: AiTurnUsage }
+  | { kind: "error"; error: AiError; usage?: AiTurnUsage };
 
 function interpretResponse(body: unknown): Interpreted {
   if (typeof body !== "object" || body === null) {
@@ -247,17 +271,20 @@ function interpretResponse(body: unknown): Interpreted {
     };
   }
   const obj = body as Record<string, unknown>;
+  const usage = readUsage(obj.usage);
   if (typeof obj.error === "object" && obj.error !== null) {
     const err = obj.error as Partial<AiError>;
     if (typeof err.kind === "string" && typeof err.message === "string") {
       return {
         kind: "error",
         error: { kind: err.kind as AiError["kind"], message: err.message, details: err.details },
+        usage,
       };
     }
     return {
       kind: "error",
       error: { kind: "invalid_output", message: "Malformed error envelope" },
+      usage,
     };
   }
   if (obj.kind === "ok" && typeof obj.summary === "string" && Array.isArray(obj.operations)) {
@@ -265,15 +292,26 @@ function interpretResponse(body: unknown): Interpreted {
       kind: "ok",
       summary: obj.summary,
       operations: obj.operations as Operation[],
+      usage,
     };
   }
   if (obj.kind === "clarify" && typeof obj.question === "string") {
-    return { kind: "clarify", question: obj.question };
+    return { kind: "clarify", question: obj.question, usage };
   }
   return {
     kind: "error",
     error: { kind: "invalid_output", message: "Unknown response shape" },
+    usage,
   };
+}
+
+function readUsage(value: unknown): AiTurnUsage | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const v = value as Record<string, unknown>;
+  if (typeof v.inputTokens === "number" && typeof v.outputTokens === "number") {
+    return { inputTokens: v.inputTokens, outputTokens: v.outputTokens };
+  }
+  return undefined;
 }
 
 function historyTurnFor(m: Message): { role: "user" | "assistant"; content: string } | null {

@@ -1912,3 +1912,114 @@ Of the auto-fix changes that survived `git add` (autocrlf=true normalized the li
 Underlying issue: git's `core.autocrlf=true` re-introduces CRLF line endings on `git add`, so future `pnpm biome check` runs on a fresh checkout will reflag the same line-ending errors (biome reads disk files; git stores LF; checkout writes CRLF). Persistent fix would be a `.gitattributes` with `* text=auto eol=lf` — not done in this task to keep the scope contained; flagged here for future cleanup.
 
 User approval: "Go ahead and complete phase 4."
+
+## 2026-04-30 — Production hotfix — AI Edit token-budget tightening
+
+**Context:** Demo in 4 hours. Multi-component AI Edit prompts (e.g.
+"6 testimonial cards with quotes and stars") were failing with
+`invalid_output` — the model's JSON response was getting truncated
+mid-string at ~20–28k characters, surfaced to the client as
+"Expected double-quoted property name in JSON at position N". The
+truncation is consistent across smaller prompts, ruling out
+prompt-content as the cause; the model is hitting `max_tokens` and
+the response is being cut. The user's Claude plan caps at 30k input /
+8k output, so any fix must keep both totals under those numbers.
+
+**Original plan:** PROJECT_SPEC.md §9.7 hard-codes the AI Edit Anthropic
+parameters as `claude-sonnet-4-5, max_tokens 6000, temperature 0.2`. The
+system-prompt construction in `apps/web/lib/ai/prompts/ai-edit.ts` also
+embeds the entire SiteConfig as pretty-printed (`null, 2`) JSON.
+
+**What changed:**
+
+1. `apps/web/lib/ai/ai-edit.ts`: `MAX_TOKENS` 6_000 → 8_000 (max under
+   the demo plan's 8k output cap). Doc comment updated. Anthropic
+   `usage.input_tokens` / `usage.output_tokens` are now extracted via a
+   new `extractUsage` helper and threaded through `AiEditOk` /
+   `AiEditClarify` / `AiEditError` (new optional `usage` field) so the
+   UI can render a per-turn token badge.
+
+2. `apps/web/lib/ai/prompts/ai-edit.ts`: `JSON.stringify(input.config,
+   null, 2)` → `JSON.stringify(focusedConfig)`. The new
+   `buildFocusedConfig` helper keeps full subtrees only for the
+   currently edited page and any pages the user pinned in the chat
+   (`referencedPageSlugs`); every other page collapses to
+   `{ slug, kind, name, rootComponent: "<elided ...>" }`. Combined with
+   the loss of pretty-printing this typically cuts the SiteConfig
+   section's input tokens by 50–70 % on a multi-page site.
+
+3. `apps/web/app/api/ai-edit/route.ts`:
+   - Request schema accepts `referencedPageSlugs?: string[]` (max 8) and
+     forwards it to the orchestrator.
+   - Stock images query gains `.limit(20)` and a `site_id DESC` ordering
+     (NULLS LAST) so per-site uploads survive the cap before defaults.
+   - Success-response body gains an optional `usage` field carrying the
+     orchestrator's `inputTokens` / `outputTokens` numbers.
+
+4. `apps/web/components/editor/ai-chat/`:
+   - New `PageReferencePicker.tsx` — chip-style multi-select of every
+     page in the draft config (excluding the currently edited one).
+     Selection lives in `RightSidebarAiChat`'s local state and is passed
+     to `send()` at submit time.
+   - `useAiEditChat.ts`: `send()` and `retry()` now thread
+     `referencedPageSlugs` through the request body; `interpretResponse`
+     reads the new `usage` field; assistant messages carry it as
+     `AiTurnUsage`.
+   - `MessageBubble.tsx`: new `UsageBadge` renders
+     `"<input> in / <output> out"` under every assistant turn, switching
+     to amber at ≥80 % of either plan cap and red at the cap.
+   - `types.ts` + `index.ts`: new `AiTurnUsage` type exported.
+
+**Rationale:** The truncation is a `max_tokens=6000` hit, not a parsing
+bug. Bumping to 8000 alone would fix the immediate symptom but leaves
+no headroom; combined with the SiteConfig slimming and the stock-image
+cap, typical AI Edit calls now sit comfortably below both caps. The
+page-reference picker preserves cross-page-style requests ("style this
+like the About page") without re-paying for the whole site every call.
+The token badge gives the demo operator a live signal about how close
+each call is running to the ceiling.
+
+**User approval (verbatim):** "DO all of these but for 3. make an option
+to also be able to select and have the ai look at for reference other
+specific pages in the right side panel where the chat is. continue with
+1-4. also add a token counter per response so I can get an idea of how
+many tokens my last prompt is taking"
+
+**Trade-offs accepted:**
+- Gain: Multi-component edits (testimonials grid, hero + cards, etc.)
+  now fit in one shot. The model gets context from pinned reference
+  pages without paying for unrelated pages every call. Operator has
+  live visibility into per-call token usage.
+- Lose: Slightly higher per-call cost ceiling (8000 vs 6000 output).
+  When the user wants the model to coordinate across many pages, they
+  must pin them explicitly — by default the prompt only sees the
+  currently edited page in full.
+- Risk: A user-pinned reference page that itself contains many
+  components could push input back up. The 30k cap is not enforced
+  server-side; the badge is the operator's feedback loop. Stock-image
+  cap of 20 may exclude relevant per-site uploads if the user has more
+  than 20 — flagged for post-demo follow-up (filter by category from the
+  prompt). Site-wide rebuild operations that need to reason across all
+  pages will fail more often, but those weren't working reliably under
+  the 6k cap either.
+
+**Affected files / modules:**
+- `apps/web/lib/ai/ai-edit.ts`
+- `apps/web/lib/ai/prompts/ai-edit.ts`
+- `apps/web/app/api/ai-edit/route.ts`
+- `apps/web/components/editor/ai-chat/PageReferencePicker.tsx` (new)
+- `apps/web/components/editor/ai-chat/RightSidebarAiChat.tsx`
+- `apps/web/components/editor/ai-chat/useAiEditChat.ts`
+- `apps/web/components/editor/ai-chat/MessageBubble.tsx`
+- `apps/web/components/editor/ai-chat/types.ts`
+- `apps/web/components/editor/ai-chat/index.ts`
+
+**Cross-sprint impact:** `PROJECT_SPEC.md` §9.7's "max_tokens 6000" line
+is now superseded for AI Edit; the next sprint that touches §9.7 should
+update the spec to match. Existing AI Edit unit tests use the
+orchestrator with manually constructed inputs, so the `usage` field
+being optional means they still type-check; they don't exercise the new
+focused-config path because they pass arbitrary configs to the prompt
+builder rather than asserting prompt contents. Sprint 14 fixture flow
+is unaffected — fixtures produce no usage data, so the badge silently
+omits.

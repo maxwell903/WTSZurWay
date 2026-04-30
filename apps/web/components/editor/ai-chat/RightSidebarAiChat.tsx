@@ -15,6 +15,7 @@ import { useState } from "react";
 import { AiEditNarration } from "./AiEditNarration";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
+import { PageReferencePicker } from "./PageReferencePicker";
 import { SelectionChip } from "./SelectionChip";
 import { SuggestedPrompts } from "./SuggestedPrompts";
 import { useAiEditChat } from "./useAiEditChat";
@@ -26,6 +27,7 @@ export type RightSidebarAiChatProps = {
 export function RightSidebarAiChat({ className }: RightSidebarAiChatProps) {
   const { messages, loading, send, accept, discard, retry } = useAiEditChat();
   const [prefill, setPrefill] = useState("");
+  const [referencedPageSlugs, setReferencedPageSlugs] = useState<string[]>([]);
 
   return (
     <div
@@ -38,10 +40,14 @@ export function RightSidebarAiChat({ className }: RightSidebarAiChatProps) {
       </div>
       <div className="space-y-2 border-t border-zinc-800 px-3 py-3">
         <SelectionChip />
+        <PageReferencePicker
+          selectedSlugs={referencedPageSlugs}
+          onChange={setReferencedPageSlugs}
+        />
         <Composer
           disabled={loading}
           onSend={(prompt, attachments) => {
-            void send(prompt, attachments);
+            void send(prompt, attachments, referencedPageSlugs);
           }}
           prefill={prefill}
           onPrefillConsumed={() => setPrefill("")}

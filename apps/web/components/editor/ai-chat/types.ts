@@ -22,6 +22,14 @@ export type UserMessage = {
 // not served by a fixture (a fixture is a known-good response), so they
 // always carry `aiSource: "live"` -- the badge surfaces explicitly so
 // dev-mode debugging is consistent across all three message kinds.
+// Hotfix 2026-04-30: per-call token usage so the right-sidebar chat can
+// render an "in/out" badge on each assistant turn. Optional because
+// fixtures and pre-flight errors don't carry it.
+export type AiTurnUsage = {
+  inputTokens: number;
+  outputTokens: number;
+};
+
 export type AssistantOkMessage = {
   id: string;
   role: "assistant";
@@ -30,6 +38,7 @@ export type AssistantOkMessage = {
   operations: Operation[];
   status: "pending" | "accepted" | "discarded";
   aiSource?: "live" | "fixture";
+  usage?: AiTurnUsage;
 };
 
 export type AssistantClarifyMessage = {
@@ -38,6 +47,7 @@ export type AssistantClarifyMessage = {
   kind: "clarify";
   question: string;
   aiSource?: "live" | "fixture";
+  usage?: AiTurnUsage;
 };
 
 export type AssistantErrorMessage = {
@@ -46,6 +56,7 @@ export type AssistantErrorMessage = {
   kind: "error";
   error: AiError;
   aiSource?: "live" | "fixture";
+  usage?: AiTurnUsage;
 };
 
 export type AssistantMessage = AssistantOkMessage | AssistantClarifyMessage | AssistantErrorMessage;

@@ -59,13 +59,31 @@ const requestBodySchema = z.object({
   attachments: z.array(attachmentSchema).max(4).optional(),
   selection: selectionSchema.nullable().optional(),
   history: z.array(historyTurnSchema).optional(),
+  // Hotfix 2026-04-30: extra page slugs the user pinned in the chat
+  // panel. The orchestrator includes their full subtrees in the prompt
+  // so the model can copy structure / styling cues from them.
+  referencedPageSlugs: z.array(z.string().min(1)).max(8).optional(),
+  // Hotfix 2026-04-30 (rev 2): slug of the page the user has open in
+  // the editor. Used by the orchestrator when `selection` is null
+  // (whole-page edit) to keep the current page un-elided in the
+  // focused config.
+  currentPageSlug: z.string().min(1).optional(),
 });
 
-type SuccessResponseBody =
-  | { kind: "ok"; summary: string; operations: Operation[] }
-  | { kind: "clarify"; question: string };
+type UsagePayload = { inputTokens: number; outputTokens: number };
 
-type ErrorResponseBody = { error: AiError };
+type SuccessResponseBody =
+  | { kind: "ok"; summary: string; operations: Operation[]; usage?: UsagePayload }
+  | { kind: "clarify"; question: string; usage?: UsagePayload };
+
+type ErrorResponseBody = { error: AiError; usage?: UsagePayload };
+
+// Hotfix 2026-04-30: cap to 20 rows so the catalog can't blow past the
+// demo Claude plan's 30k input cap. Per-site uploads come first
+// (`site_id` non-null sorts above null in Postgres ASC by default for
+// non-null columns; we use NULLS LAST explicitly to be sure) so the
+// user's own pictures survive the cap.
+const STOCK_IMAGES_LIMIT = 20;
 
 async function fetchStockImagesForSite(
   supabase: ReturnType<typeof createServiceSupabaseClient>,
@@ -75,8 +93,10 @@ async function fetchStockImagesForSite(
     .from("ai_stock_images")
     .select("id, site_id, storage_path, public_url, category, description")
     .or(`site_id.is.null,site_id.eq.${siteId}`)
+    .order("site_id", { ascending: false, nullsFirst: false })
     .order("category", { ascending: true })
-    .order("id", { ascending: true });
+    .order("id", { ascending: true })
+    .limit(STOCK_IMAGES_LIMIT);
   if (error) {
     console.warn(`[ai-edit] stock-images fetch failed: ${error.message}`);
     return [];
@@ -164,14 +184,24 @@ export async function POST(request: Request): Promise<Response> {
     siteId: body.siteId,
     currentVersionId: body.currentVersionId,
     stockImages,
+    referencedPageSlugs: body.referencedPageSlugs,
+    currentPageSlug: body.currentPageSlug,
   });
 
   if (orchestrator.kind === "error") {
-    return jsonError(httpStatusForError(orchestrator.error), orchestrator.error);
+    return jsonError(
+      httpStatusForError(orchestrator.error),
+      orchestrator.error,
+      orchestrator.usage,
+    );
   }
 
   if (orchestrator.kind === "clarify") {
-    return json(200, { kind: "clarify", question: orchestrator.question }, orchestrator.source);
+    return json(
+      200,
+      { kind: "clarify", question: orchestrator.question, usage: orchestrator.usage },
+      orchestrator.source,
+    );
   }
 
   // Dry-run the proposed operations to guarantee the client receives only
@@ -181,16 +211,24 @@ export async function POST(request: Request): Promise<Response> {
     applyOperations(config, orchestrator.operations);
   } catch (e) {
     if (e instanceof OperationInvalidError) {
-      return jsonError(502, {
-        kind: "operation_invalid",
-        message: e.message,
-        details: e.opId,
-      });
+      return jsonError(
+        502,
+        {
+          kind: "operation_invalid",
+          message: e.message,
+          details: e.opId,
+        },
+        orchestrator.usage,
+      );
     }
-    return jsonError(502, {
-      kind: "operation_invalid",
-      message: e instanceof Error ? e.message : "applyOperations threw a non-Error",
-    });
+    return jsonError(
+      502,
+      {
+        kind: "operation_invalid",
+        message: e instanceof Error ? e.message : "applyOperations threw a non-Error",
+      },
+      orchestrator.usage,
+    );
   }
 
   return json(
@@ -199,6 +237,7 @@ export async function POST(request: Request): Promise<Response> {
       kind: "ok",
       summary: orchestrator.summary,
       operations: orchestrator.operations,
+      usage: orchestrator.usage,
     },
     orchestrator.source,
   );
@@ -224,8 +263,8 @@ function json(
   });
 }
 
-function jsonError(status: number, error: AiError): Response {
-  const body: ErrorResponseBody = { error };
+function jsonError(status: number, error: AiError, usage?: UsagePayload): Response {
+  const body: ErrorResponseBody = usage ? { error, usage } : { error };
   return new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json", "cache-control": "no-store" },
