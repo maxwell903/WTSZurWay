@@ -1,5 +1,44 @@
-import { richTextDocSchema } from "@/lib/site-config";
+import { richTextDocSchema, spacingSchema } from "@/lib/site-config";
 import { z } from "zod";
+
+// ----- Per-element layout + size + CTA style (shared) -----
+//
+// These are reused across heading / subheading / each CTA so a user can
+// nudge alignment + offsets independently of the slide-level `align`. All
+// fields optional → existing site configs parse unchanged. Margin reuses
+// the global spacingSchema so the SpacingInput control plugs in directly.
+
+export const elementLayoutSchema = z.object({
+  alignSelf: z.enum(["auto", "left", "center", "right"]).optional(),
+  margin: spacingSchema.optional(),
+  width: z.number().nonnegative().optional(),
+  maxWidth: z.number().nonnegative().optional(),
+  // When true, the element renders with `white-space: nowrap`. If width /
+  // maxWidth are left unset, the element auto-sizes to fit its content
+  // (`width: max-content`, `maxWidth: none`) so the user can leave both
+  // sliders on Auto and let the text drive the box. Heading/subheading
+  // only — CTAs already nowrap implicitly.
+  nowrap: z.boolean().optional(),
+});
+export type ElementLayout = z.infer<typeof elementLayoutSchema>;
+
+export const textSizeSchema = z.object({
+  fontSize: z.number().min(1).optional(),
+});
+export type TextSize = z.infer<typeof textSizeSchema>;
+
+export const ctaButtonStyleSchema = z.object({
+  backgroundColor: z.string().optional(),
+  textColor: z.string().optional(),
+  borderColor: z.string().optional(),
+  borderWidth: z.number().nonnegative().optional(),
+  borderRadius: z.number().nonnegative().optional(),
+  paddingX: z.number().nonnegative().optional(),
+  paddingY: z.number().nonnegative().optional(),
+  fontSize: z.number().min(1).optional(),
+  fullWidth: z.boolean().optional(),
+});
+export type CtaButtonStyle = z.infer<typeof ctaButtonStyleSchema>;
 
 // ----- Overlay (discriminated union: solid / linear / radial) -----
 
@@ -65,6 +104,18 @@ const slideContentFieldsSchema = {
   secondaryCtaHref: z.string().optional(),
   align: z.enum(["left", "center", "right"]).optional(),
   verticalAlign: z.enum(["top", "center", "bottom"]).optional(),
+
+  // Per-element layout / size / button-style overrides. Each is optional;
+  // the renderer falls back to the banner-level field, then to defaults.
+  headingLayout: elementLayoutSchema.optional(),
+  headingSize: textSizeSchema.optional(),
+  subheadingLayout: elementLayoutSchema.optional(),
+  subheadingSize: textSizeSchema.optional(),
+  primaryCtaLayout: elementLayoutSchema.optional(),
+  primaryCtaStyle: ctaButtonStyleSchema.optional(),
+  secondaryCtaLayout: elementLayoutSchema.optional(),
+  secondaryCtaStyle: ctaButtonStyleSchema.optional(),
+  ctaRowLayout: elementLayoutSchema.optional(),
 };
 
 const imageSlideSchema = z.object({
@@ -143,6 +194,27 @@ export const heroBannerPropsSchema = z.object({
   secondaryCtaLabel: z.string().optional(),
   richSecondaryCtaLabel: richTextDocSchema.optional(),
   secondaryCtaHref: z.string().optional(),
+
+  // v2 — per-element layout + size + button styling (banner-level defaults).
+  // Mirrored on each slide for per-slide overrides; renderer merges
+  // slide-over-banner with sparse undefined-aware merge so missing fields
+  // fall through to defaults.
+  headingLayout: elementLayoutSchema.optional(),
+  headingSize: textSizeSchema.optional(),
+  subheadingLayout: elementLayoutSchema.optional(),
+  subheadingSize: textSizeSchema.optional(),
+  primaryCtaLayout: elementLayoutSchema.optional(),
+  primaryCtaStyle: ctaButtonStyleSchema.optional(),
+  secondaryCtaLayout: elementLayoutSchema.optional(),
+  secondaryCtaStyle: ctaButtonStyleSchema.optional(),
+  ctaRowLayout: elementLayoutSchema.optional(),
+
+  // v2 — split layout divider ratio (% width of the text panel) and
+  // media-fit policy. `splitRatio` is clamped to [10, 90] so neither
+  // panel can vanish. `splitMediaFit: "contain"` lets the section's
+  // background show through any aspect-ratio slack.
+  splitRatio: z.number().min(10).max(90).default(50),
+  splitMediaFit: z.enum(["cover", "contain"]).default("cover"),
 
   // v2 — layout + slide transition
   layout: z.enum(["centered", "split-left", "split-right", "full-bleed"]).default("centered"),

@@ -56,6 +56,12 @@ export const BLOCK_PROFILE: Extensions = [
     blockquote: false,
     horizontalRule: false,
     code: false,
+    // StarterKit 3.x bundles its own Link extension; SHARED_MARK_EXTENSIONS
+    // registers a configured Link below (openOnClick: false, autolink,
+    // noopener/noreferrer/target=_blank). Disable the bundled one so TipTap
+    // doesn't see two Link extensions and emit a "Duplicate extension names"
+    // warning on every generateHTML call.
+    link: false,
   }),
   TextAlign.configure({
     types: ["paragraph", "heading"],

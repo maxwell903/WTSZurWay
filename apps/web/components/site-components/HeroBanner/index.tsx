@@ -6,7 +6,13 @@ import { usePrefersReducedMotion } from "./hooks/usePrefersReducedMotion";
 import { CenteredLayout } from "./layouts/CenteredLayout";
 import { FullBleedLayout } from "./layouts/FullBleedLayout";
 import { SplitLayout } from "./layouts/SplitLayout";
-import { HERO_BANNER_FALLBACK, type HeroBannerData, heroBannerPropsSchema } from "./schema";
+import {
+  type CtaButtonStyle,
+  HERO_BANNER_FALLBACK,
+  type HeroBannerData,
+  heroBannerPropsSchema,
+} from "./schema";
+import { mergeCtaStyle } from "./style/cta-style";
 
 type HeroBannerProps = {
   node: ComponentNode;
@@ -48,22 +54,16 @@ export function HeroBanner({ node, cssStyle }: HeroBannerProps) {
     textAlign: "center",
   };
 
-  const ctaStyle: CSSProperties = {
-    display: "inline-block",
-    padding: "12px 24px",
-    background: "#ffffff",
-    color: "#0f3a5f",
-    borderRadius: "8px",
-    textDecoration: "none",
-    fontWeight: 600,
-  };
+  const primaryCtaStyle = mergeCtaStyle(PRIMARY_CTA_DEFAULTS, data.primaryCtaStyle);
+  const secondaryCtaStyle = mergeCtaStyle(SECONDARY_CTA_DEFAULTS, data.secondaryCtaStyle);
 
   const layoutProps = {
     node,
     data,
     containerStyle,
     contentStyle,
-    ctaStyle,
+    primaryCtaStyle,
+    secondaryCtaStyle,
     prefersReducedMotion,
   };
 
@@ -72,3 +72,28 @@ export function HeroBanner({ node, cssStyle }: HeroBannerProps) {
   if (data.layout === "full-bleed") return <FullBleedLayout {...layoutProps} />;
   return <CenteredLayout {...layoutProps} />;
 }
+
+const PRIMARY_CTA_DEFAULTS: CSSProperties = {
+  display: "inline-block",
+  padding: "12px 24px",
+  background: "#ffffff",
+  color: "#0f3a5f",
+  borderRadius: "8px",
+  textDecoration: "none",
+  fontWeight: 600,
+};
+
+// Mirrors the v1 hardcoded secondary derivation: transparent fill with the
+// primary's text color used as a 2px border. Kept as a default so the look
+// is preserved when no override is set.
+const SECONDARY_CTA_DEFAULTS: CSSProperties = {
+  ...PRIMARY_CTA_DEFAULTS,
+  background: "transparent",
+  color: "#0f3a5f",
+  border: "2px solid #0f3a5f",
+};
+
+// Re-exported so layouts can compose layout-specific defaults (e.g. SplitLayout's
+// right-half inverted color scheme) before merging user overrides on top.
+export { mergeCtaStyle };
+export type { CtaButtonStyle };

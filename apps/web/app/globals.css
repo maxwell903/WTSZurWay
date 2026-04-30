@@ -9,6 +9,51 @@
 
 @theme {
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  /* shadcn/ui design tokens. Both the editor (`bg-zinc-900`) and the RMX
+   * shell (`bg-neutral-950`) are dark, so the shadcn primitives use a dark
+   * palette to match. Without these, classes like `bg-background` and
+   * `border-input` resolve to undefined custom properties and render as
+   * transparent (caused the Add page dialog to look "see-through"). */
+  --color-background: #18181b; /* zinc-900 */
+  --color-foreground: #d4d4d8; /* zinc-300 — light grey; native form controls and dialog text inherit this via the base layer below */
+
+  --color-card: #18181b;
+  --color-card-foreground: #d4d4d8;
+
+  --color-popover: #18181b;
+  --color-popover-foreground: #d4d4d8;
+
+  --color-primary: #f4f4f5;
+  --color-primary-foreground: #18181b;
+
+  --color-secondary: #27272a; /* zinc-800 */
+  --color-secondary-foreground: #d4d4d8;
+
+  --color-muted: #27272a;
+  --color-muted-foreground: #a1a1aa; /* zinc-400 */
+
+  --color-accent: #27272a;
+  --color-accent-foreground: #d4d4d8;
+
+  --color-destructive: #dc2626; /* red-600 */
+  --color-destructive-foreground: #fafafa;
+
+  --color-border: #3f3f46; /* zinc-700 */
+  --color-input: #3f3f46;
+  --color-ring: #d4d4d8; /* zinc-300 */
+}
+
+/* Native form controls (`<input>`, `<textarea>`, `<select>`, `<button>`) do
+ * not inherit `color` by default — without this, text typed into shadcn
+ * Inputs renders as the user-agent black against our dark backgrounds. */
+@layer base {
+  input,
+  textarea,
+  select,
+  button {
+    color: inherit;
+  }
 }
 
 /* HeroBanner v2 Sprint 9 — particle keyframes consumed by

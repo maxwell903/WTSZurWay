@@ -28,6 +28,7 @@ export function useHeroSlideshow(
   prefersReducedMotion: boolean,
   nodeId: string,
   swipeTargetRef?: RefObject<HTMLElement | null>,
+  mediaFit: "cover" | "contain" = "cover",
 ) {
   const [hoverPaused, setHoverPaused] = useState(false);
   const mode = useRenderMode();
@@ -77,7 +78,13 @@ export function useHeroSlideshow(
           prefersReducedMotion={prefersReducedMotion}
         >
           <Parallax enabled={data.parallax} prefersReducedMotion={prefersReducedMotion}>
-            <ImageSlide slide={slide} index={i} isFirst={i === 0} style={style} />
+            <ImageSlide
+              slide={slide}
+              index={i}
+              isFirst={i === 0}
+              style={style}
+              mediaFit={mediaFit}
+            />
           </Parallax>
         </KenBurns>
       ) : (
@@ -87,6 +94,7 @@ export function useHeroSlideshow(
           prefersReducedMotion={prefersReducedMotion}
           onDurationKnown={(ms) => handleVideoDuration(i, ms)}
           style={style}
+          mediaFit={mediaFit}
         />
       ),
   }));

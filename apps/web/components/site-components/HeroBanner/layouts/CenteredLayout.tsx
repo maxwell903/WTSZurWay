@@ -18,7 +18,8 @@ export type CenteredLayoutProps = {
   data: HeroBannerData;
   containerStyle: CSSProperties;
   contentStyle: CSSProperties;
-  ctaStyle: CSSProperties;
+  primaryCtaStyle: CSSProperties;
+  secondaryCtaStyle: CSSProperties;
   prefersReducedMotion: boolean;
 };
 
@@ -29,7 +30,8 @@ export function CenteredLayout({
   data,
   containerStyle,
   contentStyle,
-  ctaStyle,
+  primaryCtaStyle,
+  secondaryCtaStyle,
   prefersReducedMotion,
 }: CenteredLayoutProps) {
   const overlay = data.overlay ? <OverlayLayer overlay={data.overlay} /> : null;
@@ -52,7 +54,8 @@ export function CenteredLayout({
           node={node}
           data={data}
           contentStyle={contentStyle}
-          ctaStyle={ctaStyle}
+          primaryCtaStyle={primaryCtaStyle}
+          secondaryCtaStyle={secondaryCtaStyle}
           prefersReducedMotion={prefersReducedMotion}
         />
         <CountdownTimer countdown={data.countdown} />
@@ -69,7 +72,8 @@ export function CenteredLayout({
       data={data}
       containerStyle={containerStyle}
       contentStyle={contentStyle}
-      ctaStyle={ctaStyle}
+      primaryCtaStyle={primaryCtaStyle}
+      secondaryCtaStyle={secondaryCtaStyle}
       prefersReducedMotion={prefersReducedMotion}
       overlay={overlay}
       spotlight={spotlight}
@@ -83,7 +87,8 @@ function CenteredSlideshow({
   data,
   containerStyle,
   contentStyle,
-  ctaStyle,
+  primaryCtaStyle,
+  secondaryCtaStyle,
   prefersReducedMotion,
   overlay,
   spotlight,
@@ -127,7 +132,8 @@ function CenteredSlideshow({
         slide={data.images[index]}
         slideIndex={index}
         contentStyle={contentStyle}
-        ctaStyle={ctaStyle}
+        primaryCtaStyle={primaryCtaStyle}
+        secondaryCtaStyle={secondaryCtaStyle}
         prefersReducedMotion={prefersReducedMotion}
       />
       <CountdownTimer countdown={data.countdown} />

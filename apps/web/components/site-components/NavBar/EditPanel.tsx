@@ -5,6 +5,7 @@ import {
   type NavLinkEntry,
   NavLinksEditor,
 } from "@/components/editor/edit-panels/controls/NavLinksEditor";
+import { NumberInput } from "@/components/editor/edit-panels/controls/NumberInput";
 import { SelectInput } from "@/components/editor/edit-panels/controls/SelectInput";
 import { SwitchInput } from "@/components/editor/edit-panels/controls/SwitchInput";
 import { useEditorStore } from "@/lib/editor-state";
@@ -12,22 +13,34 @@ import type { ComponentNode } from "@/lib/site-config";
 
 const PLACEMENT_OPTIONS = ["left", "center", "right"].map((v) => ({ label: v, value: v }));
 
+function readEntryShape(raw: Record<string, unknown>): NavLinkEntry {
+  const label = typeof raw.label === "string" ? raw.label : "";
+  const rawKind = raw.kind;
+  const kind: "page" | "external" =
+    rawKind === "page" || rawKind === "external" ? rawKind : "external";
+  if (kind === "page") {
+    const pageSlug = typeof raw.pageSlug === "string" ? raw.pageSlug : undefined;
+    return { kind: "page", label, pageSlug };
+  }
+  const href = typeof raw.href === "string" ? raw.href : "";
+  return { kind: "external", label, href };
+}
+
 function readLinks(props: Record<string, unknown>): NavLinkEntry[] {
   if (!Array.isArray(props.links)) return [];
   return props.links
     .map((entry): NavLinkEntry | null => {
       if (!entry || typeof entry !== "object") return null;
       const e = entry as Record<string, unknown>;
-      const label = typeof e.label === "string" ? e.label : "";
-      const rawKind = e.kind;
-      const kind: "page" | "external" =
-        rawKind === "page" || rawKind === "external" ? rawKind : "external";
-      if (kind === "page") {
-        const pageSlug = typeof e.pageSlug === "string" ? e.pageSlug : undefined;
-        return { kind: "page", label, pageSlug };
+      const top = readEntryShape(e);
+      if (!Array.isArray(e.children)) return top;
+      const children: NavLinkEntry[] = [];
+      for (const c of e.children) {
+        if (c && typeof c === "object") {
+          children.push(readEntryShape(c as Record<string, unknown>));
+        }
       }
-      const href = typeof e.href === "string" ? e.href : "";
-      return { kind: "external", label, href };
+      return { ...top, children };
     })
     .filter((entry): entry is NavLinkEntry => entry !== null);
 }
@@ -38,6 +51,11 @@ function readString(props: Record<string, unknown>, key: string, fallback = ""):
 
 function readBool(props: Record<string, unknown>, key: string): boolean {
   return props[key] === true;
+}
+
+function readNumber(props: Record<string, unknown>, key: string): number | undefined {
+  const v = props[key];
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : undefined;
 }
 
 export type NavBarEditPanelProps = { node: ComponentNode };
@@ -102,6 +120,30 @@ export function NavBarEditPanel({ node }: NavBarEditPanelProps) {
         options={PLACEMENT_OPTIONS}
         testId="navbar-logo-placement"
         onChange={(next) => writePartial({ logoPlacement: next })}
+      />
+      <NumberInput
+        id="navbar-link-gap"
+        label="Spacing between links (px)"
+        value={readNumber(node.props, "linkGap")}
+        placeholder="20"
+        testId="navbar-link-gap"
+        onChange={(next) => writePartial({ linkGap: next })}
+      />
+      <NumberInput
+        id="navbar-logo-margin-x"
+        label="Horizontal margin around logo (px)"
+        value={readNumber(node.props, "logoMarginX")}
+        placeholder="0"
+        testId="navbar-logo-margin-x"
+        onChange={(next) => writePartial({ logoMarginX: next })}
+      />
+      <NumberInput
+        id="navbar-logo-size"
+        label="Logo height (px)"
+        value={readNumber(node.props, "logoSize")}
+        placeholder="32"
+        testId="navbar-logo-size"
+        onChange={(next) => writePartial({ logoSize: next })}
       />
       <SwitchInput
         id="navbar-sticky"

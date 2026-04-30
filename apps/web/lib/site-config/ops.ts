@@ -654,7 +654,7 @@ function findNodeInSubtree(node: ComponentNode, id: ComponentId): ComponentNode 
   return null;
 }
 
-function findNodeAcrossPages(config: SiteConfig, id: ComponentId): ComponentNode | null {
+export function findNodeAcrossPages(config: SiteConfig, id: ComponentId): ComponentNode | null {
   for (const page of config.pages) {
     const found = findNodeInSubtree(page.rootComponent, id);
     if (found) return found;

@@ -6,7 +6,8 @@ import type { RichTextDoc } from "@/lib/site-config";
 import type { ComponentNode } from "@/types/site-config";
 import type { CSSProperties, ReactNode } from "react";
 import { RotatingHeading } from "../effects/RotatingHeading";
-import type { HeroBannerData, Slide } from "../schema";
+import type { CtaButtonStyle, ElementLayout, HeroBannerData, Slide, TextSize } from "../schema";
+import { applyElementLayout, mergeCtaStyle } from "../style/cta-style";
 
 export type SlideContentProps = {
   node: ComponentNode;
@@ -20,7 +21,8 @@ export type SlideContentProps = {
   // call sites to pass it.)
   slideIndex?: number;
   contentStyle: CSSProperties;
-  ctaStyle: CSSProperties;
+  primaryCtaStyle: CSSProperties;
+  secondaryCtaStyle: CSSProperties;
   prefersReducedMotion: boolean;
 };
 
@@ -79,13 +81,35 @@ function makeSlideFieldPatcher(
   };
 }
 
+// Resolve a per-slide override against a banner-level fallback. Slide takes
+// precedence; banner is the default. Both can be undefined.
+function pickLayout(
+  slideLayout: ElementLayout | undefined,
+  bannerLayout: ElementLayout | undefined,
+): ElementLayout | undefined {
+  return slideLayout ?? bannerLayout;
+}
+function pickSize(
+  slideSize: TextSize | undefined,
+  bannerSize: TextSize | undefined,
+): TextSize | undefined {
+  return slideSize ?? bannerSize;
+}
+function pickCta(
+  slideStyle: CtaButtonStyle | undefined,
+  bannerStyle: CtaButtonStyle | undefined,
+): CtaButtonStyle | undefined {
+  return slideStyle ?? bannerStyle;
+}
+
 export function SlideContent({
   node,
   data,
   slide,
   slideIndex,
   contentStyle,
-  ctaStyle,
+  primaryCtaStyle,
+  secondaryCtaStyle,
   prefersReducedMotion,
 }: SlideContentProps) {
   const ctaLabel = pickString(slide?.ctaLabel, data.ctaLabel);
@@ -101,6 +125,34 @@ export function SlideContent({
     ...(verticalAlign ? { justifyContent: vAlignToFlex(verticalAlign) } : {}),
   };
 
+  // Slide-level CTA style overrides ride on top of the banner-level styles
+  // already merged by HeroBanner/index.tsx (which gave us primaryCtaStyle
+  // and secondaryCtaStyle pre-built from PRIMARY_CTA_DEFAULTS + data.*Style).
+  const finalPrimaryCtaBase = mergeCtaStyle(
+    primaryCtaStyle,
+    pickCta(slide?.primaryCtaStyle, undefined),
+  );
+  const finalSecondaryCtaBase = mergeCtaStyle(
+    secondaryCtaStyle,
+    pickCta(slide?.secondaryCtaStyle, undefined),
+  );
+
+  // Per-element layout (alignSelf, margins, width, maxWidth) wraps the
+  // styled CTA so position is decoupled from style. Slide layout > banner.
+  const finalPrimaryCta = applyElementLayout(
+    finalPrimaryCtaBase,
+    pickLayout(slide?.primaryCtaLayout, data.primaryCtaLayout),
+  );
+  const finalSecondaryCta = applyElementLayout(
+    finalSecondaryCtaBase,
+    pickLayout(slide?.secondaryCtaLayout, data.secondaryCtaLayout),
+  );
+
+  const ctaRowStyle = applyElementLayout(
+    { display: "flex", gap: 12 },
+    pickLayout(slide?.ctaRowLayout, data.ctaRowLayout),
+  );
+
   const headingNode = renderHeading({
     node,
     data,
@@ -111,26 +163,19 @@ export function SlideContent({
 
   const subheadingNode = renderSubheading({ node, data, slide, slideIndex });
 
-  const secondaryCtaStyle: CSSProperties = {
-    ...ctaStyle,
-    background: "transparent",
-    color: ctaStyle.color ?? "#0f3a5f",
-    border: `2px solid ${ctaStyle.color ?? "#0f3a5f"}`,
-  };
-
   return (
     <div style={composedContentStyle}>
       {headingNode}
       {subheadingNode}
       {(ctaLabel || secondaryCtaLabel) && (
-        <div data-hero-cta-row="true" style={{ display: "flex", gap: 12 }}>
+        <div data-hero-cta-row="true" style={ctaRowStyle}>
           {ctaLabel ? (
-            <a href={ctaHref || "#"} data-hero-cta="primary" style={ctaStyle}>
+            <a href={ctaHref || "#"} data-hero-cta="primary" style={finalPrimaryCta}>
               {renderCtaLabel({ node, data, slide, slideIndex })}
             </a>
           ) : null}
           {secondaryCtaLabel ? (
-            <a href={secondaryCtaHref || "#"} data-hero-cta="secondary" style={secondaryCtaStyle}>
+            <a href={secondaryCtaHref || "#"} data-hero-cta="secondary" style={finalSecondaryCta}>
               {renderSecondaryCtaLabel({ node, data, slide, slideIndex })}
             </a>
           ) : null}
@@ -138,6 +183,28 @@ export function SlideContent({
       )}
     </div>
   );
+}
+
+function buildHeadingBaseStyle(data: HeroBannerData, slide: Slide | undefined): CSSProperties {
+  const size = pickSize(slide?.headingSize, data.headingSize);
+  const layout = pickLayout(slide?.headingLayout, data.headingLayout);
+  const base: CSSProperties = {
+    fontSize: size?.fontSize !== undefined ? `${size.fontSize}px` : "40px",
+    fontWeight: 700,
+    margin: 0,
+  };
+  return applyElementLayout(base, layout);
+}
+
+function buildSubheadingBaseStyle(data: HeroBannerData, slide: Slide | undefined): CSSProperties {
+  const size = pickSize(slide?.subheadingSize, data.subheadingSize);
+  const layout = pickLayout(slide?.subheadingLayout, data.subheadingLayout);
+  const base: CSSProperties = {
+    fontSize: size?.fontSize !== undefined ? `${size.fontSize}px` : "18px",
+    margin: 0,
+    maxWidth: "640px",
+  };
+  return applyElementLayout(base, layout);
 }
 
 function renderHeading({
@@ -153,7 +220,7 @@ function renderHeading({
   slideIndex: number | undefined;
   prefersReducedMotion: boolean;
 }): ReactNode {
-  const baseStyle: CSSProperties = { fontSize: "40px", fontWeight: 700, margin: 0 };
+  const baseStyle = buildHeadingBaseStyle(data, slide);
 
   // When a slide is active, ALL canvas editing routes to that slide's
   // per-slide override fields. The visible content falls back to banner-
@@ -219,7 +286,7 @@ function renderSubheading({
   slide: Slide | undefined;
   slideIndex: number | undefined;
 }): ReactNode {
-  const baseStyle: CSSProperties = { fontSize: "18px", margin: 0, maxWidth: "640px" };
+  const baseStyle = buildSubheadingBaseStyle(data, slide);
 
   // Slide-active path: TipTap edits always write to the per-slide override.
   // Hide entirely only when both slide and banner are empty.

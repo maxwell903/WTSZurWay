@@ -1,7 +1,7 @@
 import { SiteConfigProvider } from "@/components/renderer/SiteConfigContext";
 import type { SiteConfig } from "@/lib/site-config";
 import type { ComponentNode } from "@/types/site-config";
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
 import { NavBar } from "../index";
@@ -148,5 +148,157 @@ describe("<NavBar> kind: 'page' links", () => {
     expect(a).not.toBeNull();
     expect(a?.getAttribute("href")).toBe("https://x.com");
     expect(a?.hasAttribute("data-internal-page-slug")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 14 — visual layout knobs (linkGap, logoSize, logoMarginX) + dropdowns
+// ---------------------------------------------------------------------------
+
+describe("<NavBar> visual layout props", () => {
+  it("applies linkGap to the link list <ul>", () => {
+    const { container } = render(
+      <NavBar
+        node={makeNode({
+          links: [
+            { label: "A", href: "/a" },
+            { label: "B", href: "/b" },
+          ],
+          linkGap: 40,
+        })}
+        cssStyle={{}}
+      />,
+    );
+    const ul = container.querySelector("ul[data-navbar-links]") as HTMLElement | null;
+    expect(ul).not.toBeNull();
+    expect(ul?.style.gap).toBe("40px");
+  });
+
+  it("falls back to a 20px gap when linkGap is absent", () => {
+    const { container } = render(
+      <NavBar node={makeNode({ links: [{ label: "A", href: "/a" }] })} cssStyle={{}} />,
+    );
+    const ul = container.querySelector("ul[data-navbar-links]") as HTMLElement | null;
+    expect(ul?.style.gap).toBe("20px");
+  });
+
+  it("applies logoSize as the <img> height and logoMarginX to the wrapper", () => {
+    const { container } = render(
+      <NavBar
+        node={makeNode({
+          links: [],
+          logoSrc: "https://example.com/logo.png",
+          logoSize: 64,
+          logoMarginX: 24,
+        })}
+        cssStyle={{}}
+      />,
+    );
+    const img = container.querySelector("img[data-navbar-logo]") as HTMLImageElement | null;
+    expect(img?.style.height).toBe("64px");
+    const wrapper = container.querySelector("span[data-navbar-logo-wrapper]") as HTMLElement | null;
+    expect(wrapper?.style.marginInline).toBe("24px");
+  });
+
+  it("falls back to a 32px logo height when logoSize is absent", () => {
+    const { container } = render(
+      <NavBar
+        node={makeNode({ links: [], logoSrc: "https://example.com/logo.png" })}
+        cssStyle={{}}
+      />,
+    );
+    const img = container.querySelector("img[data-navbar-logo]") as HTMLImageElement | null;
+    expect(img?.style.height).toBe("32px");
+  });
+});
+
+describe("<NavBar> dropdown menus", () => {
+  it("renders a button (not an anchor) for a link with non-empty children, dropdown closed by default", () => {
+    const { container } = render(
+      <NavBar
+        node={makeNode({
+          links: [
+            {
+              label: "Resources",
+              kind: "external",
+              href: "#",
+              children: [{ label: "Blog", href: "/blog" }],
+            },
+          ],
+        })}
+        cssStyle={{}}
+      />,
+    );
+    const trigger = container.querySelector(
+      "button[data-navbar-dropdown-trigger]",
+    ) as HTMLButtonElement | null;
+    expect(trigger).not.toBeNull();
+    expect(trigger?.getAttribute("aria-haspopup")).toBe("menu");
+    expect(trigger?.getAttribute("aria-expanded")).toBe("false");
+    // Dropdown menu is hidden until opened.
+    expect(container.querySelector("ul[data-navbar-dropdown-menu]")).toBeNull();
+    // The parent's anchor element is gone — clicks toggle, they don't navigate.
+    expect(container.querySelector("a[href='#']")).toBeNull();
+  });
+
+  it("opens the submenu on click and renders one menuitem anchor per child", () => {
+    const { container } = render(
+      <NavBar
+        node={makeNode({
+          links: [
+            {
+              label: "Resources",
+              kind: "external",
+              href: "#",
+              children: [
+                { label: "Blog", href: "/blog" },
+                { label: "Docs", href: "/docs" },
+              ],
+            },
+          ],
+        })}
+        cssStyle={{}}
+      />,
+    );
+    const trigger = container.querySelector(
+      "button[data-navbar-dropdown-trigger]",
+    ) as HTMLButtonElement;
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    const menu = container.querySelector("ul[data-navbar-dropdown-menu]") as HTMLElement | null;
+    expect(menu).not.toBeNull();
+    const items = menu?.querySelectorAll("a[role='menuitem']") ?? [];
+    expect(items.length).toBe(2);
+    expect(items[0]?.getAttribute("href")).toBe("/blog");
+    expect(items[1]?.getAttribute("href")).toBe("/docs");
+  });
+
+  it("closes the open submenu on a mousedown outside the nav", () => {
+    const { container } = render(
+      <div>
+        <NavBar
+          node={makeNode({
+            links: [
+              {
+                label: "Resources",
+                kind: "external",
+                href: "#",
+                children: [{ label: "Blog", href: "/blog" }],
+              },
+            ],
+          })}
+          cssStyle={{}}
+        />
+        <p data-testid="outside">outside</p>
+      </div>,
+    );
+    const trigger = container.querySelector(
+      "button[data-navbar-dropdown-trigger]",
+    ) as HTMLButtonElement;
+    fireEvent.click(trigger);
+    expect(container.querySelector("ul[data-navbar-dropdown-menu]")).not.toBeNull();
+    const outside = container.querySelector("[data-testid='outside']") as HTMLElement;
+    fireEvent.mouseDown(outside);
+    expect(container.querySelector("ul[data-navbar-dropdown-menu]")).toBeNull();
   });
 });

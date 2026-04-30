@@ -4,8 +4,10 @@ import {
   applyGlobalNavBarLocked,
   buildAutoPopulatedNavLinks,
   findLockedNavBar,
+  findNodeAcrossPages,
   isFirstNavBar,
   isGlobalNavBarLocked,
+  replicateLockedNavBarToAllPages,
   syncLockedNavBars,
 } from "@/lib/site-config/ops";
 import { type StateCreator, create } from "zustand";
@@ -171,7 +173,10 @@ const creator: StateCreator<EditorStore> = (set) => ({
 
   addPage: (input) =>
     set((state) => ({
-      draftConfig: applyAddPage(state.draftConfig, input),
+      // When the global NavBar lock is on, the new page must inherit the
+      // canonical NavBar — otherwise navigating to it would render a page
+      // with no NavBar even though every other page has one.
+      draftConfig: replicateLockedNavBarToAllPages(applyAddPage(state.draftConfig, input)),
       currentPageSlug: input.slug,
       selectedComponentId: null,
       saveState: "dirty",
@@ -262,6 +267,13 @@ const creator: StateCreator<EditorStore> = (set) => ({
 
   removeComponent: (id) =>
     set((state) => {
+      // When the global NavBar lock is on, deleting a NavBar would leave
+      // the page without one and no replication path puts it back. Block
+      // the op; the user must turn the lock off (or override-share) first.
+      if (isGlobalNavBarLocked(state.draftConfig)) {
+        const target = findNodeAcrossPages(state.draftConfig, id);
+        if (target?.type === "NavBar") return {};
+      }
       const next = applyRemoveComponent(state.draftConfig, id);
       const wasSelected = state.selectedComponentId === id;
       return {

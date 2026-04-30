@@ -17,7 +17,8 @@ export type FullBleedLayoutProps = {
   data: HeroBannerData;
   containerStyle: CSSProperties;
   contentStyle: CSSProperties;
-  ctaStyle: CSSProperties;
+  primaryCtaStyle: CSSProperties;
+  secondaryCtaStyle: CSSProperties;
   prefersReducedMotion: boolean;
 };
 
@@ -28,7 +29,8 @@ export function FullBleedLayout({
   data,
   containerStyle,
   contentStyle,
-  ctaStyle,
+  primaryCtaStyle,
+  secondaryCtaStyle,
   prefersReducedMotion,
 }: FullBleedLayoutProps) {
   const overlay = data.overlay ? <OverlayLayer overlay={data.overlay} /> : null;
@@ -69,7 +71,8 @@ export function FullBleedLayout({
           node={node}
           data={data}
           contentStyle={cornerPanelStyle}
-          ctaStyle={ctaStyle}
+          primaryCtaStyle={primaryCtaStyle}
+          secondaryCtaStyle={secondaryCtaStyle}
           prefersReducedMotion={prefersReducedMotion}
         />
         <CountdownTimer countdown={data.countdown} />
@@ -83,7 +86,8 @@ export function FullBleedLayout({
       data={data}
       containerStyle={containerStyle}
       cornerPanelStyle={cornerPanelStyle}
-      ctaStyle={ctaStyle}
+      primaryCtaStyle={primaryCtaStyle}
+      secondaryCtaStyle={secondaryCtaStyle}
       prefersReducedMotion={prefersReducedMotion}
       overlay={overlay}
       spotlight={spotlight}
@@ -97,7 +101,8 @@ function FullBleedSlideshow({
   data,
   containerStyle,
   cornerPanelStyle,
-  ctaStyle,
+  primaryCtaStyle,
+  secondaryCtaStyle,
   prefersReducedMotion,
   overlay,
   spotlight,
@@ -139,7 +144,8 @@ function FullBleedSlideshow({
         slide={data.images[index]}
         slideIndex={index}
         contentStyle={cornerPanelStyle}
-        ctaStyle={ctaStyle}
+        primaryCtaStyle={primaryCtaStyle}
+        secondaryCtaStyle={secondaryCtaStyle}
         prefersReducedMotion={prefersReducedMotion}
       />
       <CountdownTimer countdown={data.countdown} />

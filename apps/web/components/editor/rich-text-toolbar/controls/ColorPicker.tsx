@@ -1,6 +1,7 @@
 "use client";
 
 import type { ToolbarCommands } from "@/components/editor/rich-text-toolbar/hooks/useToolbarCommands";
+import { selectSelectedComponentNode, useEditorStore } from "@/lib/editor-state";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 
@@ -35,14 +36,32 @@ function normalizeHex(input: string): string | null {
   return trimmed.startsWith("#") ? trimmed.toLowerCase() : `#${trimmed.toLowerCase()}`;
 }
 
+// `<input type="color">` requires exactly `#rrggbb`. Coerce the live mark
+// value (which may be `null`, a 3/4/8-digit hex, or invalid) into something
+// the native picker accepts; anything that can't be coerced falls back to
+// black (the picker can't render "no color").
+const NATIVE_HEX_RE = /^#[0-9a-fA-F]{6}$/;
+function normalizeForNativePicker(input: string | null): string {
+  if (input && NATIVE_HEX_RE.test(input)) return input.toLowerCase();
+  return "#000000";
+}
+
 export function ColorPicker({ commands, variant }: ColorPickerProps) {
   const disabled = !commands.active;
   const ariaLabel = variant === "text" ? "Text color" : "Highlight color";
 
-  const current =
+  // Read-side coordination with StyleTab. For the text-color variant, when
+  // the selection has no `textStyle.color` mark we fall back to the
+  // enclosing component's `style.textColor` so the toolbar swatch and the
+  // StyleTab swatch describe the same scope. Writes still go through
+  // `commands.setMarkAttr` (per-range mark), unchanged.
+  const selectedNode = useEditorStore(selectSelectedComponentNode);
+  const markColor =
     variant === "text"
       ? (commands.getMarkAttr("textStyle", "color") ?? null)
       : (commands.getMarkAttr("highlight", "color") ?? null);
+  const fallback = variant === "text" ? (selectedNode?.style.textColor ?? null) : null;
+  const current = markColor ?? fallback;
 
   // Free-form hex input. Initialized from the live value when the popover
   // opens; the user can type a custom hex like "#f0e928" and press Enter
@@ -82,8 +101,12 @@ export function ColorPicker({ commands, variant }: ColorPickerProps) {
       >
         <span
           className="block h-3.5 w-3.5 rounded-sm border border-zinc-600"
+          // Use `backgroundColor` (longhand) + `backgroundImage` (longhand)
+          // rather than `background` (shorthand). React 19 warns when a
+          // shorthand and a related longhand are both set on the same
+          // element because the resolution order can flip across renders.
           style={{
-            background: current ?? "transparent",
+            backgroundColor: current ?? "transparent",
             backgroundImage:
               current === null
                 ? "linear-gradient(45deg, transparent calc(50% - 1px), #ef4444 50%, transparent calc(50% + 1px))"
@@ -119,7 +142,7 @@ export function ColorPicker({ commands, variant }: ColorPickerProps) {
                 width: "1.25rem",
                 height: "1.25rem",
                 padding: 0,
-                background: color ?? "transparent",
+                backgroundColor: color ?? "transparent",
                 backgroundImage:
                   color === null
                     ? "linear-gradient(45deg, transparent calc(50% - 1px), #ef4444 50%, transparent calc(50% + 1px))"
@@ -161,6 +184,28 @@ export function ColorPicker({ commands, variant }: ColorPickerProps) {
               border: "1px solid #3f3f46",
               background: "#09090b",
               color: "#e4e4e7",
+            }}
+          />
+          {/*
+            Native swatch — opens the OS color wheel. `<input type="color">`
+            only accepts 6-digit `#rrggbb`, so when there's no current color
+            the swatch shows black; users who want alpha or "no color" use
+            the presets / hex field above. Each onChange fires per move of
+            the OS picker; that's the same UX as the legacy StyleTab swatch.
+          */}
+          <input
+            type="color"
+            aria-label={`${ariaLabel} (picker)`}
+            value={normalizeForNativePicker(current)}
+            onChange={(e) => setColor(e.target.value)}
+            style={{
+              width: "1.5rem",
+              height: "1.5rem",
+              padding: 0,
+              border: "1px solid #3f3f46",
+              borderRadius: "0.25rem",
+              background: "#09090b",
+              cursor: "pointer",
             }}
           />
         </div>

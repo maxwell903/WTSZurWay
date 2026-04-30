@@ -523,3 +523,80 @@ describe("navLinkSchema (via navBarConfigSchema)", () => {
     expect(navBarConfigSchema.safeParse(makeNavBar([])).success).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sprint 14 — dropdown children + visual layout knobs
+// ---------------------------------------------------------------------------
+
+describe("navBarConfigSchema (Sprint 14)", () => {
+  function makeNavBar(links: unknown, extra: Record<string, unknown> = {}) {
+    return { links, logoPlacement: "left" as const, sticky: false, ...extra };
+  }
+
+  it("parses a top-level link with a children submenu", () => {
+    const result = navBarConfigSchema.safeParse(
+      makeNavBar([
+        {
+          label: "Resources",
+          kind: "external",
+          href: "#",
+          children: [
+            { label: "Blog", kind: "external", href: "/blog" },
+            { label: "Docs", kind: "page", pageSlug: "docs" },
+          ],
+        },
+      ]),
+    );
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.links[0]?.children?.length).toBe(2);
+      expect(result.data.links[0]?.children?.[0]?.href).toBe("/blog");
+    }
+  });
+
+  it("strips grandchildren so the depth-1 invariant holds at runtime", () => {
+    // Schema-defined children shape has no `children` field; Zod's default
+    // strip behavior drops unknown keys, so a grandchild silently disappears.
+    const result = navBarConfigSchema.safeParse(
+      makeNavBar([
+        {
+          label: "Resources",
+          kind: "external",
+          href: "#",
+          children: [
+            {
+              label: "Blog",
+              kind: "external",
+              href: "/blog",
+              children: [{ label: "Sneaky", kind: "external", href: "/sneaky" }],
+            },
+          ],
+        },
+      ]),
+    );
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const child = result.data.links[0]?.children?.[0];
+      expect(child).toBeDefined();
+      expect((child as Record<string, unknown> | undefined)?.children).toBeUndefined();
+    }
+  });
+
+  it("accepts the new linkGap/logoMarginX/logoSize fields", () => {
+    const result = navBarConfigSchema.safeParse(
+      makeNavBar([], { linkGap: 32, logoMarginX: 12, logoSize: 48 }),
+    );
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.linkGap).toBe(32);
+      expect(result.data.logoMarginX).toBe(12);
+      expect(result.data.logoSize).toBe(48);
+    }
+  });
+
+  it("rejects negative values on the new layout fields", () => {
+    expect(navBarConfigSchema.safeParse(makeNavBar([], { linkGap: -1 })).success).toBe(false);
+    expect(navBarConfigSchema.safeParse(makeNavBar([], { logoMarginX: -5 })).success).toBe(false);
+    expect(navBarConfigSchema.safeParse(makeNavBar([], { logoSize: -8 })).success).toBe(false);
+  });
+});

@@ -11,11 +11,18 @@ import { SegmentedControl } from "./SegmentedControl";
 // lib/site-config/schema.ts. The two `kind` values share `label`; "page"
 // entries reference a static page by slug, "external" entries hold a
 // free-form URL.
+//
+// `children` (Sprint 14, dropdowns): top-level entries can carry a flat
+// list of submenu items. The schema invariant is depth-1 — submenu items
+// themselves never have `children`. The editor enforces this via the
+// `allowChildren` prop: the nested editor for submenu items is rendered
+// with `allowChildren={false}` and skips the submenu UI.
 export type NavLinkEntry = {
   label: string;
   kind: "page" | "external";
   href?: string;
   pageSlug?: string;
+  children?: NavLinkEntry[];
 };
 
 export type NavLinksEditorProps = {
@@ -24,6 +31,13 @@ export type NavLinksEditorProps = {
   value: NavLinkEntry[];
   onChange: (next: NavLinkEntry[]) => void;
   testId?: string;
+  // Whether each entry can be expanded with a submenu. Top-level callers
+  // leave this at the default `true`; the recursive call for a parent's
+  // `children` passes `false` so the depth-1 invariant holds.
+  allowChildren?: boolean;
+  // Override the "Add link" button text — used to distinguish the
+  // top-level "Add link" affordance from the nested "Add submenu item".
+  addLabel?: string;
 };
 
 const KIND_OPTIONS = [
@@ -31,7 +45,15 @@ const KIND_OPTIONS = [
   { label: "External", value: "external" as const },
 ];
 
-export function NavLinksEditor({ id, label, value, onChange, testId }: NavLinksEditorProps) {
+export function NavLinksEditor({
+  id,
+  label,
+  value,
+  onChange,
+  testId,
+  allowChildren = true,
+  addLabel = "Add link",
+}: NavLinksEditorProps) {
   const update = (idx: number, patch: Partial<NavLinkEntry>) => {
     const next = value.slice();
     const current = next[idx];
@@ -54,10 +76,23 @@ export function NavLinksEditor({ id, label, value, onChange, testId }: NavLinksE
     const next = value.slice();
     const current = next[idx];
     if (!current) return;
+    // Preserve `children` when toggling kind so a half-built submenu isn't
+    // wiped out by an accidental kind flip.
+    const preservedChildren = current.children;
     if (kind === "page") {
-      next[idx] = { label: current.label, kind: "page", pageSlug: current.pageSlug };
+      next[idx] = {
+        label: current.label,
+        kind: "page",
+        pageSlug: current.pageSlug,
+        ...(preservedChildren ? { children: preservedChildren } : {}),
+      };
     } else {
-      next[idx] = { label: current.label, kind: "external", href: current.href ?? "" };
+      next[idx] = {
+        label: current.label,
+        kind: "external",
+        href: current.href ?? "",
+        ...(preservedChildren ? { children: preservedChildren } : {}),
+      };
     }
     onChange(next);
   };
@@ -128,6 +163,23 @@ export function NavLinksEditor({ id, label, value, onChange, testId }: NavLinksE
                 />
               </>
             )}
+            {allowChildren ? (
+              <div className="ml-1 border-l-2 border-zinc-700 pl-2">
+                <NavLinksEditor
+                  id={`${id}-children-${idx}`}
+                  label="Submenu items"
+                  value={entry.children ?? []}
+                  // Empty submenu drops the `children` key entirely so the
+                  // entry round-trips back to its non-dropdown shape.
+                  onChange={(next) =>
+                    update(idx, { children: next.length === 0 ? undefined : next })
+                  }
+                  testId={testId ? `${testId}-children-${idx}` : undefined}
+                  allowChildren={false}
+                  addLabel="Add submenu item"
+                />
+              </div>
+            ) : null}
           </div>
         ))}
       </div>
@@ -139,7 +191,7 @@ export function NavLinksEditor({ id, label, value, onChange, testId }: NavLinksE
         onClick={append}
         className="w-full border-dashed border-zinc-700 bg-transparent text-zinc-300 hover:bg-zinc-900"
       >
-        <Plus className="mr-1 h-3.5 w-3.5" /> Add link
+        <Plus className="mr-1 h-3.5 w-3.5" /> {addLabel}
       </Button>
     </div>
   );

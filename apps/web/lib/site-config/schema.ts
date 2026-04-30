@@ -186,36 +186,56 @@ export type FormDefinition = z.infer<typeof formDefinitionSchema>;
 // is treated as "external" so legacy configs that stored just
 // `{ label, href }` (and any test fixtures typed against `SiteConfig`)
 // continue to type- and parse-check without modification.
+//
+// Top-level NavBar links may carry a `children` array of submenu items —
+// depth is fixed at 1 (submenu items cannot themselves have children) so
+// we use a separate non-recursive `navLinkChildSchema` rather than z.lazy.
+const navLinkBaseObject = {
+  label: z.string(),
+  kind: z.enum(["page", "external"]).optional(),
+  href: z.string().optional(),
+  pageSlug: z.string().optional(),
+};
+
+function refineNavLinkKind(
+  link: { kind?: "page" | "external"; href?: string; pageSlug?: string },
+  ctx: z.RefinementCtx,
+) {
+  const effectiveKind = link.kind ?? "external";
+  if (effectiveKind === "page" && link.pageSlug === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["pageSlug"],
+      message: "Required when kind is 'page'",
+    });
+  }
+  if (effectiveKind === "external" && link.href === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["href"],
+      message: "Required when kind is 'external'",
+    });
+  }
+}
+
+const navLinkChildSchema = z.object(navLinkBaseObject).superRefine(refineNavLinkKind);
+export type NavLinkChild = z.infer<typeof navLinkChildSchema>;
+
 const navLinkSchema = z
   .object({
-    label: z.string(),
-    kind: z.enum(["page", "external"]).optional(),
-    href: z.string().optional(),
-    pageSlug: z.string().optional(),
+    ...navLinkBaseObject,
+    children: z.array(navLinkChildSchema).optional(),
   })
-  .superRefine((link, ctx) => {
-    const effectiveKind = link.kind ?? "external";
-    if (effectiveKind === "page" && link.pageSlug === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["pageSlug"],
-        message: "Required when kind is 'page'",
-      });
-    }
-    if (effectiveKind === "external" && link.href === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["href"],
-        message: "Required when kind is 'external'",
-      });
-    }
-  });
+  .superRefine(refineNavLinkKind);
 export type NavLink = z.infer<typeof navLinkSchema>;
 
 export const navBarConfigSchema = z.object({
   links: z.array(navLinkSchema),
   logoPlacement: z.enum(["left", "center", "right"]),
   sticky: z.boolean(),
+  linkGap: z.number().int().nonnegative().optional(),
+  logoMarginX: z.number().int().nonnegative().optional(),
+  logoSize: z.number().int().nonnegative().optional(),
 });
 export type NavBarConfig = z.infer<typeof navBarConfigSchema>;
 

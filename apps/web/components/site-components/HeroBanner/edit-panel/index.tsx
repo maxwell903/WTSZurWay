@@ -3,7 +3,9 @@
 import { useEditorStore } from "@/lib/editor-state";
 import type { ComponentNode } from "@/lib/site-config";
 import { CtaSection } from "./CtaSection";
+import { CtaStyleSection } from "./CtaStyleSection";
 import { EffectsSection } from "./EffectsSection";
+import { ElementLayoutSection } from "./ElementLayoutSection";
 import { LayoutSection } from "./LayoutSection";
 import { OverlaySection } from "./OverlaySection";
 import { PresetPicker } from "./PresetPicker";
@@ -40,6 +42,8 @@ export function HeroBannerEditPanel({ node }: HeroBannerEditPanelProps) {
       <EffectsSection {...sectionProps} />
       <TimingSection {...sectionProps} />
       <CtaSection {...sectionProps} />
+      <CtaStyleSection {...sectionProps} />
+      <ElementLayoutSection {...sectionProps} />
     </div>
   );
 }
