@@ -108,6 +108,14 @@ export const styleConfigSchema = z.object({
 });
 export type StyleConfig = z.infer<typeof styleConfigSchema>;
 
+// Free-placement coordinates. Only meaningful when the parent Section has
+// `props.freePlacement === true` — the renderer ignores `position` otherwise.
+export const componentPositionSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+});
+export type ComponentPosition = z.infer<typeof componentPositionSchema>;
+
 // ----- Recursive ComponentNode + DataBinding ------------------------------
 
 export type DataBinding = {
@@ -124,6 +132,7 @@ export type ComponentNode = {
   type: ComponentType;
   props: Record<string, unknown>;
   style: StyleConfig;
+  position?: ComponentPosition;
   animation?: AnimationConfig;
   visibility?: "always" | "desktop" | "mobile";
   children?: ComponentNode[];
@@ -138,6 +147,7 @@ export const componentNodeSchema: z.ZodType<ComponentNode> = z.lazy(() =>
     type: componentTypeSchema,
     props: z.record(z.string(), z.unknown()),
     style: styleConfigSchema,
+    position: componentPositionSchema.optional(),
     animation: animationConfigSchema.optional(),
     visibility: z.enum(["always", "desktop", "mobile"]).optional(),
     children: z.array(componentNodeSchema).optional(),

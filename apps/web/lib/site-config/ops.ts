@@ -874,6 +874,28 @@ function makeEmptySection(): ComponentNode {
 // Per-op apply functions
 // ---------------------------------------------------------------------------
 
+// AI / palette inserts into a free-placement Section need a default
+// `(x, y)` so they don't all land at (0, 0) on top of existing children.
+// Mirrors the helper in `apps/web/lib/editor-state/actions.ts` —
+// duplicated here to avoid a circular dep (store.ts imports from ops).
+function isFreePlacementSection(node: ComponentNode): boolean {
+  if (node.type !== "Section") return false;
+  const props = node.props as { freePlacement?: unknown; fitToContents?: unknown };
+  return props.freePlacement === true || props.fitToContents === true;
+}
+
+function defaultFreePlacementPositionFor(parent: ComponentNode): { x: number; y: number } {
+  let lowest = 0;
+  for (const c of parent.children ?? []) {
+    const y = c.position?.y ?? 0;
+    const hStr = c.style?.height;
+    const h = typeof hStr === "string" ? Number.parseFloat(hStr) : 0;
+    const bottom = y + (Number.isFinite(h) ? h : 0);
+    if (bottom > lowest) lowest = bottom;
+  }
+  return { x: 0, y: lowest > 0 ? Math.round(lowest) + 16 : 0 };
+}
+
 function applyAddComponent(config: SiteConfig, op: AddComponentOp): SiteConfig {
   if (findNodeAcrossPages(config, op.component.id) !== null) {
     throw new OperationInvalidError(
@@ -890,9 +912,13 @@ function applyAddComponent(config: SiteConfig, op: AddComponentOp): SiteConfig {
         op.id,
       );
     }
+    const componentToInsert: ComponentNode =
+      isFreePlacementSection(parent) && op.component.position === undefined
+        ? { ...op.component, position: defaultFreePlacementPositionFor(parent) }
+        : op.component;
     const children = (parent.children ?? []).slice();
     const safeIndex = Math.max(0, Math.min(op.index, children.length));
-    children.splice(safeIndex, 0, op.component);
+    children.splice(safeIndex, 0, componentToInsert);
     return { ...parent, children };
   });
 }

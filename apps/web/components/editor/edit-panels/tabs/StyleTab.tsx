@@ -1,7 +1,12 @@
 "use client";
 
 import { getTextFields } from "@/components/site-components/registry";
-import { useEditorStore } from "@/lib/editor-state";
+import {
+  findComponentById,
+  findComponentParentId,
+  selectCurrentPage,
+  useEditorStore,
+} from "@/lib/editor-state";
 import { dominantTextStyleColorMulti } from "@/lib/rich-text/dominant-color";
 import type { ComponentNode, ComponentType, RichTextDoc, StyleConfig } from "@/lib/site-config";
 import { BackgroundInput } from "../controls/BackgroundInput";
@@ -55,10 +60,29 @@ export type StyleTabProps = {
   node: ComponentNode;
 };
 
+// Returns true when the selected node's parent is a Section with
+// `props.freePlacement === true` (or the legacy `fitToContents === true`).
+// Used to gate the X/Y position row in the StyleTab.
+function useParentIsFreePlacement(nodeId: string): boolean {
+  return useEditorStore((s) => {
+    const page = selectCurrentPage(s);
+    if (!page) return false;
+    const parentId = findComponentParentId(page.rootComponent, nodeId);
+    if (!parentId) return false;
+    const parent = findComponentById(page.rootComponent, parentId);
+    if (!parent || parent.type !== "Section") return false;
+    const props = parent.props as { freePlacement?: unknown; fitToContents?: unknown };
+    return props.freePlacement === true || props.fitToContents === true;
+  });
+}
+
 export function StyleTab({ node }: StyleTabProps) {
   const setComponentStyle = useEditorStore((s) => s.setComponentStyle);
+  const setComponentPosition = useEditorStore((s) => s.setComponentPosition);
+  const parentIsFreePlacement = useParentIsFreePlacement(node.id);
   const mode = modeFor(node.type);
   const style = node.style;
+  const position = node.position ?? { x: 0, y: 0 };
 
   const writePartial = (patch: Partial<StyleConfig>) => {
     const merged = { ...style, ...patch };
@@ -136,6 +160,28 @@ export function StyleTab({ node }: StyleTabProps) {
         testId="style-shadow"
         onChange={(next) => writePartial({ shadow: next })}
       />
+      {parentIsFreePlacement ? (
+        <div className="grid grid-cols-2 gap-2" data-testid="style-position-row">
+          <NumberInput
+            id="style-position-x"
+            label="X"
+            value={position.x}
+            min={-9999}
+            step={1}
+            testId="style-position-x"
+            onChange={(next) => setComponentPosition(node.id, { x: next ?? 0, y: position.y })}
+          />
+          <NumberInput
+            id="style-position-y"
+            label="Y"
+            value={position.y}
+            min={-9999}
+            step={1}
+            testId="style-position-y"
+            onChange={(next) => setComponentPosition(node.id, { x: position.x, y: next ?? 0 })}
+          />
+        </div>
+      ) : null}
       <div className="grid grid-cols-2 gap-2">
         <SizeUnitInput
           id="style-width"

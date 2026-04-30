@@ -28,21 +28,41 @@ import { type ContextMenuMeta, EditModeWrapper } from "./EditModeWrapper";
 // idempotent for `flex`, `width`, and `height` (margin is deliberately NOT
 // passed through because that would double-apply on the wrapper *and*
 // inside it).
-function computeWrapperPassthroughStyle(node: ComponentNode): CSSProperties {
+function computeWrapperPassthroughStyle(
+  node: ComponentNode,
+  parentIsFreePlacement = false,
+): CSSProperties {
   const out: CSSProperties = {};
   const cssStyle = styleConfigToCss(node.style);
+  // Free-placement sections size to fit their absolutely-positioned children
+  // (Section/index.tsx applies a min-height computed from the bounding box).
+  // Passing through a stale `style.height` here would force the wrapper to
+  // a flow-mode height that's wrong once children are absolute, leaving a
+  // tall empty area below the last child.
+  const isFreePlacementSection =
+    node.type === "Section" &&
+    ((node.props as { freePlacement?: unknown }).freePlacement === true ||
+      (node.props as { fitToContents?: unknown }).fitToContents === true);
   if (cssStyle.width !== undefined) out.width = cssStyle.width;
-  if (cssStyle.height !== undefined) out.height = cssStyle.height;
-  // Margin needs to live on the OUTER (wrapper) element so the wrapper
+  if (cssStyle.height !== undefined && !isFreePlacementSection) out.height = cssStyle.height;
+  // Margin lives on the OUTER (wrapper) element in flow mode so the wrapper
   // outline tracks the visible component when the user drags the W/N edge
   // (which compensates by writing negative margin-left / margin-top to
-  // anchor the opposite edge). The inner component must NOT also receive
-  // these values — see `stripMarginFromCss` below — or it would
-  // double-apply.
-  if (cssStyle.marginTop !== undefined) out.marginTop = cssStyle.marginTop;
-  if (cssStyle.marginRight !== undefined) out.marginRight = cssStyle.marginRight;
-  if (cssStyle.marginBottom !== undefined) out.marginBottom = cssStyle.marginBottom;
-  if (cssStyle.marginLeft !== undefined) out.marginLeft = cssStyle.marginLeft;
+  // anchor the opposite edge). When the parent is free-placement, however,
+  // those margins are pure noise — the absolute wrapper around this child
+  // already encodes the visual position via top/left, and re-applying the
+  // margin on top of that double-counts it (e.g. a flex-mode N-edge resize
+  // wrote `margin-top: -328px` to anchor the bottom edge; in absolute mode
+  // it would yank the child 328px above its captured y-position). Skip the
+  // margin passthrough — the schema value is preserved so toggling off
+  // restores flex behavior. The inner component must continue to skip
+  // margin via `stripMarginFromCss` to avoid double-application.
+  if (!parentIsFreePlacement) {
+    if (cssStyle.marginTop !== undefined) out.marginTop = cssStyle.marginTop;
+    if (cssStyle.marginRight !== undefined) out.marginRight = cssStyle.marginRight;
+    if (cssStyle.marginBottom !== undefined) out.marginBottom = cssStyle.marginBottom;
+    if (cssStyle.marginLeft !== undefined) out.marginLeft = cssStyle.marginLeft;
+  }
   // Column's own `flex` value depends on whether an explicit width is set
   // (see `Column/index.tsx`): `flex: 0 0 <width>` when width is explicit,
   // otherwise `flex: <span>` for legacy proportional sharing. The wrapper
@@ -118,6 +138,12 @@ export type ComponentRendererProps = {
   selection?: string[];
   onSelect?: (id: string) => void;
   onContextMenu?: (id: string, meta: ContextMenuMeta) => void;
+  // True when this node's direct parent is a Section in free-placement
+  // mode. Used by `computeWrapperPassthroughStyle` to skip the
+  // margin/height passthrough that would otherwise double-count against
+  // the absolute positioning. Recursive: nested children of a free-placement
+  // child don't inherit it.
+  parentIsFreePlacement?: boolean;
 };
 
 // Sprint 9: opt-in token resolver. When no row is in scope (`useRow()`
@@ -194,6 +220,7 @@ function ComponentRendererInner({
   selection,
   onSelect,
   onContextMenu,
+  parentIsFreePlacement = false,
 }: ComponentRendererProps) {
   const cssStyle = useMemo(() => styleConfigToCss(node.style), [node.style]);
   // In edit mode, margin is applied on the EditModeWrapper (see
@@ -220,6 +247,14 @@ function ComponentRendererInner({
     return { ...node, props: resolveProps(node.props, row) };
   }, [node, row, kind]);
 
+  // Compute once: is THIS node a free-placement Section? If so, its direct
+  // children get `parentIsFreePlacement=true` so they skip the margin/height
+  // passthrough on their wrapper.
+  const isFreePlacementSection =
+    node.type === "Section" &&
+    ((node.props as { freePlacement?: unknown }).freePlacement === true ||
+      (node.props as { fitToContents?: unknown }).fitToContents === true);
+
   const childElements = node.children?.map((child) => (
     <ComponentRenderer
       key={child.id}
@@ -228,6 +263,7 @@ function ComponentRendererInner({
       selection={selection}
       onSelect={onSelect}
       onContextMenu={onContextMenu}
+      parentIsFreePlacement={isFreePlacementSection}
     />
   ));
 
@@ -251,7 +287,13 @@ function ComponentRendererInner({
   ) : (
     childElements
   );
-  if (!showEmpty && mode === "edit" && policy === "many") {
+  // BetweenDropZone interleaving is skipped for free-placement Sections.
+  // In absolute layout the children array order is decoupled from visual
+  // position, so a "drop at index N" affordance would just be misleading.
+  // Section's render also indexes `Children.toArray(children)` against its
+  // schema children list to find each child's `position`, and interleaving
+  // BZs there would shift those indices out of alignment.
+  if (!showEmpty && mode === "edit" && policy === "many" && !isFreePlacementSection) {
     const orientation: "vertical" | "horizontal" = node.type === "Row" ? "horizontal" : "vertical";
     // Gap-doubling fix: the parent (Row, Column, etc.) applies CSS `gap`
     // between every pair of adjacent flex items. Interleaving an invisible
@@ -304,7 +346,7 @@ function ComponentRendererInner({
         selected={isSelected}
         onSelect={onSelect}
         onContextMenu={onContextMenu}
-        passthroughStyle={computeWrapperPassthroughStyle(node)}
+        passthroughStyle={computeWrapperPassthroughStyle(node, parentIsFreePlacement)}
       >
         {rendered}
       </EditModeWrapper>

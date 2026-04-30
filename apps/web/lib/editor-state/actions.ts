@@ -4,6 +4,7 @@ import type {
   AnimationConfig,
   CanvasConfig,
   ComponentNode,
+  ComponentPosition,
   DataBinding,
   Page,
   PageKind,
@@ -51,7 +52,11 @@ function makeEmptySection(): ComponentNode {
   return {
     id: newComponentId("cmp"),
     type: "Section",
-    props: {},
+    // Default new page roots to free-placement so AI inserts and resize
+    // operations can't reflow siblings out of the box. Existing Sections
+    // (already in saved configs) are unaffected — only freshly-created
+    // empty Sections opt in by default.
+    props: { freePlacement: true },
     style: {},
     children: [],
   };
@@ -280,6 +285,58 @@ export function applySetComponentStyle(
   return applyMapToConfig(config, id, (node) => ({ ...node, style }));
 }
 
+export function applySetComponentPosition(
+  config: SiteConfig,
+  id: ComponentId,
+  position: ComponentPosition,
+): SiteConfig {
+  return applyMapToConfig(config, id, (node) => ({
+    ...node,
+    position: { x: position.x, y: position.y },
+  }));
+}
+
+export type SnapshotRect = { x: number; y: number; width: number; height: number };
+export type SnapshotRects = Record<string, SnapshotRect>;
+
+// Pure mutation: given a section id and a map of child-id → rect, write
+// `position` onto each direct child whose rect was supplied. Width/height
+// are populated from the rect only when `style.width`/`style.height` are
+// unset, so explicit user-set sizes are preserved.
+//
+// `force=true` (Recapture from EditPanel) overwrites an existing position;
+// without it, children that already have `position` set are skipped so the
+// initial snapshot is idempotent across toggle on/off cycles.
+export function applySnapshotChildPositions(
+  config: SiteConfig,
+  sectionId: ComponentId,
+  rects: SnapshotRects,
+  options: { force?: boolean } = {},
+): SiteConfig {
+  if (Object.keys(rects).length === 0) return config;
+  const force = options.force === true;
+  return applyMapToConfig(config, sectionId, (section) => {
+    const children = section.children ?? [];
+    let touched = false;
+    const nextChildren = children.map((child) => {
+      const rect = rects[child.id];
+      if (rect === undefined) return child;
+      if (!force && child.position !== undefined) return child;
+      touched = true;
+      const nextStyle = { ...child.style };
+      if (nextStyle.width === undefined) nextStyle.width = `${Math.round(rect.width)}px`;
+      if (nextStyle.height === undefined) nextStyle.height = `${Math.round(rect.height)}px`;
+      return {
+        ...child,
+        position: { x: Math.round(rect.x), y: Math.round(rect.y) },
+        style: nextStyle,
+      };
+    });
+    if (!touched) return section;
+    return { ...section, children: nextChildren };
+  });
+}
+
 export function applySetComponentAnimation(
   config: SiteConfig,
   id: ComponentId,
@@ -429,6 +486,29 @@ function isInSubtree(root: ComponentNode, id: ComponentId): boolean {
   return false;
 }
 
+// Free-placement helpers. A Section is in free-placement mode when its
+// `props.freePlacement === true` (or the legacy `fitToContents === true`).
+// The default-position helper places a new child at (0, lowest existing
+// child's bottom + 16) so AI / palette inserts append below the visual
+// stack without overlapping existing content.
+function isFreePlacementSection(node: ComponentNode): boolean {
+  if (node.type !== "Section") return false;
+  const props = node.props as { freePlacement?: unknown; fitToContents?: unknown };
+  return props.freePlacement === true || props.fitToContents === true;
+}
+
+function defaultFreePlacementPositionFor(parent: ComponentNode): ComponentPosition {
+  let lowest = 0;
+  for (const c of parent.children ?? []) {
+    const y = c.position?.y ?? 0;
+    const hStr = c.style?.height;
+    const h = typeof hStr === "string" ? Number.parseFloat(hStr) : 0;
+    const bottom = y + (Number.isFinite(h) ? h : 0);
+    if (bottom > lowest) lowest = bottom;
+  }
+  return { x: 0, y: lowest > 0 ? Math.round(lowest) + 16 : 0 };
+}
+
 export function applyAddComponentChild(
   config: SiteConfig,
   parentId: ComponentId,
@@ -442,9 +522,13 @@ export function applyAddComponentChild(
         `Component "${parent.type}" cannot accept a child of type "${node.type}".`,
       );
     }
+    const childToInsert: ComponentNode =
+      isFreePlacementSection(parent) && node.position === undefined
+        ? { ...node, position: defaultFreePlacementPositionFor(parent) }
+        : node;
     const children = (parent.children ?? []).slice();
     const safeIndex = Math.max(0, Math.min(index, children.length));
-    children.splice(safeIndex, 0, node);
+    children.splice(safeIndex, 0, childToInsert);
     return { ...parent, children };
   });
 }

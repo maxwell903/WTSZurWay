@@ -2,6 +2,7 @@ import type {
   AnimationConfig,
   CanvasConfig,
   ComponentNode,
+  ComponentPosition,
   DataBinding,
   DetailDataSource,
   Page,
@@ -108,6 +109,13 @@ export type EditorActions = {
   setElementEditTab: (tab: ElementEditTab) => void;
   setComponentProps: (id: ComponentId, props: Record<string, unknown>) => void;
   setComponentStyle: (id: ComponentId, style: StyleConfig) => void;
+  setComponentPosition: (id: ComponentId, position: ComponentPosition) => void;
+  // Reads DOM rects for a Section's direct children and writes them back as
+  // absolute positions on the schema. Browser-only (no-op in SSR). Pass
+  // `{ force: true }` from the EditPanel's "Recapture" action to overwrite
+  // existing positions; without it, only children missing `position` are
+  // updated so the initial toggle-on snapshot is idempotent.
+  snapshotChildPositions: (sectionId: ComponentId, options?: { force?: boolean }) => void;
   setComponentAnimation: (id: ComponentId, animation: AnimationConfig | undefined) => void;
   setComponentVisibility: (id: ComponentId, visibility: ComponentVisibility | undefined) => void;
   // Sprint 9 — Repeater data binding mutator.

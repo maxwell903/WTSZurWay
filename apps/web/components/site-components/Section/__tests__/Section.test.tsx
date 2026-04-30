@@ -117,3 +117,125 @@ describe("Section flex-on-explicit-width (UX rework)", () => {
     expect((wrappers?.[1] as HTMLElement).style.flex).toContain("100%");
   });
 });
+
+describe("Section freePlacement absolute layout", () => {
+  it("renders direct children in absolutely-positioned wrappers", () => {
+    const node: ComponentNode = {
+      id: "cmp_s",
+      type: "Section",
+      props: { freePlacement: true },
+      style: {},
+      children: [
+        { id: "a", type: "Heading", props: {}, style: {}, position: { x: 12, y: 34 } },
+        { id: "b", type: "Heading", props: {}, style: {}, position: { x: 56, y: 78 } },
+      ],
+    };
+    const { container } = render(
+      <Section node={node} cssStyle={{}}>
+        <span data-testid="a">a</span>
+        <span data-testid="b">b</span>
+      </Section>,
+    );
+    const section = container.firstElementChild as HTMLElement;
+    expect(section.style.position).toBe("relative");
+    const wrappers = section.querySelectorAll(":scope > div");
+    expect(wrappers.length).toBe(2);
+    const w0 = wrappers[0] as HTMLElement;
+    expect(w0.style.position).toBe("absolute");
+    expect(w0.style.left).toBe("12px");
+    expect(w0.style.top).toBe("34px");
+    const w1 = wrappers[1] as HTMLElement;
+    expect(w1.style.left).toBe("56px");
+    expect(w1.style.top).toBe("78px");
+  });
+
+  it("auto-sizes section min-height to bounding box of positioned children", () => {
+    const node: ComponentNode = {
+      id: "cmp_s",
+      type: "Section",
+      props: { freePlacement: true },
+      style: {},
+      children: [
+        {
+          id: "a",
+          type: "Heading",
+          props: {},
+          style: { height: "100px" },
+          position: { x: 0, y: 200 },
+        },
+      ],
+    };
+    const { container } = render(
+      <Section node={node} cssStyle={{}}>
+        <span data-testid="a">a</span>
+      </Section>,
+    );
+    const section = container.firstElementChild as HTMLElement;
+    expect(section.style.minHeight).toBe("300px");
+  });
+
+  it("drops cssStyle.height in free-placement mode and uses computed min-height", () => {
+    // In flow mode the user's `style.height` is meaningful, but once children
+    // are absolutely positioned, a flow-mode height value usually leaves a
+    // tall empty void below the last child. Free-placement mode therefore
+    // always sizes the section to the children's bounding box.
+    const node: ComponentNode = {
+      id: "cmp_s",
+      type: "Section",
+      props: { freePlacement: true },
+      style: { height: "500px" },
+      children: [
+        {
+          id: "a",
+          type: "Heading",
+          props: {},
+          style: { height: "100px" },
+          position: { x: 0, y: 200 },
+        },
+      ],
+    };
+    const { container } = render(
+      <Section node={node} cssStyle={{ height: "500px" }}>
+        <span data-testid="a">a</span>
+      </Section>,
+    );
+    const section = container.firstElementChild as HTMLElement;
+    expect(section.style.height).toBe("");
+    expect(section.style.minHeight).toBe("300px");
+  });
+
+  it("falls back to (0,0) for children without position", () => {
+    const node: ComponentNode = {
+      id: "cmp_s",
+      type: "Section",
+      props: { freePlacement: true },
+      style: {},
+      children: [{ id: "a", type: "Heading", props: {}, style: {} }],
+    };
+    const { container } = render(
+      <Section node={node} cssStyle={{}}>
+        <span data-testid="a">a</span>
+      </Section>,
+    );
+    const wrapper = container.firstElementChild?.querySelector(":scope > div") as HTMLElement;
+    expect(wrapper.style.left).toBe("0px");
+    expect(wrapper.style.top).toBe("0px");
+  });
+
+  it("legacy fitToContents=true is treated as freePlacement", () => {
+    const node: ComponentNode = {
+      id: "cmp_s",
+      type: "Section",
+      props: { fitToContents: true },
+      style: {},
+      children: [{ id: "a", type: "Heading", props: {}, style: {}, position: { x: 5, y: 10 } }],
+    };
+    const { container } = render(
+      <Section node={node} cssStyle={{}}>
+        <span data-testid="a">a</span>
+      </Section>,
+    );
+    const section = container.firstElementChild as HTMLElement;
+    expect(section.style.position).toBe("relative");
+  });
+});

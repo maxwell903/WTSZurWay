@@ -5,9 +5,10 @@ Full-width container that holds Rows (or any other children). The outermost
 
 ## Props
 
-| Name | Type                                            | Default     | Description                              |
-| ---- | ----------------------------------------------- | ----------- | ---------------------------------------- |
-| `as` | `"section" \| "div" \| "main" \| "article"`     | `"section"` | The HTML tag rendered for this Section. |
+| Name             | Type                                            | Default     | Description                                                                                                                                                                                                                  |
+| ---------------- | ----------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `as`             | `"section" \| "div" \| "main" \| "article"`     | `"section"` | The HTML tag rendered for this Section.                                                                                                                                                                                       |
+| `fitToContents`  | `boolean`                                       | `false`     | When `true`, suppresses the auto-flex-row-wrap that normally kicks in once any child has `style.width`. Children stay in plain block flow, so resizing one child can't reflow its siblings. Toggle lives on the Content tab. |
 
 Invalid props fall back silently to the defaults.
 

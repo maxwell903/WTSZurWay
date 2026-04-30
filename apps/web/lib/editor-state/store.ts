@@ -12,6 +12,7 @@ import {
 } from "@/lib/site-config/ops";
 import { type StateCreator, create } from "zustand";
 import {
+  type SnapshotRects,
   applyAddComponentChild,
   applyAddPage,
   applyAddSiblingHorizontal,
@@ -28,6 +29,7 @@ import {
   applySetComponentAnimation,
   applySetComponentDataBinding,
   applySetComponentDimension,
+  applySetComponentPosition,
   applySetComponentProps,
   applySetComponentSpan,
   applySetComponentStyle,
@@ -35,9 +37,11 @@ import {
   applySetFontFamily,
   applySetPalette,
   applySetSiteName,
+  applySnapshotChildPositions,
   applyWrapInFlowGroup,
   applyWrapInFlowGroupMove,
 } from "./actions";
+import { selectCurrentPage } from "./selectors";
 import type { EditorStore } from "./types";
 
 const EMPTY_CONFIG: SiteConfig = {
@@ -223,6 +227,56 @@ const creator: StateCreator<EditorStore> = (set) => ({
       draftConfig: syncLockedNavBars(applySetComponentStyle(state.draftConfig, id, style), id),
       saveState: "dirty",
     })),
+
+  setComponentPosition: (id, position) =>
+    set((state) => ({
+      draftConfig: applySetComponentPosition(state.draftConfig, id, position),
+      saveState: "dirty",
+    })),
+
+  snapshotChildPositions: (sectionId, options) =>
+    set((state) => {
+      if (typeof document === "undefined") return {};
+      const sectionEl = document.querySelector(`[data-edit-id="${sectionId}"]`);
+      if (!(sectionEl instanceof HTMLElement)) return {};
+      const sectionRect = sectionEl.getBoundingClientRect();
+      const page = selectCurrentPage(state);
+      if (!page) return {};
+      const section = findComponentById(page.rootComponent, sectionId);
+      if (!section || !section.children) return {};
+      const rects: SnapshotRects = {};
+      const missing: string[] = [];
+      for (const child of section.children) {
+        const el = document.querySelector(`[data-edit-id="${child.id}"]`);
+        if (!(el instanceof HTMLElement)) {
+          missing.push(`${child.type}(${child.id})`);
+          continue;
+        }
+        const r = el.getBoundingClientRect();
+        rects[child.id] = {
+          x: r.left - sectionRect.left + sectionEl.scrollLeft,
+          y: r.top - sectionRect.top + sectionEl.scrollTop,
+          width: r.width,
+          height: r.height,
+        };
+      }
+      // Diagnostic: surface any children whose DOM element couldn't be
+      // resolved at snapshot time. They'll render at (0, 0, auto, auto)
+      // when freePlacement is on, which is almost certainly wrong.
+      if (missing.length > 0) {
+        console.warn(
+          `[snapshotChildPositions] ${missing.length}/${section.children.length} children had no DOM element at snapshot time. Missing: ${missing.join(", ")}. These will render at (0, 0) when freePlacement is on. If this is unexpected, the elements may not have a [data-edit-id] attribute or may not be rendered in the current view (e.g. mobile-only visibility on desktop).`,
+        );
+      }
+      console.info(
+        `[snapshotChildPositions] sectionId=${sectionId}, captured ${Object.keys(rects).length}/${section.children.length} rects.`,
+        rects,
+      );
+      return {
+        draftConfig: applySnapshotChildPositions(state.draftConfig, sectionId, rects, options),
+        saveState: "dirty",
+      };
+    }),
 
   setComponentAnimation: (id, animation) =>
     set((state) => ({

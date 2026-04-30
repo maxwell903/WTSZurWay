@@ -11,6 +11,7 @@ export {
   applySetComponentAnimation,
   applySetComponentDataBinding,
   applySetComponentDimension,
+  applySetComponentPosition,
   applySetComponentProps,
   applySetComponentSpan,
   applySetComponentStyle,
@@ -18,6 +19,7 @@ export {
   applySetFontFamily,
   applySetPalette,
   applySetSiteName,
+  applySnapshotChildPositions,
   getMaxAllowedDimension,
 } from "./actions";
 export {

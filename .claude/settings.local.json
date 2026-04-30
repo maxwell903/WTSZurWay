@@ -145,7 +145,13 @@
       "PowerShell($env:PATH = \"$env:USERPROFILE\\\\AppData\\\\Local\\\\pnpm;$env:PATH\"; pnpm --filter web test 2>&1 | Select-String \"FAIL|×|fail\" | Select-Object -First 10)",
       "PowerShell($env:PATH = \"$env:USERPROFILE\\\\AppData\\\\Local\\\\pnpm;$env:PATH\"; pnpm --filter web test 2>&1 | Select-Object -Last 6; pnpm --filter web build 2>&1 | Select-Object -Last 5)",
       "Bash(git -C /c/Users/maxwa/WTSZurWay add apps/web/components/editor/sidebar/site-tab/AiStockImageUploadModal.tsx)",
-      "Bash(git -C /c/Users/maxwa/WTSZurWay commit -m \"feat\\(editor\\): AiStockImageUploadModal component\")"
+      "Bash(git -C /c/Users/maxwa/WTSZurWay commit -m \"feat\\(editor\\): AiStockImageUploadModal component\")",
+      "PowerShell(pnpm typecheck 2>&1)",
+      "PowerShell(pnpm biome check components/site-components/Section components/editor/edit-panels/tabs lib/editor-state lib/site-config 2>&1)",
+      "PowerShell(Write-Output \\(Get-Location\\).Path)",
+      "PowerShell(pnpm biome check apps/web/components/site-components/Section apps/web/components/editor/edit-panels/tabs apps/web/lib/editor-state apps/web/lib/site-config 2>&1)",
+      "PowerShell(pnpm biome check --write apps/web/components/site-components/Section apps/web/components/editor/edit-panels/tabs apps/web/lib/editor-state apps/web/lib/site-config 2>&1)",
+      "PowerShell(pnpm --filter web test lib/editor-state lib/site-config/__tests__ 2>&1)"
     ]
   }
 }
