@@ -36,7 +36,7 @@ const perSite: StockImageRow[] = [
 afterEach(() => vi.clearAllMocks());
 
 describe("AiStockImagesSection", () => {
-  it("renders Default and Yours sections", () => {
+  it("renders Yours section above the collapsed Default section", () => {
     vi.mocked(useAiStockImages).mockReturnValue({
       state: { status: "ready", defaults, perSite },
       refetch: vi.fn(),
@@ -45,8 +45,26 @@ describe("AiStockImagesSection", () => {
       remove: vi.fn(),
     });
     render(<AiStockImagesSection siteId="11111111-1111-4111-a111-111111111111" />);
-    expect(screen.getByText("Default")).toBeInTheDocument();
-    expect(screen.getByText("Yours")).toBeInTheDocument();
+    const yoursIdx = screen
+      .getByText("Yours")
+      .compareDocumentPosition(screen.getByText(/Default \(\d+\)/));
+    // Node.DOCUMENT_POSITION_FOLLOWING means "Default" follows "Yours"
+    expect(yoursIdx & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Default row is hidden by default (collapsed)
+    expect(screen.queryByText("Default image")).not.toBeInTheDocument();
+  });
+
+  it("expands the Default section when its header is clicked", () => {
+    vi.mocked(useAiStockImages).mockReturnValue({
+      state: { status: "ready", defaults, perSite },
+      refetch: vi.fn(),
+      uploadAndRegister: vi.fn(),
+      updateDescription: vi.fn(),
+      remove: vi.fn(),
+    });
+    render(<AiStockImagesSection siteId="11111111-1111-4111-a111-111111111111" />);
+    expect(screen.queryByText("Default image")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText(/Default \(\d+\)/));
     expect(screen.getByText("Default image")).toBeInTheDocument();
   });
 
