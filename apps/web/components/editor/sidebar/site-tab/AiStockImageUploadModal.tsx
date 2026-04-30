@@ -52,21 +52,24 @@ export function AiStockImageUploadModal({ siteId, onClose, onUploaded }: Props) 
   }
 
   return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop is a propagation barrier (stops the editor canvas's mouse handlers from preventDefault'ing the file picker click); inner controls handle their own keyboard input.
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
       // biome-ignore lint/a11y/useSemanticElements: native <dialog> is positioned by the user agent and bypasses the fixed-overlay backdrop layout; role="dialog" + aria-modal carries the same a11y semantics.
       role="dialog"
       aria-modal="true"
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className="w-full max-w-md rounded-lg bg-white p-4 shadow-xl">
-        <h2 className="text-base font-semibold">Upload stock image</h2>
+      <div className="w-full max-w-md rounded-lg bg-white p-4 text-neutral-900 shadow-xl">
+        <h2 className="text-base font-semibold text-neutral-900">Upload stock image</h2>
 
         <input
           type="file"
           accept={ACCEPTED_TYPES.join(",")}
           onChange={handleFileChange}
           disabled={busy}
-          className="mt-3 block w-full text-sm"
+          className="mt-3 block w-full text-sm text-neutral-700 file:mr-3 file:rounded file:border-0 file:bg-neutral-200 file:px-3 file:py-1 file:text-sm file:text-neutral-900 hover:file:bg-neutral-300"
         />
 
         {file && (
@@ -78,7 +81,7 @@ export function AiStockImageUploadModal({ siteId, onClose, onUploaded }: Props) 
         )}
 
         <textarea
-          className="mt-3 block w-full rounded border border-neutral-300 px-2 py-1 text-sm"
+          className="mt-3 block w-full rounded border border-neutral-300 px-2 py-1 text-sm text-neutral-900 placeholder:text-neutral-400"
           rows={3}
           placeholder="Describe what's in this image (used by the AI to choose it)"
           value={description}
@@ -93,7 +96,7 @@ export function AiStockImageUploadModal({ siteId, onClose, onUploaded }: Props) 
             type="button"
             onClick={onClose}
             disabled={busy}
-            className="rounded border border-neutral-300 px-3 py-1 text-sm"
+            className="rounded border border-neutral-300 px-3 py-1 text-sm text-neutral-900 hover:bg-neutral-50 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -101,7 +104,7 @@ export function AiStockImageUploadModal({ siteId, onClose, onUploaded }: Props) 
             type="button"
             onClick={handleUpload}
             disabled={busy || !file || description.trim().length === 0}
-            className="rounded bg-neutral-900 px-3 py-1 text-sm text-white disabled:opacity-50"
+            className="rounded bg-neutral-900 px-3 py-1 text-sm text-white hover:bg-neutral-800 disabled:opacity-50"
           >
             {busy ? "Uploading…" : "Upload"}
           </button>
