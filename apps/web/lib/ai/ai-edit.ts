@@ -327,23 +327,95 @@ function parseAndValidate(text: string): ParseAndValidateResult {
   let value: unknown;
   try {
     value = JSON.parse(stripped);
-  } catch (e) {
-    return {
-      success: false,
-      issues: [
-        {
-          code: "custom",
-          path: [],
-          message: e instanceof Error ? e.message : "JSON parse error",
-        } as ZodIssue,
-      ],
-    };
+  } catch (firstErr) {
+    // Hotfix 2026-04-30: the model occasionally violates the "no prose
+    // after the JSON" instruction and emits a complete object followed
+    // by an explanatory sentence ("Unexpected non-whitespace character
+    // after JSON at position N"). Recover by extracting the first
+    // balanced top-level object and re-parsing. Falls through to the
+    // original error on genuine syntactic failure.
+    const extracted = extractFirstJsonObject(stripped);
+    if (extracted !== null && extracted !== stripped) {
+      try {
+        value = JSON.parse(extracted);
+      } catch {
+        return {
+          success: false,
+          issues: [
+            {
+              code: "custom",
+              path: [],
+              message: firstErr instanceof Error ? firstErr.message : "JSON parse error",
+            } as ZodIssue,
+          ],
+        };
+      }
+    } else {
+      return {
+        success: false,
+        issues: [
+          {
+            code: "custom",
+            path: [],
+            message: firstErr instanceof Error ? firstErr.message : "JSON parse error",
+          } as ZodIssue,
+        ],
+      };
+    }
   }
   const result = aiEditResponseSchema.safeParse(value);
   if (result.success) {
     return { success: true, value: result.data };
   }
   return { success: false, issues: result.error.issues };
+}
+
+/**
+ * Hotfix 2026-04-30: scans `text` for the first balanced top-level
+ * `{...}` object and returns it. Respects double-quoted string contents
+ * and backslash escapes so braces inside string values don't throw the
+ * counter off. Returns `null` if no balanced object is found.
+ *
+ * Used as a recovery path when the strict `JSON.parse` fails because
+ * the model trailed prose after the JSON. This does NOT try to repair
+ * truncated / malformed JSON -- it only handles the
+ * "valid JSON + trailing text" case.
+ */
+function extractFirstJsonObject(text: string): string | null {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let start = -1;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (inString) {
+      if (c === "\\") {
+        escaped = true;
+      } else if (c === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      continue;
+    }
+    if (c === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (c === "}") {
+      if (depth === 0) return null;
+      depth--;
+      if (depth === 0 && start !== -1) {
+        return text.slice(start, i + 1);
+      }
+    }
+  }
+  return null;
 }
 
 function stripCodeFence(text: string): string {
